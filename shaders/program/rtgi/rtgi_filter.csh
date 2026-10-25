@@ -26,7 +26,11 @@ uniform sampler2D depthtex1;
 uniform sampler2D colortex1; // gbuffer0
 
 uniform mat4 gbufferModelView;
+uniform mat4 gbufferModelViewInverse;
+uniform mat4 gbufferProjection;
 uniform mat4 gbufferProjectionInverse;
+
+uniform vec3 cameraPosition;
 
 uniform vec2 view_res;
 uniform vec2 view_pixel_size;
