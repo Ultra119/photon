@@ -1,0 +1,43 @@
+#if !defined INCLUDE_LIGHTING_RT_REFLECTIONS
+#define INCLUDE_LIGHTING_RT_REFLECTIONS
+
+#include "/include/global.glsl"
+#include "voxel_dda.glsl"
+
+// Traces specular reflection fallback into the 3D voxel grid when screen-space reflections miss
+vec3 trace_voxel_specular_fallback(
+    vec3 scene_pos,
+    vec3 ray_dir_world,
+    usampler3D voxel_grid,
+    sampler2D shadow_tex,
+    mat4 shadow_mv,
+    mat4 shadow_proj,
+    vec3 direct_sun_color,
+    vec3 sky_ambient_color,
+    vec3 l_dir,
+    vec3 sky_reflection
+) {
+    const float max_reflection_dist = 80.0;
+
+    VoxelHit vx_hit = trace_voxel_dda(
+        voxel_grid,
+        shadow_tex,
+        shadow_mv,
+        shadow_proj,
+        scene_pos,
+        ray_dir_world,
+        direct_sun_color,
+        sky_ambient_color,
+        l_dir,
+        max_reflection_dist
+    );
+
+    if (vx_hit.hit) {
+        return vx_hit.radiance;
+    }
+
+    return sky_reflection;
+}
+
+#endif // INCLUDE_LIGHTING_RT_REFLECTIONS
+

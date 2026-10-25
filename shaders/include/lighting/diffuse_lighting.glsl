@@ -21,6 +21,10 @@
 #undef CLOUD_SHADOWS
 #endif
 
+#ifdef RAYTRACED_GI
+uniform sampler2D rtgi_filtered_sampler;
+#endif
+
 #if defined PHOTONICS_DIFFUSE
 #include "/photonics/ph_samplers.glsl"
 
@@ -308,9 +312,23 @@ vec3 get_diffuse_lighting(
 #endif
 #endif
 
-    // Skylight
+    // Skylight & Indirect RTGI
 
-#if defined PHOTONICS_DIFFUSE
+#if defined RAYTRACED_GI
+    vec3 rtgi_indirect = textureLod(rtgi_filtered_sampler, uv, 0.0).rgb;
+    // RTGI provides both diffuse indirect skylight bounce and colored blocklight bounce
+    lighting += rtgi_indirect * SKYLIGHT_I;
+
+    // Soft fallback for handheld lighting or areas outside voxel distance
+    vec3 mc_block = get_block_lighting(
+        scene_pos,
+        flat_normal,
+        light_levels,
+        ao,
+        directional_lighting
+    );
+    lighting += mc_block * max(0.0, 1.0 - length(rtgi_indirect) * 2.5);
+#elif defined PHOTONICS_DIFFUSE
     if (is_lod) {
         lighting += get_sky_lighting(
             material,
@@ -321,37 +339,17 @@ vec3 get_diffuse_lighting(
             directional_lighting
         );
     } else {
-// When combined gi is enabled
-// Photonics includes gi in the result of sample_photonics_direct
 #ifndef PHOTONICS_RESTIR_COMBINED_GI
         lighting += texture2D(radiosity_indirect, uv).xyz * SKYLIGHT_I;
 #endif
     }
 
-#else
-    lighting += get_sky_lighting(
-        material,
-        bent_normal,
-        light_levels,
-        ao,
-        ambient_sss,
-        directional_lighting
-    );
-#endif
-
-    // Blocklight
-
-#if defined PHOTONICS_DIFFUSE
     if (!is_lod) {
         vec3 blocklight = vec3(0.0f);
-
         blocklight += sample_photonics_direct(uv);
-
 #ifdef HANDHELD_LIGHTING
         blocklight += sample_photonics_handheld(uv);
 #endif
-
-        // BLOCKLIGHT_I is applied in /photonics/modifiers/modify_lights.glsl
         lighting += blocklight * blocklight_scale;
     } else {
         lighting += get_block_lighting(
@@ -363,6 +361,15 @@ vec3 get_diffuse_lighting(
         );
     }
 #else
+    lighting += get_sky_lighting(
+        material,
+        bent_normal,
+        light_levels,
+        ao,
+        ambient_sss,
+        directional_lighting
+    );
+
     lighting += get_block_lighting(
         scene_pos,
         flat_normal,
@@ -383,8 +390,9 @@ vec3 get_diffuse_lighting(
     lighting += nightVision * night_vision_scale * directional_lighting * ao;
 #endif
 
-    return max0(lighting) * material.albedo * rcp_pi
+    vec3 final_diffuse = max0(lighting) * material.albedo * rcp_pi
         * mix(1.0, metal_diffuse_amount, float(material.is_metal));
+    return conserve_diffuse_energy(final_diffuse, material.f0, NoV);
 }
 
 #endif // INCLUDE_LIGHTING_DIFFUSE_LIGHTING

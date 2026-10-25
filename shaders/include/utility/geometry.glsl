@@ -3,6 +3,16 @@
 
 #include "/include/utility/fast_math.glsl"
 
+// Construct orthonormal basis around normal (Duff et al.)
+mat3 build_orthonormal_basis(vec3 n) {
+    float sign_z = (n.z >= 0.0) ? 1.0 : -1.0;
+    float a = -1.0 / (sign_z + n.z);
+    float b = n.x * n.y * a;
+    vec3 b1 = vec3(1.0 + sign_z * n.x * n.x * a, sign_z * b, -sign_z * n.x);
+    vec3 b2 = vec3(b, sign_z + n.y * n.y * a, -n.y);
+    return mat3(b1, b2, n);
+}
+
 // Sphere/AABB intersection methods from https://www.scratchapixel.com
 
 // Returns +-1

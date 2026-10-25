@@ -16,6 +16,11 @@
 #include "/include/fog/overworld/analytic.glsl"
 #endif
 
+#ifdef RT_REFLECTIONS
+#include "/include/lighting/rt/rt_reflections.glsl"
+uniform usampler3D voxel_sampler;
+#endif
+
 // ----------------------
 //   Specular Highlight
 // ----------------------
@@ -122,7 +127,8 @@ vec3 get_specular_highlight(
     float d = distribution_ggx(NoH_squared, alpha_squared);
     float v = v2_smith_ggx(max(NoL, 1e-2), max(NoV, 1e-2), alpha_squared);
 
-    return min((NoL * d * v) * fresnel * albedo_tint, vec3(specular_max_value));
+    vec3 ms_comp = get_specular_multiscatter_compensation(material.f0, material.roughness, NoV);
+    return min((NoL * d * v) * fresnel * albedo_tint * ms_comp, vec3(specular_max_value));
 }
 
 // ------------------------
@@ -282,9 +288,40 @@ vec3 trace_specular_ray(
         reflection = reflection * analytic_fog[1] + analytic_fog[0];
 #endif
 
-        return mix(sky_reflection, reflection, border_attenuation);
+#ifdef RT_REFLECTIONS
+        vec3 voxel_fallback = trace_voxel_specular_fallback(
+            world_pos - cameraPosition,
+            ray_dir,
+            voxel_sampler,
+            shadowtex0,
+            shadowModelView,
+            shadowProjection,
+            light_color,
+            ambient_color,
+            light_dir,
+            sky_reflection
+        );
+#else
+        vec3 voxel_fallback = sky_reflection;
+#endif
+        return mix(voxel_fallback, reflection, border_attenuation);
     } else {
+#ifdef RT_REFLECTIONS
+        return trace_voxel_specular_fallback(
+            world_pos - cameraPosition,
+            ray_dir,
+            voxel_sampler,
+            shadowtex0,
+            shadowModelView,
+            shadowProjection,
+            light_color,
+            ambient_color,
+            light_dir,
+            sky_reflection
+        );
+#else
         return sky_reflection;
+#endif
     }
 }
 

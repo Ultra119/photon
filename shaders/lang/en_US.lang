@@ -820,3 +820,33 @@ option.PHOTONICS_RESTIR_COMBINED_GI       = Include Skylight GI
 option.PHOTONICS_RESTIR_COMBINED_GI.comment = Whether Gi should be ran through ReSTIR's denoiser instead of its usual path. \nResults in much sharper Gi, at the cost of performance.
 
 
+
+# Ray Tracing & GI
+screen.raytracing                                                    = Ray Tracing & GI Settings
+profile.extreme                                                      = Extreme (Path Tracing)
+
+option.RAYTRACED_GI                                                  = Ray-Traced GI
+option.RAYTRACED_GI.comment                                          = Native Voxel RTGI + Screen-Space GI Hybrid for realistic indirect sunlight, skylight, and colored blocklight bounces.
+
+option.RTGI_RAY_COUNT                                                = RTGI Ray Count
+option.RTGI_RAY_COUNT.comment                                        = Number of indirect diffuse rays traced per pixel. Higher values reduce noise at the cost of framerate.
+
+option.RTGI_RESOLUTION                                               = RTGI Resolution
+option.RTGI_RESOLUTION.comment                                       = Resolution at which indirect light rays are traced. Half-resolution (0.5x) offers high framerates with edge-aware reconstruction.
+value.RTGI_RESOLUTION.0                                              = Quarter (0.25x)
+value.RTGI_RESOLUTION.1                                              = Half (0.5x)
+value.RTGI_RESOLUTION.2                                              = Full (1.0x)
+
+option.RT_REFLECTIONS                                                = Ray-Traced Reflections
+option.RT_REFLECTIONS.comment                                        = Traces specular reflection rays into the 3D voxel grid when screen-space reflections (SSR) miss or leave the viewport.
+
+option.RT_AMBIENT_OCCLUSION                                          = Ray-Traced AO
+option.RT_AMBIENT_OCCLUSION.comment                                  = Computes contact ambient occlusion and directional bent normals via local ray tracing.
+
+option.PHYSICAL_BSDF_ENERGY_COMP                                     = Multi-Scatter Conservation
+option.PHYSICAL_BSDF_ENERGY_COMP.comment                             = Kulla-Conty multi-scattering specular energy compensation preventing rough surfaces from unnaturally darkening.
+
+option.PHOTOMETRIC_EXPOSURE                                          = Photometric Camera Exposure
+option.PHOTOMETRIC_EXPOSURE.comment                                  = Physically calibrated illumination ratios (Lux/Lumens) balanced with EV100 camera exposure.
+
+value.SHADER_AO.SHADER_AO_RTAO                                       = Ray-Traced (RTAO)

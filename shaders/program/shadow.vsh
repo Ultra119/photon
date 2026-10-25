@@ -64,7 +64,7 @@ uniform float time_midnight;
 uniform float biome_temperature;
 uniform float biome_humidity;
 
-#ifdef COLORED_LIGHTS
+#if defined RAYTRACED_GI || defined RT_REFLECTIONS || defined COLORED_LIGHTS
 writeonly uniform uimage3D voxel_img;
 
 uniform int renderStage;
@@ -77,8 +77,8 @@ uniform int renderStage;
 #include "/include/lighting/shadows/distortion.glsl"
 #include "/include/vertex/displacement.glsl"
 
-#ifdef COLORED_LIGHTS
-#include "/include/lighting/lpv/voxelization.glsl"
+#if defined RAYTRACED_GI || defined RT_REFLECTIONS || defined COLORED_LIGHTS
+#include "/include/lighting/voxel/voxel_update.glsl"
 #endif
 
 void main() {
@@ -86,8 +86,8 @@ void main() {
     material_mask = uint(mc_Entity.x - 10000.0);
     tint = gl_Color.rgb;
 
-#if defined COLORED_LIGHTS && !defined PROGRAM_SHADOW_ENTITIES
-    update_voxel_map(material_mask);
+#if (defined RAYTRACED_GI || defined RT_REFLECTIONS || defined COLORED_LIGHTS) && !defined PROGRAM_SHADOW_ENTITIES
+    update_rt_voxel_grid(voxel_img, material_mask, tint, at_midBlock);
 #endif
 
 #if defined WORLD_NETHER
