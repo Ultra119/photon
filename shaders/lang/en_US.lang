@@ -828,7 +828,13 @@ profile.extreme                                                      = Extreme (
 option.RAYTRACED_GI                                                  = Ray-Traced GI
 option.RAYTRACED_GI.comment                                          = Native Voxel RTGI + Screen-Space GI Hybrid for realistic indirect sunlight, skylight, and colored blocklight bounces.
 
+option.RTGI_BRIGHTNESS                                              = RTGI Indirect Brightness
+option.RTGI_BRIGHTNESS.comment                                      = Controls the strength and radiance of the indirect bounced lighting field. Higher values make GI bounces more prominent and vibrant.
+
 option.RTGI_RAY_COUNT                                                = RTGI Ray Count
+option.RTGI_BRIGHTNESS                                              = RTGI Indirect Brightness
+option.RTGI_BRIGHTNESS.comment                                      = Controls the strength and radiance of the indirect bounced lighting field. Higher values make GI bounces more prominent and vibrant.
+
 option.RTGI_RAY_COUNT.comment                                        = Number of indirect diffuse rays traced per pixel. Higher values reduce noise at the cost of framerate.
 
 option.RTGI_RESOLUTION                                               = RTGI Resolution

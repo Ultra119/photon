@@ -31,7 +31,7 @@ VoxelMaterial get_voxel_material(uint block_id, vec3 fallback_color) {
     // Check emissive blocks
     if (block_id >= 32u && block_id < 80u) {
         uint light_idx = clamp(block_id - 32u, 0u, 47u);
-        mat.emission = light_color[light_idx] * 0.25;
+        mat.emission = light_color[light_idx] * 2.5;
         mat.roughness = 0.5;
     }
 

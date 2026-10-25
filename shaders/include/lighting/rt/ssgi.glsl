@@ -82,7 +82,7 @@ SSGIHit trace_screen_space_gi(
                     result.hit = true;
                     result.hit_uv = prev_screen_pos.xy;
                     result.hit_pos_scene = hit_pos_scene;
-                    result.radiance = sample_col * edge_fade;
+                    result.radiance = sample_col * (edge_fade * 1.5);
                 }
             }
         }

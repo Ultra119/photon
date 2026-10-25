@@ -5,6 +5,7 @@
 #include "/include/lighting/voxel/voxel_constants.glsl"
 #include "/include/lighting/voxel/voxel_storage.glsl"
 #include "/include/lighting/shadows/distortion.glsl"
+#include "/include/lighting/colors/blocklight_color.glsl"
 
 struct VoxelHit {
     bool hit;
@@ -109,17 +110,20 @@ VoxelHit trace_voxel_dda(
                     l_dir
                 );
                 float NoL = max(0.0, dot(result.hit_normal, l_dir));
-                vec3 sun_radiance = direct_sun_color * (sun_vis * NoL);
+                vec3 sun_radiance = direct_sun_color * (sun_vis * NoL * 3.0);
 
-                // 2. Skylight bounce (diffuse irradiance from sky hemisphere)
+                // 2. Skylight bounce (diffuse irradiance from sky hemisphere & voxel skylight)
                 float sky_factor = clamp01(result.hit_normal.y * 0.5 + 0.5);
-                vec3 sky_radiance = sky_ambient_color * sky_factor;
+                vec3 sky_radiance = sky_ambient_color * (max(sky_factor, sample_data.sky_light) * 2.0);
 
-                // 3. Emissive radiance from block
+                // 3. Blocklight bounce (light from torches, lanterns, lamps illuminating this surface)
+                vec3 blocklight_bounce = blocklight_color * (sqr(sample_data.block_light) * blocklight_scale * 1.5);
+
+                // 4. Emissive radiance from block itself
                 vec3 emission_radiance = mat.emission;
 
-                // Combined indirect bounce
-                result.radiance = emission_radiance + mat.albedo * (sun_radiance + sky_radiance);
+                // Combined indirect bounce: emission + diffuse bounce of local illumination
+                result.radiance = emission_radiance + mat.albedo * (blocklight_bounce + sun_radiance + sky_radiance);
                 break;
             }
         }

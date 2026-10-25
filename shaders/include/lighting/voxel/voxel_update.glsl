@@ -23,7 +23,8 @@ void update_rt_voxel_grid(
     writeonly uimage3D voxel_img,
     uint block_id,
     vec3 vertex_tint,
-    vec3 mid_block_attr
+    vec3 mid_block_attr,
+    vec2 light_levels
 ) {
     vec3 model_pos = gl_Vertex.xyz + mid_block_attr * (1.0 / 64.0);
     vec3 view_pos = (gl_ModelViewMatrix * vec4(model_pos, 1.0)).xyz;
@@ -47,7 +48,7 @@ void update_rt_voxel_grid(
 
     if (should_voxelize(block_id, at_corner) && is_inside_voxel_volume(voxel_pos)) {
         ivec3 coord = clamp_to_voxel_grid(ivec3(voxel_pos));
-        uvec4 packed_data = pack_voxel_data(block_id, vertex_tint, is_translucent, is_emitter);
+        uvec4 packed_data = pack_voxel_data(block_id, light_levels.x, light_levels.y, vertex_tint, is_translucent, is_emitter);
         imageStore(voxel_img, coord, packed_data);
     }
 }

@@ -317,7 +317,7 @@ vec3 get_diffuse_lighting(
 #if defined RAYTRACED_GI
     vec3 rtgi_indirect = textureLod(rtgi_filtered_sampler, uv, 0.0).rgb;
     // RTGI provides both diffuse indirect skylight bounce and colored blocklight bounce
-    lighting += rtgi_indirect * SKYLIGHT_I;
+    lighting += rtgi_indirect * (2.8 * RTGI_BRIGHTNESS);
 
     // Soft fallback for handheld lighting or areas outside voxel distance
     vec3 mc_block = get_block_lighting(
@@ -327,7 +327,7 @@ vec3 get_diffuse_lighting(
         ao,
         directional_lighting
     );
-    lighting += mc_block;
+    lighting += mc_block * 0.35;
 #elif defined PHOTONICS_DIFFUSE
     if (is_lod) {
         lighting += get_sky_lighting(
