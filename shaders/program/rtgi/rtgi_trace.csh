@@ -55,6 +55,7 @@ uniform float far;
 uniform vec2 taa_offset;
 
 #define TEMPORAL_REPROJECTION
+#include "/include/utility/color.glsl"
 #include "/include/utility/encoding.glsl"
 #include "/include/utility/space_conversion.glsl"
 #include "/include/utility/random.glsl"
@@ -144,6 +145,13 @@ void main() {
             sky_amb_col,
             light_dir
         );
+
+        // Firefly suppression: prevent extreme radiance spikes from overwhelming variance estimator
+        float lum = dot(radiance, luminance_weights);
+        const float max_radiance_lum = 6.0;
+        if (lum > max_radiance_lum) {
+            radiance *= max_radiance_lum / lum;
+        }
 
         accum_radiance += radiance;
     }

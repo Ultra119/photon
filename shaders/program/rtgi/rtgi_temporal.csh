@@ -85,46 +85,44 @@ void main() {
 
     vec4 current_raw = texelFetch(rtgi_raw_sampler, texel, 0);
 
-    // 3x3 Neighborhood statistics for variance clamping
+    // 3x3 Neighborhood statistics in Reinhard compressed space for stable variance clamping
     vec3 m1 = vec3(0.0);
     vec3 m2 = vec3(0.0);
-    float valid_samples = 0.0;
 
     for (int dy = -1; dy <= 1; ++dy) {
         for (int dx = -1; dx <= 1; ++dx) {
             ivec2 neighbor_texel = clamp(texel + ivec2(dx, dy), ivec2(0), target_res - 1);
             vec3 neighbor_color = texelFetch(rtgi_raw_sampler, neighbor_texel, 0).rgb;
+            vec3 n_s = neighbor_color / (1.0 + neighbor_color); // Perceptual Reinhard space
 
-            m1 += neighbor_color;
-            m2 += neighbor_color * neighbor_color;
-            valid_samples += 1.0;
+            m1 += n_s;
+            m2 += n_s * n_s;
         }
     }
 
-    vec3 mu = m1 / valid_samples;
-    vec3 sigma = sqrt(max(vec3(0.0), m2 / valid_samples - mu * mu));
-    vec3 box_min = max(vec3(0.0), mu - 2.5 * sigma);
-    vec3 box_max = mu + 2.5 * sigma;
+    vec3 mu = m1 * (1.0 / 9.0);
+    vec3 sigma = sqrt(max(vec3(0.0), m2 * (1.0 / 9.0) - mu * mu));
+    vec3 box_min = max(vec3(0.0), mu - 2.0 * sigma);
+    vec3 box_max = mu + 2.0 * sigma;
 
-    // Reproject to previous frame
+    // Reproject to previous frame (unjittered space)
     vec3 screen_pos = vec3(uv, depth);
-    vec3 view_pos = screen_to_view_space(screen_pos, true);
+    vec3 view_pos = screen_to_view_space(screen_pos, false);
     vec3 scene_pos = view_to_scene_space(view_pos);
 
     vec3 prev_screen_pos = reproject_scene_space(scene_pos, false, false);
     bool inside_prev_screen = clamp01(prev_screen_pos.xy) == prev_screen_pos.xy;
 
-    // Validate reprojected surface normal consistency
+    // Depth-based geometric consistency / disocclusion test
     bool reprojection_valid = false;
     if (inside_prev_screen) {
-        vec4 curr_gbuf = texelFetch(colortex1, full_texel, 0);
-        vec3 curr_normal = decode_unit_vector(unpack_unorm_2x8(curr_gbuf.z));
-
-        ivec2 prev_full = ivec2(prev_screen_pos.xy * view_res);
-        vec4 prev_gbuf = texelFetch(colortex1, prev_full, 0);
-        vec3 prev_normal = decode_unit_vector(unpack_unorm_2x8(prev_gbuf.z));
-
-        reprojection_valid = dot(curr_normal, prev_normal) > 0.65;
+        float prev_depth = texelFetch(depthtex1, ivec2(prev_screen_pos.xy * view_res), 0).x;
+        if (prev_depth < 1.0) {
+            float prev_lin_depth = linearize_depth(prev_depth, near, far);
+            float curr_lin_depth = linearize_depth(depth, near, far);
+            float depth_diff = abs(prev_lin_depth - curr_lin_depth);
+            reprojection_valid = depth_diff < max(curr_lin_depth * 0.12, 0.4);
+        }
     }
 
     vec4 accumulated;
@@ -133,12 +131,14 @@ void main() {
         vec4 prev_sample = ping ? textureLod(rtgi_history_sampler, prev_screen_pos.xy, 0.0)
                                 : textureLod(rtgi_accum_sampler, prev_screen_pos.xy, 0.0);
 
-        // Clamp history to current neighborhood bounding box to prevent ghosting
-        vec3 clamped_history = clamp(prev_sample.rgb, box_min, box_max);
+        // Clamp history in Reinhard space to prevent ghosting while eliminating fireflies
+        vec3 prev_reinhard = prev_sample.rgb / (1.0 + prev_sample.rgb);
+        prev_reinhard = clamp(prev_reinhard, box_min, box_max);
+        vec3 clamped_history = prev_reinhard / max(vec3(1.0) - prev_reinhard, vec3(1e-4));
 
-        // Exponential moving average accumulation up to 32 frames (min 5% blend for responsiveness)
+        // Exponential moving average accumulation up to 32 frames
         float history_weight = clamp(prev_sample.a, 0.0, 31.0);
-        float alpha = max(1.0 / (history_weight + 1.0), 0.05);
+        float alpha = max(1.0 / (history_weight + 1.0), 0.06);
 
         accumulated.rgb = mix(clamped_history, current_raw.rgb, alpha);
         accumulated.a = history_weight + 1.0;

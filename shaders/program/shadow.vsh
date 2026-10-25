@@ -83,7 +83,7 @@ uniform int renderStage;
 
 void main() {
     uv = gl_MultiTexCoord0.xy;
-    material_mask = uint(mc_Entity.x - 10000.0);
+    material_mask = uint(max0(mc_Entity.x - 10000.0));
     tint = gl_Color.rgb;
 
 #if (defined RAYTRACED_GI || defined RT_REFLECTIONS || defined COLORED_LIGHTS) && !defined PROGRAM_SHADOW_ENTITIES

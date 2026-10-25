@@ -46,7 +46,7 @@ VoxelMaterial get_voxel_material(uint block_id, vec3 fallback_color) {
 
         // Grass block
         case 2u:
-            mat.albedo = (fallback_color.g > 0.05) ? fallback_color : vec3(0.22, 0.42, 0.12);
+            mat.albedo = (fallback_color.g > 0.05) ? fallback_color * 0.40 : vec3(0.12, 0.22, 0.06);
             mat.roughness = 0.90;
             break;
 
@@ -64,9 +64,9 @@ VoxelMaterial get_voxel_material(uint block_id, vec3 fallback_color) {
 
         // Leaves & foliage
         case 5u:
-            mat.albedo = (fallback_color.g > 0.05) ? fallback_color : vec3(0.18, 0.38, 0.08);
-            mat.roughness = 0.85;
-            mat.sss_amount = 0.4;
+            mat.albedo = (fallback_color.g > 0.05) ? fallback_color * 0.30 : vec3(0.06, 0.14, 0.03);
+            mat.roughness = 0.90;
+            mat.sss_amount = 0.0;
             mat.is_translucent = true;
             break;
 
@@ -113,19 +113,19 @@ VoxelMaterial get_voxel_material(uint block_id, vec3 fallback_color) {
             mat.roughness = 0.80;
             break;
 
-        // Strong SSS materials (wax, honey, slime)
+        // Strong SSS materials (azalea, sugar cane, bamboo, vine)
         case 14u:
-            mat.albedo = fallback_color;
-            mat.roughness = 0.50;
-            mat.sss_amount = 0.70;
+            mat.albedo = (fallback_color.g > 0.05) ? fallback_color * 0.30 : vec3(0.10, 0.20, 0.05);
+            mat.roughness = 0.80;
+            mat.sss_amount = 0.0;
             mat.is_translucent = true;
             break;
 
         // Weak SSS materials
         case 15u:
-            mat.albedo = fallback_color;
+            mat.albedo = clamp(fallback_color, vec3(0.10), vec3(0.50));
             mat.roughness = 0.70;
-            mat.sss_amount = 0.35;
+            mat.sss_amount = 0.0;
             break;
 
         // Stained glass / tinted translucent
@@ -153,8 +153,8 @@ VoxelMaterial get_voxel_material(uint block_id, vec3 fallback_color) {
         }
 
         default:
-            // Fallback to vertex/texture color
-            mat.albedo = max(fallback_color, vec3(0.08));
+            // Fallback to reasonable albedo
+            mat.albedo = clamp(fallback_color, vec3(0.08), vec3(0.45));
             break;
     }
 

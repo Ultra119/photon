@@ -115,22 +115,21 @@ VoxelHit trace_voxel_dda(
                     float NoL = max(0.0, dot(result.hit_normal, l_dir));
                     vec3 sun_radiance = direct_sun_color * (sun_vis * NoL * 3.0);
 
-                    // 2. Skylight bounce (diffuse irradiance from sky hemisphere)
+                    // 2. Skylight bounce (diffuse irradiance from sky hemisphere; 0.0 in caves/interiors)
                     float sky_factor = clamp01(result.hit_normal.y * 0.5 + 0.5);
-                    vec3 sky_radiance = sky_ambient_color * (sky_factor * max(sample_data.sky_light, 0.1) * 2.0);
+                    vec3 sky_radiance = sky_ambient_color * (sky_factor * pow4(sample_data.sky_light));
 
                     // 3. Blocklight bounce (light from torches, lanterns, lamps illuminating this surface)
-                    vec3 blocklight_bounce = blocklight_color * (sqr(sample_data.block_light) * blocklight_scale * 1.5);
+                    vec3 blocklight_bounce = blocklight_color * (sqr(sample_data.block_light) * blocklight_scale);
 
                     // 4. Emissive radiance from block itself
                     vec3 emission_radiance = mat.emission;
 
-                    // Organic foliage (leaves): scatter and absorb light rather than concentrating it inside canopy
+                    // Organic foliage (leaves & plants): absorb light rather than concentrating it inside canopy
                     vec3 bounce_albedo = mat.albedo;
-                    if (sample_data.block_id == 5u) {
-                        bounce_albedo *= 0.30;
-                        blocklight_bounce *= 0.35;
-                        sky_radiance = sky_ambient_color * (sky_factor * 0.7);
+                    if (sample_data.block_id == 5u || sample_data.block_id == 14u || sample_data.block_id == 2u) {
+                        bounce_albedo *= 0.20;
+                        blocklight_bounce *= 0.25;
                     }
 
                     // Combined indirect bounce: emission + diffuse bounce of local illumination
@@ -139,9 +138,8 @@ VoxelHit trace_voxel_dda(
                 }
             }
         }
-    }
 
-    // Advance DDA to next boundary
+        // Advance DDA to next boundary
         mask = step(t_max.xyz, min(t_max.yzx, t_max.zxy));
         t = min(min(t_max.x, t_max.y), t_max.z);
         t_max += mask * delta_t;

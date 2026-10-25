@@ -3,7 +3,7 @@
 
   Photon Shader: Native Voxel RTGI + SSGI Hybrid
   program/rtgi/rtgi_filter.csh:
-  Edge-aware cross-bilateral spatial filter for noise-free indirect radiance
+  25-tap edge-avoiding bilateral spatial filter (SVGF style) for silky-smooth indirect radiance
 
 --------------------------------------------------------------------------------
 */
@@ -41,6 +41,7 @@ uniform float near;
 uniform float far;
 uniform vec2 taa_offset;
 
+#include "/include/utility/color.glsl"
 #include "/include/utility/encoding.glsl"
 #include "/include/utility/space_conversion.glsl"
 
@@ -76,58 +77,51 @@ void main() {
 
     vec4 center_gbuf = texelFetch(colortex1, full_texel, 0);
     vec3 center_normal = decode_unit_vector(unpack_unorm_2x8(center_gbuf.z));
-    vec4 center_radiance = sample_accum_data(texel, ping);
+    vec4 center_sample = sample_accum_data(texel, ping);
+    vec3 center_radiance = center_sample.rgb;
     float center_lin_depth = linearize_depth(center_depth, near, far);
+    float center_lum = dot(center_radiance, luminance_weights);
 
-    // 13-tap cross + diagonal bilateral filter kernel
-    const ivec2 offsets[13] = ivec2[13](
-        ivec2( 0,  0),
-        ivec2(-1,  0), ivec2( 1,  0),
-        ivec2( 0, -1), ivec2( 0,  1),
-        ivec2(-1, -1), ivec2( 1, -1),
-        ivec2(-1,  1), ivec2( 1,  1),
-        ivec2(-2,  0), ivec2( 2,  0),
-        ivec2( 0, -2), ivec2( 0,  2)
-    );
-
-    const float spatial_weights[13] = float[13](
-        0.24,
-        0.12, 0.12,
-        0.12, 0.12,
-        0.06, 0.06,
-        0.06, 0.06,
-        0.02, 0.02,
-        0.02, 0.02
-    );
-
+    // 25-tap 5x5 edge-avoiding bilateral filter with adaptive gaussian weights
     vec3 sum_radiance = vec3(0.0);
     float sum_weights = 0.0;
 
-    for (int i = 0; i < 13; ++i) {
-        ivec2 neighbor_texel = clamp(texel + offsets[i], ivec2(0), target_res - 1);
-        ivec2 neighbor_full = ivec2(vec2(neighbor_texel) / render_scale);
+    for (int dy = -2; dy <= 2; ++dy) {
+        for (int dx = -2; dx <= 2; ++dx) {
+            ivec2 neighbor_texel = clamp(texel + ivec2(dx, dy), ivec2(0), target_res - 1);
+            ivec2 neighbor_full = ivec2(vec2(neighbor_texel) / render_scale);
 
-        float n_depth = texelFetch(depthtex1, neighbor_full, 0).x;
-        vec4 n_gbuf = texelFetch(colortex1, neighbor_full, 0);
-        vec3 n_normal = decode_unit_vector(unpack_unorm_2x8(n_gbuf.z));
-        vec3 n_color = sample_accum_data(neighbor_texel, ping).rgb;
+            float n_depth = texelFetch(depthtex1, neighbor_full, 0).x;
+            vec4 n_gbuf = texelFetch(colortex1, neighbor_full, 0);
+            vec3 n_normal = decode_unit_vector(unpack_unorm_2x8(n_gbuf.z));
+            vec3 n_color = sample_accum_data(neighbor_texel, ping).rgb;
 
-        // Metric depth bilateral weight (0.30 tolerance ensures flat surfaces and gentle slopes filter smoothly)
-        float n_lin_depth = linearize_depth(n_depth, near, far);
-        float depth_diff = abs(center_lin_depth - n_lin_depth) / (max(center_lin_depth, 0.5) * 0.30);
-        float weight_depth = exp(-depth_diff * depth_diff);
+            // 1. Spatial gaussian falloff (sigma ~ 1.4)
+            float dist_sq = float(dx * dx + dy * dy);
+            float weight_spatial = exp(-0.5 * dist_sq * (1.0 / 2.0));
 
-        // Normal bilateral weight (quadratic falloff preserves sharp geometric edges while filtering micro-variations)
-        float normal_diff = max(0.0, dot(center_normal, n_normal));
-        float weight_normal = normal_diff * normal_diff;
+            // 2. Metric depth bilateral weight
+            float n_lin_depth = linearize_depth(n_depth, near, far);
+            float depth_diff = abs(center_lin_depth - n_lin_depth) / (max(center_lin_depth, 0.5) * 0.18);
+            float weight_depth = exp(-depth_diff * depth_diff);
 
-        float weight = spatial_weights[i] * weight_depth * weight_normal;
+            // 3. Normal bilateral weight (sharp edge preservation)
+            float normal_diff = max(0.0, dot(center_normal, n_normal));
+            float weight_normal = pow(normal_diff, 8.0);
 
-        sum_radiance += n_color * weight;
-        sum_weights += weight;
+            // 4. Luminance weight (SVGF style: prevents high highlights from bleeding into dark corners)
+            float n_lum = dot(n_color, luminance_weights);
+            float lum_diff = abs(center_lum - n_lum) / (center_lum + 0.35);
+            float weight_lum = exp(-lum_diff * lum_diff);
+
+            float weight = weight_spatial * weight_depth * weight_normal * weight_lum;
+
+            sum_radiance += n_color * weight;
+            sum_weights += weight;
+        }
     }
 
-    vec3 filtered = (sum_weights > 1e-5) ? (sum_radiance / sum_weights) : center_radiance.rgb;
+    vec3 filtered = (sum_weights > 1e-5) ? (sum_radiance / sum_weights) : center_radiance;
 
     imageStore(rtgi_filtered_img, texel, vec4(filtered, 1.0));
 }

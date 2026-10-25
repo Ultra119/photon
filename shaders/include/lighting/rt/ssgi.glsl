@@ -72,9 +72,10 @@ SSGIHit trace_screen_space_gi(
             vec3 prev_screen_pos = reproject_scene_space(hit_pos_scene, false, false);
             if (clamp01(prev_screen_pos.xy) == prev_screen_pos.xy) {
                 vec3 sample_col = textureLod(scene_color_sampler, prev_screen_pos.xy, 0.0).rgb;
+                sample_col = max(vec3(0.0), min(sample_col, vec3(6.0)));
 
-                // Validate hit normal is opposing ray
-                vec4 gbuf = textureLod(gbuffer0_sampler, prev_screen_pos.xy, 0.0);
+                // Validate hit normal opposing ray using current-frame gbuffer at hit screen coord
+                vec4 gbuf = textureLod(gbuffer0_sampler, hit_screen_pos.xy, 0.0);
                 vec3 hit_normal = decode_unit_vector(unpack_unorm_2x8(gbuf.z));
                 vec3 hit_normal_view = mat3(gbufferModelView) * hit_normal;
 
@@ -82,7 +83,7 @@ SSGIHit trace_screen_space_gi(
                     result.hit = true;
                     result.hit_uv = prev_screen_pos.xy;
                     result.hit_pos_scene = hit_pos_scene;
-                    result.radiance = sample_col * (edge_fade * 1.5);
+                    result.radiance = sample_col * (edge_fade * 1.2);
                 }
             }
         }

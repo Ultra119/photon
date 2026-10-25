@@ -37,7 +37,10 @@ void update_rt_voxel_grid(
     block_pos = fract(block_pos + cameraPosition);
     bool at_corner = is_voxel_corner(block_pos, (1.0 / 16.0) - 1e-3);
 
-    block_id = max(block_id, 1u);
+    // Remap 0u (default unassigned terrain like stone, dirt, deepslate) to stone ID 4u
+    if (block_id == 0u) {
+        block_id = 4u;
+    }
 
     // Nether stem emission mapping
     if (19u <= block_id && block_id < 23u) block_id = 46u;
