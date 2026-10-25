@@ -104,7 +104,7 @@ void main() {
     vec3 view_pos = screen_to_view_space(screen_pos, true);
     vec3 scene_pos = view_to_scene_space(view_pos);
 
-    // Blue noise jittering
+    // Spatio-temporal blue noise jittering
     ivec2 noise_coord = (texel + ivec2(frameCounter * 73, frameCounter * 151)) & 511;
     vec2 blue_noise = texelFetch(noisetex, noise_coord, 0).rg;
 
@@ -121,7 +121,7 @@ void main() {
     float dither = blue_noise.x;
 
     for (int r = 0; r < RTGI_RAY_COUNT; ++r) {
-        vec2 u = fract(blue_noise + r2(frameCounter + r * 19, blue_noise));
+        vec2 u = r2(frameCounter * RTGI_RAY_COUNT + r, blue_noise);
         vec3 ray_dir = sample_cosine_hemisphere(mapped_normal, u);
 
         // Prevent ray from shooting into geometric surface
@@ -149,9 +149,9 @@ void main() {
             surface_skylight
         );
 
-        // Firefly suppression: prevent extreme radiance spikes from overwhelming variance estimator
+        // Firefly suppression: limit extreme single-ray radiance spikes
         float lum = dot(radiance, luminance_weights);
-        const float max_radiance_lum = 6.0;
+        const float max_radiance_lum = 12.0;
         if (lum > max_radiance_lum) {
             radiance *= max_radiance_lum / lum;
         }

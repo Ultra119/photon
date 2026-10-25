@@ -3,7 +3,7 @@
 
   Photon Shader: Native Voxel RTGI + SSGI Hybrid
   program/rtgi/rtgi_temporal.csh:
-  Temporal accumulation with motion vector reprojection & variance clamping
+  Temporal accumulation with motion reprojection & linear depth validation
 
 --------------------------------------------------------------------------------
 */
@@ -71,7 +71,6 @@ void main() {
     vec2 uv = (vec2(full_texel) + 0.5) * view_pixel_size;
 
     float depth = texelFetch(depthtex1, full_texel, 0).x;
-    // Ping-pong: alternate read/write buffers each frame to prevent image hazards
     bool ping = (frameCounter & 1) == 0;
 
     if (depth >= 1.0) {
@@ -83,29 +82,10 @@ void main() {
         return;
     }
 
-    vec4 current_raw = texelFetch(rtgi_raw_sampler, texel, 0);
+    vec3 current_radiance = texelFetch(rtgi_raw_sampler, texel, 0).rgb;
+    float current_lin_depth = linearize_depth(depth, near, far);
 
-    // 3x3 Neighborhood statistics in Reinhard compressed space for stable variance clamping
-    vec3 m1 = vec3(0.0);
-    vec3 m2 = vec3(0.0);
-
-    for (int dy = -1; dy <= 1; ++dy) {
-        for (int dx = -1; dx <= 1; ++dx) {
-            ivec2 neighbor_texel = clamp(texel + ivec2(dx, dy), ivec2(0), target_res - 1);
-            vec3 neighbor_color = texelFetch(rtgi_raw_sampler, neighbor_texel, 0).rgb;
-            vec3 n_s = neighbor_color / (1.0 + neighbor_color); // Perceptual Reinhard space
-
-            m1 += n_s;
-            m2 += n_s * n_s;
-        }
-    }
-
-    vec3 mu = m1 * (1.0 / 9.0);
-    vec3 sigma = sqrt(max(vec3(0.0), m2 * (1.0 / 9.0) - mu * mu));
-    vec3 box_min = max(vec3(0.0), mu - 2.0 * sigma);
-    vec3 box_max = mu + 2.0 * sigma;
-
-    // Reproject to previous frame (unjittered space)
+    // Reproject to previous frame unjittered screen space
     vec3 screen_pos = vec3(uv, depth);
     vec3 view_pos = screen_to_view_space(screen_pos, false);
     vec3 scene_pos = view_to_scene_space(view_pos);
@@ -113,37 +93,26 @@ void main() {
     vec3 prev_screen_pos = reproject_scene_space(scene_pos, false, false);
     bool inside_prev_screen = clamp01(prev_screen_pos.xy) == prev_screen_pos.xy;
 
-    // Depth-based geometric consistency / disocclusion test
-    bool reprojection_valid = false;
-    if (inside_prev_screen) {
-        float prev_depth = texelFetch(depthtex1, ivec2(prev_screen_pos.xy * view_res), 0).x;
-        if (prev_depth < 1.0) {
-            float prev_lin_depth = linearize_depth(prev_depth, near, far);
-            float curr_lin_depth = linearize_depth(depth, near, far);
-            float depth_diff = abs(prev_lin_depth - curr_lin_depth);
-            reprojection_valid = depth_diff < max(curr_lin_depth * 0.12, 0.4);
-        }
-    }
+    vec4 accumulated = vec4(current_radiance, current_lin_depth);
 
-    vec4 accumulated;
-    if (inside_prev_screen && reprojection_valid) {
-        // Read from the alternate buffer that was written in the previous frame
+    if (inside_prev_screen) {
+        // Read from alternate buffer that was written in the previous frame
         vec4 prev_sample = ping ? textureLod(rtgi_history_sampler, prev_screen_pos.xy, 0.0)
                                 : textureLod(rtgi_accum_sampler, prev_screen_pos.xy, 0.0);
 
-        // Clamp history in Reinhard space to prevent ghosting while eliminating fireflies
-        vec3 prev_reinhard = prev_sample.rgb / (1.0 + prev_sample.rgb);
-        prev_reinhard = clamp(prev_reinhard, box_min, box_max);
-        vec3 clamped_history = prev_reinhard / max(vec3(1.0) - prev_reinhard, vec3(1e-4));
+        float prev_lin_depth = prev_sample.a;
+        float depth_diff = abs(current_lin_depth - prev_lin_depth);
+        float depth_tolerance = max(current_lin_depth * 0.10, 0.20);
 
-        // Exponential moving average accumulation up to 32 frames
-        float history_weight = clamp(prev_sample.a, 0.0, 31.0);
-        float alpha = max(1.0 / (history_weight + 1.0), 0.06);
+        // Check if history pixel represents the same geometric surface
+        if (depth_diff < depth_tolerance && prev_lin_depth > 0.01) {
+            // Adaptive accumulation: 0.05 when still (rock-solid), up to 0.25 during fast movement (no ghosting)
+            vec2 screen_motion = abs(prev_screen_pos.xy - uv) * view_res;
+            float motion_factor = clamp01(length(screen_motion) * 0.03);
+            float alpha = mix(0.05, 0.25, motion_factor);
 
-        accumulated.rgb = mix(clamped_history, current_raw.rgb, alpha);
-        accumulated.a = history_weight + 1.0;
-    } else {
-        accumulated = vec4(current_raw.rgb, 1.0);
+            accumulated.rgb = mix(prev_sample.rgb, current_radiance, alpha);
+        }
     }
 
     if (ping) {

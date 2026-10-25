@@ -64,7 +64,7 @@ SSGIHit trace_screen_space_gi(
             vec3 origin_pos_scene = view_to_scene_space(view_pos);
 
             // Reject self-intersection (hit within 0.35m of originating surface)
-            if (distance(hit_pos_scene, origin_pos_scene) < 0.35) {
+            if (distance(hit_pos_scene, origin_pos_scene) < 0.10) {
                 return result;
             }
 

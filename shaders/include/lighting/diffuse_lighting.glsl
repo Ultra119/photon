@@ -361,7 +361,9 @@ vec3 get_diffuse_lighting(
         ao,
         directional_lighting
     );
-    lighting += mc_block * 0.45;
+    float player_dist = length(scene_pos);
+    float voxel_edge_fade = smoothstep(48.0, 60.0, player_dist);
+    lighting += mc_block * voxel_edge_fade;
 #elif defined PHOTONICS_DIFFUSE
     if (is_lod) {
         lighting += get_sky_lighting(
