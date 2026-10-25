@@ -33,7 +33,8 @@ vec3 evaluate_hybrid_rtgi_ray(
     sampler2D gbuffer0_sampler,
     vec3 direct_sun_color,
     vec3 sky_ambient_color,
-    vec3 l_dir
+    vec3 l_dir,
+    float surface_skylight
 ) {
     vec3 ray_dir_view = mat3(gbufferModelView) * ray_dir_world;
 
@@ -72,9 +73,9 @@ vec3 evaluate_hybrid_rtgi_ray(
         return vx_hit.radiance;
     }
 
-    // 3. Fallback to sky ambient
+    // 3. Fallback to sky ambient (attenuated by surface skylight to prevent blue light leaking into caves)
     float sky_hemi = clamp01(ray_dir_world.y * 0.5 + 0.5);
-    return sky_ambient_color * sky_hemi;
+    return sky_ambient_color * (sky_hemi * pow4(surface_skylight));
 }
 
 #endif // INCLUDE_LIGHTING_RT_HYBRID_RTGI

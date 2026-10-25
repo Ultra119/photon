@@ -89,6 +89,8 @@ void main() {
     // Unpack surface data
     vec4 gbuf0 = texelFetch(colortex1, full_texel, 0);
     vec3 world_normal = decode_unit_vector(unpack_unorm_2x8(gbuf0.z));
+    vec2 light_levels = unpack_unorm_2x8(gbuf0.w);
+    float surface_skylight = light_levels.y;
 
 #if defined NORMAL_MAPPING
     vec4 gbuf1 = texelFetch(colortex2, full_texel, 0);
@@ -143,7 +145,8 @@ void main() {
             colortex1,
             direct_light_col,
             sky_amb_col,
-            light_dir
+            light_dir,
+            surface_skylight
         );
 
         // Firefly suppression: prevent extreme radiance spikes from overwhelming variance estimator

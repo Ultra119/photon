@@ -78,7 +78,7 @@ VoxelHit trace_voxel_dda(
     vec3 mask = vec3(0.0);
     float t = 0.0;
 
-    const int MAX_STEPS = 56;
+    const int MAX_STEPS = 80;
     for (int i = 0; i < MAX_STEPS; ++i) {
         if (!is_inside_voxel_grid(current_voxel) || t > max_dist) {
             break;

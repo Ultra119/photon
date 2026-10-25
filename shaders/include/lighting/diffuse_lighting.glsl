@@ -195,6 +195,39 @@ vec3 get_sky_lighting(
     return lighting;
 }
 
+#if defined RAYTRACED_GI
+vec3 sample_rtgi_smooth(sampler2D rtgi_sampler, vec2 coord) {
+#if RTGI_RESOLUTION == 2
+    return textureLod(rtgi_sampler, coord, 0.0).rgb;
+#else
+    // 4-tap smooth bilinear upsampler for half-resolution RTGI
+    vec2 half_res = view_res * 0.5;
+    vec2 half_pos = coord * half_res - 0.5;
+    ivec2 base = ivec2(floor(half_pos));
+    vec2 f = fract(half_pos);
+
+    ivec2 max_coord = ivec2(half_res) - 1;
+    ivec2 t00 = clamp(base, ivec2(0), max_coord);
+    ivec2 t10 = clamp(base + ivec2(1, 0), ivec2(0), max_coord);
+    ivec2 t01 = clamp(base + ivec2(0, 1), ivec2(0), max_coord);
+    ivec2 t11 = clamp(base + ivec2(1, 1), ivec2(0), max_coord);
+
+    vec3 c00 = texelFetch(rtgi_sampler, t00, 0).rgb;
+    vec3 c10 = texelFetch(rtgi_sampler, t10, 0).rgb;
+    vec3 c01 = texelFetch(rtgi_sampler, t01, 0).rgb;
+    vec3 c11 = texelFetch(rtgi_sampler, t11, 0).rgb;
+
+    float w00 = (1.0 - f.x) * (1.0 - f.y);
+    float w10 = f.x * (1.0 - f.y);
+    float w01 = (1.0 - f.x) * f.y;
+    float w11 = f.x * f.y;
+
+    return c00 * w00 + c10 * w10 + c01 * w01 + c11 * w11;
+#endif
+}
+#endif
+
+
 vec3 get_diffuse_lighting(
     Material material,
     vec3 scene_pos,
@@ -315,7 +348,7 @@ vec3 get_diffuse_lighting(
     // Skylight & Indirect RTGI
 
 #if defined RAYTRACED_GI
-    vec3 rtgi_indirect = textureLod(rtgi_filtered_sampler, uv, 0.0).rgb;
+    vec3 rtgi_indirect = sample_rtgi_smooth(rtgi_filtered_sampler, uv);
     // RTGI provides both diffuse indirect skylight bounce and colored blocklight bounce
     float gi_foliage_attenuation = mix(1.0, 0.40, material.sss_amount);
     lighting += rtgi_indirect * (1.6 * RTGI_BRIGHTNESS * gi_foliage_attenuation);
