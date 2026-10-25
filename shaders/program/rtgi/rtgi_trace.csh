@@ -3,7 +3,7 @@
 
   Photon Shader: Native Voxel RTGI + SSGI Hybrid
   program/rtgi/rtgi_trace.csh:
-  Trace half-resolution diffuse indirect GI rays (Screen-Space + Voxel DDA)
+  Trace diffuse indirect GI rays (Screen-Space + Voxel DDA)
 
 --------------------------------------------------------------------------------
 */
@@ -46,6 +46,10 @@ uniform int frameCounter;
 uniform vec2 view_res;
 uniform vec2 view_pixel_size;
 uniform vec3 light_dir;
+
+uniform float near;
+uniform float far;
+uniform vec2 taa_offset;
 
 #include "/include/utility/encoding.glsl"
 #include "/include/utility/space_conversion.glsl"
@@ -139,4 +143,3 @@ void main() {
 
     imageStore(rtgi_raw_img, texel, vec4(final_radiance, 1.0));
 }
-

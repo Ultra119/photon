@@ -42,6 +42,10 @@ uniform int frameCounter;
 uniform vec2 view_res;
 uniform vec2 view_pixel_size;
 
+uniform float near;
+uniform float far;
+uniform vec2 taa_offset;
+
 #include "/include/utility/encoding.glsl"
 #include "/include/utility/space_conversion.glsl"
 
@@ -122,4 +126,3 @@ void main() {
     imageStore(rtgi_history_img, texel, accumulated);
     imageStore(rtgi_accum_img, texel, accumulated);
 }
-
