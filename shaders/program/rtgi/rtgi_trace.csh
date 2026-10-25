@@ -104,9 +104,12 @@ void main() {
     vec3 view_pos = screen_to_view_space(screen_pos, true);
     vec3 scene_pos = view_to_scene_space(view_pos);
 
-    // Spatio-temporal blue noise jittering
-    ivec2 noise_coord = (texel + ivec2(frameCounter * 73, frameCounter * 151)) & 511;
-    vec2 blue_noise = texelFetch(noisetex, noise_coord, 0).rg;
+    // Spatio-temporal dither using channel .b (blue noise, NOT .rg which is 2D Worley cellular noise)
+    vec2 dither = vec2(
+        texelFetch(noisetex, full_texel & 511, 0).b,
+        texelFetch(noisetex, (full_texel + 249) & 511, 0).b
+    );
+    dither = r2(frameCounter, dither);
 
     // Direct lighting & ambient colors encoded in colortex4 column 191
     vec3 direct_light_col = texelFetch(colortex4, ivec2(191, 0), 0).rgb;
@@ -118,10 +121,9 @@ void main() {
 #endif
 
     vec3 accum_radiance = vec3(0.0);
-    float dither = blue_noise.x;
 
     for (int r = 0; r < RTGI_RAY_COUNT; ++r) {
-        vec2 u = r2(frameCounter * RTGI_RAY_COUNT + r, blue_noise);
+        vec2 u = r2(r, dither);
         vec3 ray_dir = sample_cosine_hemisphere(mapped_normal, u);
 
         // Prevent ray from shooting into geometric surface
@@ -136,7 +138,7 @@ void main() {
             scene_pos,
             world_normal,
             ray_dir,
-            dither,
+            dither.x,
             voxel_sampler,
             shadowtex0,
             shadowModelView,

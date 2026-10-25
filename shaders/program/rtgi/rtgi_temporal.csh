@@ -83,30 +83,31 @@ void main() {
     }
 
     vec3 current_radiance = texelFetch(rtgi_raw_sampler, texel, 0).rgb;
-    float current_lin_depth = linearize_depth(depth, near, far);
 
-    // Reproject to previous frame unjittered screen space
+    // Reconstruct position in view and scene space
     vec3 screen_pos = vec3(uv, depth);
     vec3 view_pos = screen_to_view_space(screen_pos, false);
+    float current_dist = -view_pos.z; // Exact metric distance in meters
     vec3 scene_pos = view_to_scene_space(view_pos);
 
+    // Reproject to previous frame screen space
     vec3 prev_screen_pos = reproject_scene_space(scene_pos, false, false);
     bool inside_prev_screen = clamp01(prev_screen_pos.xy) == prev_screen_pos.xy;
 
-    vec4 accumulated = vec4(current_radiance, current_lin_depth);
+    vec4 accumulated = vec4(current_radiance, current_dist);
 
     if (inside_prev_screen) {
-        // Read from alternate buffer that was written in the previous frame
+        // Read from alternate buffer written in previous frame
         vec4 prev_sample = ping ? textureLod(rtgi_history_sampler, prev_screen_pos.xy, 0.0)
                                 : textureLod(rtgi_accum_sampler, prev_screen_pos.xy, 0.0);
 
-        float prev_lin_depth = prev_sample.a;
-        float depth_diff = abs(current_lin_depth - prev_lin_depth);
-        float depth_tolerance = max(current_lin_depth * 0.10, 0.20);
+        float prev_dist = prev_sample.a;
+        float dist_diff = abs(current_dist - prev_dist);
+        float dist_tolerance = max(current_dist * 0.15, 0.40);
 
-        // Check if history pixel represents the same geometric surface
-        if (depth_diff < depth_tolerance && prev_lin_depth > 0.01) {
-            // Adaptive accumulation: 0.05 when still (rock-solid), up to 0.25 during fast movement (no ghosting)
+        // Valid if distance matches and history was initialized
+        if (dist_diff < dist_tolerance && prev_dist > 0.05) {
+            // Adaptive accumulation: 0.05 when still (20 frames accumulated), up to 0.25 when moving
             vec2 screen_motion = abs(prev_screen_pos.xy - uv) * view_res;
             float motion_factor = clamp01(length(screen_motion) * 0.03);
             float alpha = mix(0.05, 0.25, motion_factor);
