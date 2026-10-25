@@ -112,14 +112,14 @@ void main() {
         vec3 n_normal = decode_unit_vector(unpack_unorm_2x8(n_gbuf.z));
         vec3 n_color = sample_accum_data(neighbor_texel, ping).rgb;
 
-        // Metric depth bilateral weight
+        // Metric depth bilateral weight (0.30 tolerance ensures flat surfaces and gentle slopes filter smoothly)
         float n_lin_depth = linearize_depth(n_depth, near, far);
-        float depth_diff = abs(center_lin_depth - n_lin_depth) / (max(center_lin_depth, 0.5) * 0.08);
+        float depth_diff = abs(center_lin_depth - n_lin_depth) / (max(center_lin_depth, 0.5) * 0.30);
         float weight_depth = exp(-depth_diff * depth_diff);
 
-        // Normal bilateral weight
+        // Normal bilateral weight (quadratic falloff preserves sharp geometric edges while filtering micro-variations)
         float normal_diff = max(0.0, dot(center_normal, n_normal));
-        float weight_normal = normal_diff * normal_diff * normal_diff * normal_diff;
+        float weight_normal = normal_diff * normal_diff;
 
         float weight = spatial_weights[i] * weight_depth * weight_normal;
 

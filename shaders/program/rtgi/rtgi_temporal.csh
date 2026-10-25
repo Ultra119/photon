@@ -114,28 +114,31 @@ void main() {
     vec3 prev_screen_pos = reproject_scene_space(scene_pos, false, false);
     bool inside_prev_screen = clamp01(prev_screen_pos.xy) == prev_screen_pos.xy;
 
-    // Depth discontinuity check to prevent ghosting when camera/objects move
-    bool depth_valid = false;
+    // Validate reprojected surface normal consistency
+    bool reprojection_valid = false;
     if (inside_prev_screen) {
+        vec4 curr_gbuf = texelFetch(colortex1, full_texel, 0);
+        vec3 curr_normal = decode_unit_vector(unpack_unorm_2x8(curr_gbuf.z));
+
         ivec2 prev_full = ivec2(prev_screen_pos.xy * view_res);
-        float prev_raw_depth = texelFetch(depthtex1, prev_full, 0).x;
-        float curr_lin_z = linearize_depth(depth, near, far);
-        float prev_lin_z = linearize_depth(prev_raw_depth, near, far);
-        depth_valid = abs(curr_lin_z - prev_lin_z) < max(0.4, curr_lin_z * 0.1);
+        vec4 prev_gbuf = texelFetch(colortex1, prev_full, 0);
+        vec3 prev_normal = decode_unit_vector(unpack_unorm_2x8(prev_gbuf.z));
+
+        reprojection_valid = dot(curr_normal, prev_normal) > 0.65;
     }
 
     vec4 accumulated;
-    if (inside_prev_screen && depth_valid) {
+    if (inside_prev_screen && reprojection_valid) {
         // Read from the alternate buffer that was written in the previous frame
         vec4 prev_sample = ping ? textureLod(rtgi_history_sampler, prev_screen_pos.xy, 0.0)
                                 : textureLod(rtgi_accum_sampler, prev_screen_pos.xy, 0.0);
 
-        // Clamp history to current neighborhood bounding box
+        // Clamp history to current neighborhood bounding box to prevent ghosting
         vec3 clamped_history = clamp(prev_sample.rgb, box_min, box_max);
 
-        // Exponential moving average accumulation up to 32 frames
+        // Exponential moving average accumulation up to 32 frames (min 5% blend for responsiveness)
         float history_weight = clamp(prev_sample.a, 0.0, 31.0);
-        float alpha = 1.0 / (history_weight + 1.0);
+        float alpha = max(1.0 / (history_weight + 1.0), 0.05);
 
         accumulated.rgb = mix(clamped_history, current_raw.rgb, alpha);
         accumulated.a = history_weight + 1.0;

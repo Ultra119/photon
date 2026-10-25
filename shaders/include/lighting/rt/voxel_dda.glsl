@@ -92,7 +92,10 @@ VoxelHit trace_voxel_dda(
                 VoxelSample sample_data = unpack_voxel_data(raw);
                 VoxelMaterial mat = get_voxel_material(sample_data.block_id, sample_data.color);
 
-                if (mat.is_solid) {
+                // Transparent glass blocks (clear and stained glass): light passes straight through
+                if (sample_data.block_id >= 80u && sample_data.block_id < 96u) {
+                    // Do not block diffuse GI ray; allow ray to continue through glass
+                } else if (mat.is_solid) {
                     result.hit = true;
                     result.hit_normal = (dot(mask, mask) > 0.5) ? (-mask * step_dir) : -sign(ray_dir);
                     result.distance = t;
@@ -100,31 +103,40 @@ VoxelHit trace_voxel_dda(
                     vec3 hit_voxel_scene = voxel_to_scene_space(vec3(current_voxel) + 0.5);
                     result.hit_pos = hit_voxel_scene;
 
-                // 1. Direct Sun / Moonlight bounce
-                float sun_vis = sample_voxel_sun_shadow(
-                    shadow_tex,
-                    shadow_mv,
-                    shadow_proj,
-                    hit_voxel_scene,
-                    result.hit_normal,
-                    l_dir
-                );
-                float NoL = max(0.0, dot(result.hit_normal, l_dir));
-                vec3 sun_radiance = direct_sun_color * (sun_vis * NoL * 3.0);
+                    // 1. Direct Sun / Moonlight bounce
+                    float sun_vis = sample_voxel_sun_shadow(
+                        shadow_tex,
+                        shadow_mv,
+                        shadow_proj,
+                        hit_voxel_scene,
+                        result.hit_normal,
+                        l_dir
+                    );
+                    float NoL = max(0.0, dot(result.hit_normal, l_dir));
+                    vec3 sun_radiance = direct_sun_color * (sun_vis * NoL * 3.0);
 
-                // 2. Skylight bounce (diffuse irradiance from sky hemisphere & voxel skylight)
-                float sky_factor = clamp01(result.hit_normal.y * 0.5 + 0.5);
-                vec3 sky_radiance = sky_ambient_color * (max(sky_factor, sample_data.sky_light) * 2.0);
+                    // 2. Skylight bounce (diffuse irradiance from sky hemisphere)
+                    float sky_factor = clamp01(result.hit_normal.y * 0.5 + 0.5);
+                    vec3 sky_radiance = sky_ambient_color * (sky_factor * max(sample_data.sky_light, 0.1) * 2.0);
 
-                // 3. Blocklight bounce (light from torches, lanterns, lamps illuminating this surface)
-                vec3 blocklight_bounce = blocklight_color * (sqr(sample_data.block_light) * blocklight_scale * 1.5);
+                    // 3. Blocklight bounce (light from torches, lanterns, lamps illuminating this surface)
+                    vec3 blocklight_bounce = blocklight_color * (sqr(sample_data.block_light) * blocklight_scale * 1.5);
 
-                // 4. Emissive radiance from block itself
-                vec3 emission_radiance = mat.emission;
+                    // 4. Emissive radiance from block itself
+                    vec3 emission_radiance = mat.emission;
 
-                // Combined indirect bounce: emission + diffuse bounce of local illumination
-                result.radiance = emission_radiance + mat.albedo * (blocklight_bounce + sun_radiance + sky_radiance);
-                break;
+                    // Organic foliage (leaves): scatter and absorb light rather than concentrating it inside canopy
+                    vec3 bounce_albedo = mat.albedo;
+                    if (sample_data.block_id == 5u) {
+                        bounce_albedo *= 0.30;
+                        blocklight_bounce *= 0.35;
+                        sky_radiance = sky_ambient_color * (sky_factor * 0.7);
+                    }
+
+                    // Combined indirect bounce: emission + diffuse bounce of local illumination
+                    result.radiance = emission_radiance + bounce_albedo * (blocklight_bounce + sun_radiance + sky_radiance);
+                    break;
+                }
             }
         }
     }
