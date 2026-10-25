@@ -60,6 +60,7 @@ vec3 evaluate_hybrid_rtgi_ray(
         shadow_mv,
         shadow_proj,
         scene_pos,
+        world_normal,
         ray_dir_world,
         direct_sun_color,
         sky_ambient_color,

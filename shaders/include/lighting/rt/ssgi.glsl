@@ -29,8 +29,8 @@ SSGIHit trace_screen_space_gi(
     result.hit_pos_scene = vec3(0.0);
     result.radiance = vec3(0.0);
 
-    // Skip rays that face backwards into the surface
-    if (dot(ray_dir_view, view_normal) <= 0.001) {
+    // Skip rays that face backwards or are too grazing into the surface
+    if (dot(ray_dir_view, view_normal) <= 0.05) {
         return result;
     }
 
@@ -38,9 +38,13 @@ SSGIHit trace_screen_space_gi(
     const uint steps = 16u;
     const uint refinement = 2u;
 
+    // Bias start point along normal to prevent self-intersection with the originating depth surface
+    vec3 start_view_pos = view_pos + view_normal * 0.15 + ray_dir_view * 0.05;
+    vec3 start_screen_pos = view_to_screen_space(SSRT_PROJECTION_MATRIX, start_view_pos, true);
+
     bool hit = raymarch_depth_buffer(
-        screen_pos,
-        view_pos,
+        start_screen_pos,
+        start_view_pos,
         ray_dir_view,
         dither,
         steps,
@@ -57,6 +61,12 @@ SSGIHit trace_screen_space_gi(
         if (edge_fade > 0.01) {
             vec3 hit_pos_view = screen_to_view_space(SSRT_PROJECTION_MATRIX_INVERSE, hit_screen_pos, false);
             vec3 hit_pos_scene = view_to_scene_space(hit_pos_view);
+            vec3 origin_pos_scene = view_to_scene_space(view_pos);
+
+            // Reject self-intersection (hit within 0.35m of originating surface)
+            if (distance(hit_pos_scene, origin_pos_scene) < 0.35) {
+                return result;
+            }
 
             // Reproject hit to previous frame color buffer
             vec3 prev_screen_pos = reproject_scene_space(hit_pos_scene, false, false);

@@ -327,7 +327,7 @@ vec3 get_diffuse_lighting(
         ao,
         directional_lighting
     );
-    lighting += mc_block * max(0.0, 1.0 - length(rtgi_indirect) * 2.5);
+    lighting += mc_block;
 #elif defined PHOTONICS_DIFFUSE
     if (is_lod) {
         lighting += get_sky_lighting(

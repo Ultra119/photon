@@ -48,6 +48,7 @@ VoxelHit trace_voxel_dda(
     mat4 shadow_mv,
     mat4 shadow_proj,
     vec3 ray_origin_scene,
+    vec3 surface_normal,
     vec3 ray_dir,
     vec3 direct_sun_color,
     vec3 sky_ambient_color,
@@ -61,10 +62,13 @@ VoxelHit trace_voxel_dda(
     result.radiance = vec3(0.0);
     result.distance = max_dist;
 
-    // Offset ray origin slightly along direction to clear starting block
-    vec3 start_scene = ray_origin_scene + ray_dir * 0.15;
+    // Offset ray origin along surface normal and forward to clear starting block boundary
+    vec3 start_scene = ray_origin_scene + surface_normal * 0.25 + ray_dir * 0.05;
     vec3 start_voxel = scene_to_voxel_space(start_scene);
     ivec3 current_voxel = ivec3(floor(start_voxel));
+
+    // Voxel containing the origin surface point (must not self-intersect)
+    ivec3 origin_voxel = ivec3(floor(scene_to_voxel_space(ray_origin_scene - surface_normal * 0.1)));
 
     vec3 step_dir = sign(ray_dir);
     vec3 delta_t = abs(1.0 / (ray_dir + vec3(1e-7)));
@@ -79,19 +83,21 @@ VoxelHit trace_voxel_dda(
             break;
         }
 
-        uvec4 raw = texelFetch(voxel_grid, current_voxel, 0);
-        if (raw.r != 0u) {
-            // Hit detected!
-            VoxelSample sample_data = unpack_voxel_data(raw);
-            VoxelMaterial mat = get_voxel_material(sample_data.block_id, sample_data.color);
+        // Ignore the origin block to completely eliminate self-intersection
+        if (current_voxel != origin_voxel) {
+            uvec4 raw = texelFetch(voxel_grid, current_voxel, 0);
+            if (raw.r != 0u) {
+                // Hit detected!
+                VoxelSample sample_data = unpack_voxel_data(raw);
+                VoxelMaterial mat = get_voxel_material(sample_data.block_id, sample_data.color);
 
-            if (mat.is_solid) {
-                result.hit = true;
-                result.hit_normal = -mask * step_dir;
-                result.distance = t;
+                if (mat.is_solid) {
+                    result.hit = true;
+                    result.hit_normal = (dot(mask, mask) > 0.5) ? (-mask * step_dir) : -sign(ray_dir);
+                    result.distance = t;
 
-                vec3 hit_voxel_scene = voxel_to_scene_space(vec3(current_voxel) + 0.5);
-                result.hit_pos = hit_voxel_scene;
+                    vec3 hit_voxel_scene = voxel_to_scene_space(vec3(current_voxel) + 0.5);
+                    result.hit_pos = hit_voxel_scene;
 
                 // 1. Direct Sun / Moonlight bounce
                 float sun_vis = sample_voxel_sun_shadow(

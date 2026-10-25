@@ -24,6 +24,7 @@ layout(rgba16f) writeonly uniform image2D rtgi_accum_img;
 
 uniform sampler2D rtgi_raw_sampler;
 uniform sampler2D rtgi_history_sampler;
+uniform sampler2D rtgi_accum_sampler;
 uniform sampler2D depthtex1;
 uniform sampler2D colortex1; // gbuffer0
 
@@ -70,9 +71,15 @@ void main() {
     vec2 uv = (vec2(full_texel) + 0.5) * view_pixel_size;
 
     float depth = texelFetch(depthtex1, full_texel, 0).x;
+    // Ping-pong: alternate read/write buffers each frame to prevent image hazards
+    bool ping = (frameCounter & 1) == 0;
+
     if (depth >= 1.0) {
-        imageStore(rtgi_history_img, texel, vec4(0.0));
-        imageStore(rtgi_accum_img, texel, vec4(0.0));
+        if (ping) {
+            imageStore(rtgi_accum_img, texel, vec4(0.0));
+        } else {
+            imageStore(rtgi_history_img, texel, vec4(0.0));
+        }
         return;
     }
 
@@ -96,8 +103,8 @@ void main() {
 
     vec3 mu = m1 / valid_samples;
     vec3 sigma = sqrt(max(vec3(0.0), m2 / valid_samples - mu * mu));
-    vec3 box_min = max(vec3(0.0), mu - 1.5 * sigma);
-    vec3 box_max = mu + 1.5 * sigma;
+    vec3 box_min = max(vec3(0.0), mu - 2.5 * sigma);
+    vec3 box_max = mu + 2.5 * sigma;
 
     // Reproject to previous frame
     vec3 screen_pos = vec3(uv, depth);
@@ -107,14 +114,26 @@ void main() {
     vec3 prev_screen_pos = reproject_scene_space(scene_pos, false, false);
     bool inside_prev_screen = clamp01(prev_screen_pos.xy) == prev_screen_pos.xy;
 
-    vec4 accumulated;
+    // Depth discontinuity check to prevent ghosting when camera/objects move
+    bool depth_valid = false;
     if (inside_prev_screen) {
-        vec4 prev_sample = textureLod(rtgi_history_sampler, prev_screen_pos.xy, 0.0);
+        ivec2 prev_full = ivec2(prev_screen_pos.xy * view_res);
+        float prev_raw_depth = texelFetch(depthtex1, prev_full, 0).x;
+        float curr_lin_z = linearize_depth(depth, near, far);
+        float prev_lin_z = linearize_depth(prev_raw_depth, near, far);
+        depth_valid = abs(curr_lin_z - prev_lin_z) < max(0.4, curr_lin_z * 0.1);
+    }
 
-        // Clamp history to current neighborhood bounding box to prevent ghosting
+    vec4 accumulated;
+    if (inside_prev_screen && depth_valid) {
+        // Read from the alternate buffer that was written in the previous frame
+        vec4 prev_sample = ping ? textureLod(rtgi_history_sampler, prev_screen_pos.xy, 0.0)
+                                : textureLod(rtgi_accum_sampler, prev_screen_pos.xy, 0.0);
+
+        // Clamp history to current neighborhood bounding box
         vec3 clamped_history = clamp(prev_sample.rgb, box_min, box_max);
 
-        // Increase accumulation length (up to 32 frames)
+        // Exponential moving average accumulation up to 32 frames
         float history_weight = clamp(prev_sample.a, 0.0, 31.0);
         float alpha = 1.0 / (history_weight + 1.0);
 
@@ -124,6 +143,9 @@ void main() {
         accumulated = vec4(current_raw.rgb, 1.0);
     }
 
-    imageStore(rtgi_history_img, texel, accumulated);
-    imageStore(rtgi_accum_img, texel, accumulated);
+    if (ping) {
+        imageStore(rtgi_accum_img, texel, accumulated);
+    } else {
+        imageStore(rtgi_history_img, texel, accumulated);
+    }
 }

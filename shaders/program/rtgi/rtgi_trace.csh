@@ -121,12 +121,17 @@ void main() {
         vec2 u = fract(blue_noise + r2(frameCounter + r * 19, blue_noise));
         vec3 ray_dir = sample_cosine_hemisphere(mapped_normal, u);
 
+        // Prevent ray from shooting into geometric surface
+        if (dot(ray_dir, world_normal) <= 0.0) {
+            ray_dir = reflect(ray_dir, world_normal);
+        }
+
         vec3 radiance = evaluate_hybrid_rtgi_ray(
             screen_pos,
             view_pos,
-            mat3(gbufferModelView) * mapped_normal,
+            mat3(gbufferModelView) * world_normal,
             scene_pos,
-            mapped_normal,
+            world_normal,
             ray_dir,
             dither,
             voxel_sampler,
