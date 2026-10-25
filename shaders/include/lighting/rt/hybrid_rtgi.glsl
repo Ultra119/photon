@@ -1,7 +1,7 @@
 #if !defined INCLUDE_LIGHTING_RT_HYBRID_RTGI
 #define INCLUDE_LIGHTING_RT_HYBRID_RTGI
 
-#include "/include/global.glsl"
+// global.glsl included by parent program
 #include "/include/utility/geometry.glsl"
 #include "ssgi.glsl"
 #include "voxel_dda.glsl"

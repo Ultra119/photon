@@ -1,7 +1,7 @@
 #if !defined INCLUDE_LIGHTING_VOXEL_CONSTANTS
 #define INCLUDE_LIGHTING_VOXEL_CONSTANTS
 
-#include "/include/global.glsl"
+// global.glsl included by parent program
 #include "/include/utility/fast_math.glsl"
 
 #ifndef VOXEL_VOLUME_SIZE

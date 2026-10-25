@@ -1,7 +1,7 @@
 #if !defined INCLUDE_LIGHTING_RT_SSGI
 #define INCLUDE_LIGHTING_RT_SSGI
 
-#include "/include/global.glsl"
+// global.glsl included by parent program
 #include "/include/misc/raytracer.glsl"
 #include "/include/utility/encoding.glsl"
 #include "/include/utility/space_conversion.glsl"

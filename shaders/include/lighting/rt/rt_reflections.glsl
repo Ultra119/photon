@@ -1,7 +1,7 @@
 #if !defined INCLUDE_LIGHTING_RT_REFLECTIONS
 #define INCLUDE_LIGHTING_RT_REFLECTIONS
 
-#include "/include/global.glsl"
+// global.glsl included by parent program
 #include "voxel_dda.glsl"
 
 // Traces specular reflection fallback into the 3D voxel grid when screen-space reflections miss

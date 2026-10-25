@@ -1,7 +1,7 @@
 #if !defined INCLUDE_LIGHTING_AO_RTAO
 #define INCLUDE_LIGHTING_AO_RTAO
 
-#include "/include/global.glsl"
+// global.glsl included by parent program
 #include "/include/utility/geometry.glsl"
 #include "/include/lighting/voxel/voxel_constants.glsl"
 #include "/include/lighting/rt/voxel_dda.glsl"

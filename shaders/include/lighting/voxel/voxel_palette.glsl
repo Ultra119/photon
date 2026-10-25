@@ -1,7 +1,7 @@
 #if !defined INCLUDE_LIGHTING_VOXEL_PALETTE
 #define INCLUDE_LIGHTING_VOXEL_PALETTE
 
-#include "/include/global.glsl"
+// global.glsl included by parent program
 #include "/include/lighting/lpv/light_colors.glsl"
 
 struct VoxelMaterial {

@@ -1,7 +1,7 @@
 #if !defined INCLUDE_LIGHTING_RT_VOXEL_DDA
 #define INCLUDE_LIGHTING_RT_VOXEL_DDA
 
-#include "/include/global.glsl"
+// global.glsl included by parent program
 #include "/include/lighting/voxel/voxel_constants.glsl"
 #include "/include/lighting/voxel/voxel_storage.glsl"
 #include "/include/lighting/shadows/distortion.glsl"

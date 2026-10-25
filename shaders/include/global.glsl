@@ -1,3 +1,6 @@
+#if !defined INCLUDE_GLOBAL
+#define INCLUDE_GLOBAL
+
 // Extensions
 
 /*
@@ -269,3 +272,5 @@ void fix_hand_depth(inout float depth) {
     bool unused;
     fix_hand_depth(depth, unused);
 }
+
+#endif // INCLUDE_GLOBAL
