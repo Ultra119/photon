@@ -67,8 +67,9 @@ void main() {
         return;
     }
 
-    ivec2 full_texel = ivec2(vec2(texel) / render_scale);
-    vec2 uv = (vec2(full_texel) + 0.5) * view_pixel_size;
+    // Exact UV at the mathematical center of this half-resolution texel
+    vec2 uv = (vec2(texel) + 0.5) / vec2(target_res);
+    ivec2 full_texel = ivec2(uv * view_res);
 
     float depth = texelFetch(depthtex1, full_texel, 0).x;
     bool ping = (frameCounter & 1) == 0;
@@ -84,9 +85,9 @@ void main() {
 
     vec3 current_radiance = texelFetch(rtgi_raw_sampler, texel, 0).rgb;
 
-    // Reconstruct position in view and scene space
+    // Reconstruct position in view and scene space (handle_jitter = true because depth buffer is jittered)
     vec3 screen_pos = vec3(uv, depth);
-    vec3 view_pos = screen_to_view_space(screen_pos, false);
+    vec3 view_pos = screen_to_view_space(screen_pos, true);
     float current_dist = -view_pos.z; // Exact metric distance in meters
     vec3 scene_pos = view_to_scene_space(view_pos);
 

@@ -65,8 +65,12 @@ void main() {
         return;
     }
 
-    ivec2 full_texel = ivec2(vec2(texel) / render_scale);
-    float center_depth = texelFetch(depthtex1, full_texel, 0).x;
+    // Exact UV at the mathematical center of this half-resolution texel
+    vec2 target_pixel_size = 1.0 / vec2(target_res);
+    vec2 center_uv = (vec2(texel) + 0.5) * target_pixel_size;
+    ivec2 center_full = ivec2(center_uv * view_res);
+
+    float center_depth = texelFetch(depthtex1, center_full, 0).x;
     if (center_depth >= 1.0) {
         imageStore(rtgi_filtered_img, texel, vec4(0.0));
         return;
@@ -74,12 +78,11 @@ void main() {
 
     bool ping = (frameCounter & 1) == 0;
 
-    vec2 center_uv = (vec2(full_texel) + 0.5) * view_pixel_size;
     vec3 center_screen_pos = vec3(center_uv, center_depth);
-    vec3 center_view_pos = screen_to_view_space(center_screen_pos, false);
+    vec3 center_view_pos = screen_to_view_space(center_screen_pos, true);
     float center_dist = -center_view_pos.z;
 
-    vec4 center_gbuf = texelFetch(colortex1, full_texel, 0);
+    vec4 center_gbuf = texelFetch(colortex1, center_full, 0);
     vec3 center_world_normal = decode_unit_vector(unpack_unorm_2x8(center_gbuf.z));
     vec3 center_view_normal = mat3(gbufferModelView) * center_world_normal;
 
@@ -94,11 +97,11 @@ void main() {
     for (int dy = -2; dy <= 2; ++dy) {
         for (int dx = -2; dx <= 2; ++dx) {
             ivec2 neighbor_texel = clamp(texel + ivec2(dx, dy) * step_size, ivec2(0), target_res - 1);
-            ivec2 neighbor_full = ivec2(vec2(neighbor_texel) / render_scale);
+            vec2 n_uv = (vec2(neighbor_texel) + 0.5) * target_pixel_size;
+            ivec2 neighbor_full = ivec2(n_uv * view_res);
 
             float n_depth = texelFetch(depthtex1, neighbor_full, 0).x;
-            vec2 n_uv = (vec2(neighbor_full) + 0.5) * view_pixel_size;
-            vec3 n_view_pos = screen_to_view_space(vec3(n_uv, n_depth), false);
+            vec3 n_view_pos = screen_to_view_space(vec3(n_uv, n_depth), true);
 
             vec4 n_gbuf = texelFetch(colortex1, neighbor_full, 0);
             vec3 n_world_normal = decode_unit_vector(unpack_unorm_2x8(n_gbuf.z));

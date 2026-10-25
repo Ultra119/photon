@@ -77,8 +77,9 @@ void main() {
         return;
     }
 
-    ivec2 full_texel = ivec2(vec2(texel) / render_scale);
-    vec2 uv = (vec2(full_texel) + 0.5) * view_pixel_size;
+    // Exact UV at the mathematical center of this half-resolution texel
+    vec2 uv = (vec2(texel) + 0.5) / vec2(target_res);
+    ivec2 full_texel = ivec2(uv * view_res);
 
     float depth = texelFetch(depthtex1, full_texel, 0).x;
     if (depth >= 1.0) {
@@ -99,7 +100,7 @@ void main() {
     vec3 mapped_normal = world_normal;
 #endif
 
-    // Reconstruct position
+    // Reconstruct position (handle_jitter = true to correctly invert TAA camera jitter)
     vec3 screen_pos = vec3(uv, depth);
     vec3 view_pos = screen_to_view_space(screen_pos, true);
     vec3 scene_pos = view_to_scene_space(view_pos);
