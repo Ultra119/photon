@@ -46,6 +46,7 @@ uniform float near;
 uniform float far;
 uniform vec2 taa_offset;
 
+#define TEMPORAL_REPROJECTION
 #include "/include/utility/encoding.glsl"
 #include "/include/utility/space_conversion.glsl"
 

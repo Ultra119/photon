@@ -39,6 +39,9 @@ uniform mat4 shadowModelView;
 uniform mat4 shadowModelViewInverse;
 uniform mat4 shadowProjection;
 
+uniform mat4 gbufferPreviousModelView;
+uniform mat4 gbufferPreviousProjection;
+
 uniform vec3 cameraPosition;
 uniform vec3 previousCameraPosition;
 uniform int frameCounter;
@@ -51,6 +54,7 @@ uniform float near;
 uniform float far;
 uniform vec2 taa_offset;
 
+#define TEMPORAL_REPROJECTION
 #include "/include/utility/encoding.glsl"
 #include "/include/utility/space_conversion.glsl"
 #include "/include/utility/random.glsl"
