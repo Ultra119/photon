@@ -123,8 +123,9 @@ VoxelHit trace_voxel_dda(
                 break;
             }
         }
+    }
 
-        // Advance DDA to next boundary
+    // Advance DDA to next boundary
         mask = step(t_max.xyz, min(t_max.yzx, t_max.zxy));
         t = min(min(t_max.x, t_max.y), t_max.z);
         t_max += mask * delta_t;
