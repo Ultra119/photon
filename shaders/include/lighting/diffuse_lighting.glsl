@@ -18,8 +18,13 @@
 #undef CLOUD_SHADOWS
 #endif
 
-#ifdef RAYTRACED_GI
+// RTGI is evaluated from the opaque G-buffer/depth, so only deferred4 may
+// consume it. Forward-lit translucent surfaces below use analytic sky/block
+// lighting instead of sampling GI computed for the opaque pixel behind them.
+#if defined RAYTRACED_GI && defined PROGRAM_DEFERRED4
+#define DIFFUSE_USE_RTGI
 uniform sampler2D rtgi_filtered_sampler;
+#include "/include/lighting/voxel/voxel_constants.glsl"
 #endif
 
 
@@ -175,9 +180,10 @@ vec3 get_sky_lighting(
     return lighting;
 }
 
-#if defined RAYTRACED_GI
-vec3 sample_rtgi_smooth(sampler2D rtgi_sampler, vec2 coord) {
-    return textureLod(rtgi_sampler, coord, 0.0).rgb;
+#ifdef DIFFUSE_USE_RTGI
+// RGB = radiance, A = sky-origin weight
+vec4 sample_rtgi_smooth(sampler2D rtgi_sampler, vec2 coord) {
+    return textureLod(rtgi_sampler, coord, 0.0);
 }
 #endif
 
@@ -293,15 +299,34 @@ vec3 get_diffuse_lighting(
 
     // Skylight & Indirect RTGI
 
-#if defined RAYTRACED_GI
-#if defined PROGRAM_DEFERRED4
-    vec2 rtgi_coord = uv;
-#else
-    vec2 rtgi_coord = gl_FragCoord.xy * view_pixel_size * rcp(taau_render_scale);
-#endif
-    vec3 rtgi_indirect = sample_rtgi_smooth(rtgi_filtered_sampler, rtgi_coord);
-    // RTGI provides both diffuse indirect skylight bounce and colored blocklight bounce
-    lighting += rtgi_indirect * (1.6 * RTGI_BRIGHTNESS);
+#ifdef DIFFUSE_USE_RTGI
+    // deferred4's uv is projection-space (0..1 across the TAAU viewport).
+    vec2 rtgi_coord = taau_framebuffer_uv(uv);
+    vec4 rtgi_sample = sample_rtgi_smooth(rtgi_filtered_sampler, rtgi_coord);
+    vec3 rtgi_indirect = rtgi_sample.rgb;
+    float rtgi_sky_weight = clamp01(rtgi_sample.a);
+
+    vec3 rtgi_lighting = rtgi_indirect * (1.6 * RTGI_BRIGHTNESS);
+
+    // Split sky/sun-origin GI from emissive/block-light GI. Only the sky part
+    // is suppressed on low-skylight receivers, so lava/lantern/emissive cave
+    // bounces are never lost.
+    float sky_visibility = clamp01(get_skylight_falloff(light_levels.y)) * ao;
+    float sky_retention = mix(RTGI_INTERIOR_RETENTION, 1.0, sky_visibility);
+    vec3 rtgi_sky = rtgi_lighting * rtgi_sky_weight;
+    vec3 rtgi_local = rtgi_lighting - rtgi_sky;
+    vec3 analytic_sky = get_sky_lighting(
+        material,
+        bent_normal,
+        light_levels,
+        ao,
+        ambient_sss,
+        directional_lighting
+    );
+
+    lighting += rtgi_local
+        + rtgi_sky * sky_retention
+        + analytic_sky * (1.0 - sky_retention) * rtgi_sky_weight;
 
     // Soft fallback for handheld lighting or areas outside voxel distance
     vec3 mc_block = get_block_lighting(
@@ -311,10 +336,17 @@ vec3 get_diffuse_lighting(
         ao,
         directional_lighting
     );
-    float player_dist = length(scene_pos);
-    float voxel_edge_fade = smoothstep(48.0, 60.0, player_dist);
+    float voxel_edge_dist = get_voxel_edge_distance(scene_pos);
+    float voxel_edge_fade = smoothstep(
+        voxel_edge_fade_start,
+        voxel_edge_fade_end,
+        voxel_edge_dist
+    );
     lighting += mc_block * voxel_edge_fade;
 #else
+    // Analytic fallback for forward-lit translucent surfaces and for builds
+    // with RAYTRACED_GI disabled. The RTGI buffer describes the opaque layer,
+    // not the translucent fragment currently being shaded.
     lighting += get_sky_lighting(
         material,
         bent_normal,
@@ -340,7 +372,8 @@ vec3 get_diffuse_lighting(
 
     lighting += 0.15 * CAVE_LIGHTING_I * directional_lighting * ao
         * (1.0 - light_levels.y * light_levels.y)
-        * (1.0 - 0.7 * darknessFactor);
+        * (1.0 - 0.7 * darknessFactor)
+        * RTGI_CAVE_AMBIENT_SCALE;
     lighting += nightVision * night_vision_scale * directional_lighting * ao;
 #endif
 
@@ -348,5 +381,9 @@ vec3 get_diffuse_lighting(
         * mix(1.0, metal_diffuse_amount, float(material.is_metal));
     return conserve_diffuse_energy(final_diffuse, material.f0, NoV);
 }
+
+#ifdef DIFFUSE_USE_RTGI
+#undef DIFFUSE_USE_RTGI
+#endif
 
 #endif // INCLUDE_LIGHTING_DIFFUSE_LIGHTING
