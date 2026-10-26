@@ -158,6 +158,7 @@ uniform mat4 shadowModelViewInverse;
 vec3 blend_layers_with_fog(
     vec3 background_color,
     vec4 translucent_color,
+    vec4 glass_filter_data,
     vec3 front_position_world,
     vec3 back_position_world,
     bool is_translucent,
@@ -185,6 +186,15 @@ vec3 blend_layers_with_fog(
         background_color = background_color * analytic_fog[1] + analytic_fog[0];
     }
 #endif
+
+    if (glass_filter_data.a > 0.5) {
+        // Physical optical filter for stained glass:
+        // Converts transmitted light into the glass tint color while preserving luminance
+        vec3 glass_tint = glass_filter_data.rgb;
+        float bg_lum = dot(background_color, luminance_weights_rec2020);
+        vec3 filtered_bg = mix(background_color * glass_tint, glass_tint * bg_lum, 0.75);
+        return filtered_bg * (1.0 - translucent_color.a) + translucent_color.rgb;
+    }
 
     return background_color * (1.0 - translucent_color.a)
         + translucent_color.rgb;
@@ -279,7 +289,7 @@ void main() {
     float layer_dist = abs(view_distance - length(back_position_view));
 
 #if REFRACTION != REFRACTION_OFF
-    if (is_translucent && refraction_data != vec4(0.0)) {
+    if (is_translucent && refraction_data != vec4(0.0) && refraction_data.a < 0.5) {
         vec2 normal_tangent = vec2(
             unsplit_2x8(refraction_data.xy) * 2.0 - 1.0,
             unsplit_2x8(refraction_data.zw) * 2.0 - 1.0
@@ -401,6 +411,7 @@ void main() {
     fragment_color = blend_layers_with_fog(
         fragment_color,
         translucent_color,
+        refraction_data,
         front_position_world,
         back_position_world,
         is_translucent,

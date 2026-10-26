@@ -21,7 +21,8 @@ SSGIHit trace_screen_space_gi(
     vec3 ray_dir_view,
     float dither,
     sampler2D scene_color_sampler,
-    sampler2D gbuffer0_sampler
+    sampler2D gbuffer0_sampler,
+    sampler2D depth_translucent_sampler
 ) {
     SSGIHit result;
     result.hit = false;
@@ -63,8 +64,17 @@ SSGIHit trace_screen_space_gi(
             vec3 hit_pos_scene = view_to_scene_space(hit_pos_view);
             vec3 origin_pos_scene = view_to_scene_space(view_pos);
 
-            // Reject self-intersection (hit within 0.35m of originating surface)
+            // Reject self-intersection (hit within 0.10m of originating surface)
             if (distance(hit_pos_scene, origin_pos_scene) < 0.10) {
+                return result;
+            }
+
+            // Check if the hit surface is behind translucent geometry (glass/water)
+            float d_trans = texelFetch(depth_translucent_sampler, ivec2(hit_screen_pos.xy * view_res), 0).x;
+            float d_solid = texelFetch(SSRT_DEPTH_SAMPLER, ivec2(hit_screen_pos.xy * view_res), 0).x;
+            if (d_trans < d_solid - 1e-4) {
+                // Target is behind translucent geometry: bypass SSGI and let 3D Voxel DDA
+                // trace through the glass voxels for 100% physically accurate colored transmission!
                 return result;
             }
 

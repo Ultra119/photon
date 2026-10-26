@@ -23,6 +23,7 @@ layout(rgba16f) writeonly uniform image2D rtgi_raw_img;
 
 uniform usampler3D voxel_sampler;
 uniform sampler2D shadowtex0;
+uniform sampler2D depthtex0;
 uniform sampler2D depthtex1;
 uniform sampler2D colortex1; // gbuffer0
 uniform sampler2D colortex2; // gbuffer1
@@ -149,7 +150,8 @@ void main() {
             direct_light_col,
             sky_amb_col,
             light_dir,
-            surface_skylight
+            surface_skylight,
+            depthtex0
         );
 
         // Firefly suppression: limit extreme single-ray radiance spikes

@@ -168,6 +168,7 @@ vec3 light_color, ambient_color;
 
 #include "/include/fog/simple_fog.glsl"
 #include "/include/lighting/diffuse_lighting.glsl"
+#include "/include/lighting/voxel/light_colors.glsl"
 #include "/include/lighting/shadows/pcss.glsl"
 #include "/include/lighting/specular_lighting.glsl"
 #include "/include/misc/lod_mod_support.glsl"
@@ -723,6 +724,11 @@ void main() {
     if (is_water) {
         refraction_data.xy = split_2x8(normal_tangent.x * 0.5 + 0.5);
         refraction_data.zw = split_2x8(normal_tangent.y * 0.5 + 0.5);
+    } else if (material_mask >= 81u && material_mask <= 96u) {
+        // Stained glass optical filter: store filter tint color in rgb, mark flag in a
+        uint tint_idx = clamp(material_mask - 81u, 0u, 15u);
+        vec3 filter_color = voxel_tint_color_table[tint_idx];
+        refraction_data = vec4(filter_color, 1.0);
     } else {
         refraction_data = vec4(0.0);
     }

@@ -34,7 +34,8 @@ vec3 evaluate_hybrid_rtgi_ray(
     vec3 direct_sun_color,
     vec3 sky_ambient_color,
     vec3 l_dir,
-    float surface_skylight
+    float surface_skylight,
+    sampler2D depth_translucent_sampler
 ) {
     vec3 ray_dir_view = mat3(gbufferModelView) * ray_dir_world;
 
@@ -46,7 +47,8 @@ vec3 evaluate_hybrid_rtgi_ray(
         ray_dir_view,
         dither,
         scene_color_sampler,
-        gbuffer0_sampler
+        gbuffer0_sampler,
+        depth_translucent_sampler
     );
 
     if (ss_hit.hit) {
