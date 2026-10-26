@@ -27,9 +27,9 @@
 
 ## Installation
 
-* Photon can be used with [Iris](https://irisshaders.dev/download) (recommended) or [OptiFine](https://optifine.net/home)
-* Iris is a modern shader loader with far better performance, mod compatibility and developer features than OptiFine. Some features (Colored Lighting) will only work on Iris
-* Once you have your preferred shader loader installed, simply place the downloaded zip file in your `.minecraft/shaderpacks` folder
+* This RTGI fork requires [Iris](https://irisshaders.dev/download) with compute shader and custom image support
+* OptiFine is not supported by this fork because the RTGI pipeline uses Iris compute shaders, custom images, and custom uniforms
+* Once Iris is installed, place the downloaded zip file in your `.minecraft/shaderpacks` folder
 
 ### Downloads
 * [Releases](https://modrinth.com/shader/photon-shader/versions) (recommended)
@@ -39,11 +39,12 @@
 * Fully revamped sky, lighting and water 
 * Detailed clouds with many layers and cloud types
 * Immersive weather system providing different skies each day
-* Voxel-based colored lighting (enabled with Ultra profile, requires Iris)
+* Hybrid screen-space + voxel ray-traced global illumination (RTGI)
+* Optional voxel-traced specular reflection fallback on supported profiles
 * Screen-space reflections
 * Volumetric fog
 * Soft shadows with variable-size penumbras
-* Detailed ambient occlusion (GTAO)
+* RTGI-based indirect lighting (dedicated contact AO is not implemented yet)
 * Camera effects: bloom, depth of field, motion blur
 * Much improved image quality with TAA, FXAA and CAS
 * Advanced temporal upscaling (disabled by default) for low end devices
@@ -56,14 +57,13 @@
 * AMD 
 * Intel 
 * **_NOT_** Apple Metal
-  * You may be able to get the shader pack to work by disabling some settings: try _SH Skylight_ and _Colored Shadows_.
+  * Compute shaders and custom images are required by this fork.
 ### Shader loaders
-* Iris - version 1.5 and above
-* OptiFine - on Minecraft 1.16.5 and above
+* Modern Iris with `COMPUTE_SHADERS` and `CUSTOM_IMAGES` support
+* OptiFine is not supported
 ### Special mod support
 * [Distant Horizons](https://www.curseforge.com/minecraft/mc-mods/distant-horizons)
 * [Voxy](https://modrinth.com/mod/voxy)
-* [Photonics](https://modrinth.com/mod/photonics)
 
 ## Showcase videos
 
