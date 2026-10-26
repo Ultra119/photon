@@ -2,7 +2,7 @@
 #define INCLUDE_LIGHTING_VOXEL_PALETTE
 
 // global.glsl included by parent program
-#include "/include/lighting/lpv/light_colors.glsl"
+#include "/include/lighting/voxel/light_colors.glsl"
 
 struct VoxelMaterial {
     vec3 albedo;

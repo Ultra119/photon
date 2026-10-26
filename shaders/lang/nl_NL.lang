@@ -17,16 +17,13 @@ screen.post                            = Filters & Effecten
 screen.misc                            = Overig
 
 screen.weather                         = Weer
-screen.colored_lights                  = Gekleurde Lichten
 screen.rp_settings                     = Bronpakket-instellingen
 screen.reflections                     = Reflecties
 screen.refraction                      = Refracties
 screen.light_sources                   = Lichtbronnen
 screen.shadows                         = Schaduwen
-screen.ao                              = Omgevingsocclusie (AO)
 screen.color_grading                   = Kleur-instellingen
 screen.exposure                        = Belichting
-screen.lpv_vl                          = Gekleurde Lichten Mist-verstrooing
 screen.box                             = Selectievak
 screen.distant_horizons                = Distant Horizons
 screen.developer                       = Ontwikkelaars-opties
@@ -111,10 +108,6 @@ option.WEATHER_WIND_VARIATION_SPEED        = Winderigheidsvariatie-snelheid
 
 # Lighting settings
 
-option.COLORED_LIGHTS                  = Gekleurde Lichtbronnen
-option.COLORED_LIGHTS.comment          = Gekleurd bloklicht door gebruik te maken van het 'Iris Floodfill-algoritme'. Werkt niet bij Iris versies onder de 1.6.
-option.COLORED_LIGHTS_VANILLA_LIGHTMAP_CONTRIBUTION = Vanilla Lichtmap-bijdrage
-option.COLORED_LIGHTS_VANILLA_LIGHTMAP_CONTRIBUTION.comment = Gebruikt de vanilla lichtmap samen met de om sommige bugs met gekleurde lichtbronnen te voorkomen, zoals onnodig donkere omgevingsocclusie.
 option.HANDHELD_LIGHTING               = Vastgehouden Belichting
 option.HANDHELD_LIGHTING.comment       = Voorwerpen die je vasthoud werpen licht op de omgeving. Dit heeft kleur als Gekleurde Lichtbronnen aanstaat.
 option.HANDHELD_LIGHTING_INTENSITY     = Vastgehouden Belichting Felheid
@@ -158,23 +151,8 @@ option.PIXELATED_SHADOWS_RESOLUTION.comment = De grootte van het Gepixelde Schad
 option.SSS_STEPS                       = SSS Stappen
 option.SSS_STEPS.comment               = Hogere waarden verminderen ruis maar verslechteren de prestaties.
 
-option.SHADER_AO                       = Shader AO
-option.SHADER_AO.comment               = Het AO type dat wordt gebruikt.\nSSAO: Lagere kwaliteit, maar betere prestaties.\nGTAO: Hogere kwaliteit, maar slechtere prestaties.
-value.SHADER_AO.SHADER_AO_NONE         = Uit
-value.SHADER_AO.SHADER_AO_SSAO         = SSAO
-value.SHADER_AO.SHADER_AO_GTAO         = GTAO
 option.VANILLA_AO                      = Vanilla AO
 option.VANILLA_AO.comment              = Minecraft's ingebouwde omgevingsocclusie.
-option.SSAO_RADIUS                     = SSAO Radius
-option.SSAO_RADIUS.comment             = Wijzigt de radius van SSAO. Hogere waarden zorgen ervoor dat voorwerpen verder weg omgevingsocclusie kunnen creëren.
-option.SSAO_STEPS                      = SSAO Stappen
-option.SSAO_STEPS.comment              = Wijzigt hoeveel stappen SSAO zet en vermindert het ruis in de omgevingsocclusie.
-option.GTAO_RADIUS                     = GTAO Radius
-option.GTAO_RADIUS.comment             = Wijzigt de radius van GTAO. Hogere waarden zorgen ervoor dat voorwerpen verder weg omgevingsocclusie kunnen creëren.
-option.GTAO_SLICES                     = GTAO Delen
-option.GTAO_SLICES.comment             = Wijzigt hoeveel 'slices' GTAO gebruikt. Hogere waarden verminderen ruis, maar kosten meer prestaties.
-option.GTAO_HORIZON_STEPS              = GTAO Stappen
-option.GTAO_HORIZON_STEPS.comment      = Wijzigt hoeveel stappen GTAO zet en dus hoe precies de omgevingsocclusie is.\nAls kleine voorwerpen geen omgevingsocclusie creëeren is het handig deze instelling hoger te zetten.\nMeer stappen zorgt ook voor een donkerdere omgevingsocclusie.
 
 option.SUN_NR                          = §c▍ §fRood
 option.SUN_NG                          = §a▍ §fGroen
@@ -416,7 +394,6 @@ option.BLOOMY_FOG_INTENSITY.comment    = Wijzigt de intensiteit van Gloed Mist.
 option.OVERWORLD_FOG_INTENSITY         = Overworld Mist Intensiteit
 option.NETHER_FOG_INTENSITY            = Nether Mist Intensiteit
 option.VL                              = Volumetrische Mist
-option.LPV_VL.comment                  = Lichtbronnen belichten de mist. Vereist Gekleurde Lichtbronnen!
 option.VL.comment                      = Voegt lichtstralen en variabele mist-dichtheid toe.
 option.VL_RENDER_SCALE                 = VM Resolutie Vermenigvuldiger
 option.AIR_FOG_CLOUDY_NOISE            = Wolkerige Mist
@@ -424,13 +401,6 @@ option.AIR_FOG_CLOUDY_NOISE.comment    = Subtiele wolkerige vormen in de mist vo
 option.AIR_FOG_COLORED_LIGHT_SHAFTS    = Gekleurde Lichtstralen
 option.AIR_FOG_COLORED_LIGHT_SHAFTS.comment = Lichtstralen die door doorzichtige voorwerpen gaan worden gekleurd.
 
-# LPV VL
-option.LPV_VL                          = Gekleurde Lichtbronnen Mist-verstrooing
-option.LPV_VL_STEPS                    = Stappen
-option.LPV_VL_INTENSITY_OVERWORLD      = Overworld Intensiteit
-option.LPV_VL_INTENSITY_UNDERGROUND    = Underground Intensiteit
-option.LPV_VL_INTENSITY_NETHER         = Nether Intensiteit
-option.LPV_VL_INTENSITY_END            = End Intensiteit
 
 # Rayleigh Fog
 option.AIR_FOG_RAYLEIGH_FALLOFF_START     = Rayleigh Vervaging Start

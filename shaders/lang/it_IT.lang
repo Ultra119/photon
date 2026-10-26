@@ -17,16 +17,13 @@ screen.post                            = Post-Elaborazione
 screen.misc                            = Varie
 
 screen.weather                         = Meteo 
-screen.colored_lights                  = Impostazioni Luci Colorate
 screen.rp_settings                     = Impostazioni Resource Pack
 screen.reflections                     = Riflessi
 screen.refraction                      = Rifrazione
 screen.light_sources                   = Fonti di luce
 screen.shadows                         = Ombre
-screen.ao                              = Occlusione ambientale
 screen.color_grading                   = Gradiente di Colore
 screen.exposure                        = Esposizione
-screen.lpv_vl                          = Dispersione Luci Colorate Nebbia
 screen.box                             = Box di selezione
 
 screen.aurora                          = Aurora
@@ -109,9 +106,6 @@ option.WEATHER_WIND_VARIATION_SPEED        = Velocità Variazione Vento
 
 # Lighting settings
 
-option.COLORED_LIGHTS                    = Luci Colorate
-option.COLORED_LIGHTS.comment            = Blocchi luci con colore variabile usando algoritmo Flood Fill. Richiede Iris 1.6 o superiori
-option.COLORED_LIGHTS_VANILLA_LIGHTMAP_CONTRIBUTION = Contributo Vanilla lightmap
 option.HANDHELD_LIGHTING               = Illuminazione in mano
 option.HANDHELD_LIGHTING.comment       = Illuminazione dell'ambiente con oggetti luminosi in mano. Se Luci Colorate è attivo l'Illuminazione in mano sarà colorata in base all'oggetto
 option.HANDHELD_LIGHTING_INTENSITY     = Intensità Illuminazione in mano
@@ -151,23 +145,8 @@ option.PIXELATED_SHADOWS_RESOLUTION    = Risoluzione Ombre Pixellate
 option.SSS_STEPS                       = Passaggi SSS 
 option.SSS_STEPS.comment               = Aumenta per ridurre il rumore nel fogliame o materiali con SSS, al costo delle performance.
 
-option.SHADER_AO                       = Shader AO
-option.SHADER_AO.comment               = Metodo usato AO. Off - no shader AO. SSAO - qualità minore ma richiede meno filtraggio. GTAO - qualità migliore ma richiede più filtraggio
-value.SHADER_AO.SHADER_AO_NONE         = Off
-value.SHADER_AO.SHADER_AO_SSAO         = SSAO
-value.SHADER_AO.SHADER_AO_GTAO         = GTAO
 option.VANILLA_AO                      = AO Vanilla
 option.VANILLA_AO.comment              = Occlusione ambientale di Minecraft
-option.SSAO_RADIUS                     = Raggio SSAO
-comment.SSAO_RADIUS                    = Modifica il raggio di azione del SSAO - distanza alla quale gli oggetti possono occludersi a vicenda
-option.SSAO_STEPS                      = Qualità SSAO
-comment.SSAO_STEPS                     = Controlla quanto rumore produce Il SSAO
-option.GTAO_RADIUS                     = Raggio GTAO
-comment.GTAO_RADIUS                    = MOdifica il raggio di azione del GTAO - distanza alla quale gli oggetti possono occludersi a vicenda
-option.GTAO_SLICES                     = Qualità GTAO
-comment.GTAO_SLICES                    = Controlla quanto rumore produce il GTAO
-option.GTAO_HORIZON_STEPS              = Qualità Orizzonte GTAO
-comment.GTAO_HORIZON_STEPS             = Controlla l'accuratezza del GTAO
 
 option.SUN_NR                          = Rosso
 option.SUN_NG                          = Verde
@@ -407,7 +386,6 @@ option.BLOOMY_FOG_INTENSITY.comment    = Modifica l'intensità dell'aura nebbios
 option.OVERWORLD_FOG_INTENSITY         = Intensità Nebbia Overworld
 option.NETHER_FOG_INTENSITY            = Intensità Nebbia Nether
 option.VL                              = Illuminazione Volumetrica
-comment.LPV_VL                         = Fonti di luce illuminano la nebbia. Richiede luci colorate! 
 option.VL.comment                      = Aggiunge raggi di luce e variabile nebbia volumetrica
 option.VL_RENDER_SCALE                 = Scala Render VL
 option.AIR_FOG_CLOUDY_NOISE            = Foschia nuvolosa
@@ -415,13 +393,6 @@ option.AIR_FOG_CLOUDY_NOISE.comment    = Foschia a bassa quota, meglio visibile 
 option.AIR_FOG_COLORosso_LIGHT_SHAFTS    = Raggi di Luce Colorati
 option.AIR_FOG_COLORosso_LIGHT_SHAFTS.comment = Raggi di luce che passano oggetti trasparenti colorati per poi colorarsi a loro volta
 
-# LPV VL
-option.LPV_VL                          = Attivato
-option.LPV_VL_STEPS                    = Passaggi 
-option.LPV_VL_INTENSITY_OVERWORLD      = Intensità Overworld
-option.LPV_VL_INTENSITY_UNDERGROUND    = intensità Sottoterra
-option.LPV_VL_INTENSITY_NETHER         = Intensità Nether
-option.LPV_VL_INTENSITY_END            = Intensità End
 
 # Rayleigh Fog
 option.AIR_FOG_RAYLEIGH_FALLOFF_START     = Inizio Caduta Rayleigh

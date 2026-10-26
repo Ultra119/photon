@@ -215,7 +215,7 @@ void main() {
     vec4 refraction_data = texelFetch(colortex3, texel, 0);
     vec4 translucent_color = texelFetch(colortex13, texel, 0);
 
-#if defined VL || defined LPV_VL
+#if defined VL
     vec3 fog_transmittance = smooth_filter(colortex6, uv).rgb;
     vec3 fog_scattering = smooth_filter(colortex7, uv).rgb;
 #endif
@@ -436,7 +436,7 @@ void main() {
 
     // Blend fog
 
-#if defined VL || defined LPV_VL
+#if defined VL
     // Volumetric fog
 
     fragment_color = fragment_color * fog_transmittance + fog_scattering;

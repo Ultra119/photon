@@ -68,10 +68,6 @@ uniform sampler2D colortex8; // cloud shadow map
 uniform sampler3D depthtex0; // atmosphere scattering LUT
 uniform sampler2D depthtex1;
 
-#ifdef COLORED_LIGHTS
-uniform sampler3D light_sampler_a;
-uniform sampler3D light_sampler_b;
-#endif
 
 #ifdef BLOCKY_CLOUDS
 uniform sampler2D depthtex2; // minecraft cloud texture
@@ -154,9 +150,6 @@ const bool colortex11MipmapEnabled = true;
 #define ATMOSPHERE_SCATTERING_LUT depthtex0
 #define TEMPORAL_REPROJECTION
 
-#ifdef PHOTONICS_IN_USE
-#define PHOTONICS_DIFFUSE
-#endif
 
 #include "/include/fog/simple_fog.glsl"
 #include "/include/lighting/diffuse_lighting.glsl"
@@ -563,9 +556,6 @@ void main() {
             0.0,
 #else
             shadow_distance_fade,
-#endif
-#ifdef PHOTONICS_DIFFUSE
-            is_lod,
 #endif
             NoL,
             NoV,

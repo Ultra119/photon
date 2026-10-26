@@ -17,16 +17,13 @@ screen.post                            = Пост-обработка
 screen.misc                            = Разное
 
 screen.weather                         = Система ежедневной погоды
-screen.colored_lights                  = Настройки цветного освещения
 screen.rp_settings                     = Настройки ресурс-пака
 screen.reflections                     = Отражения
 screen.refraction                      = Преломления
 screen.light_sources                   = Источники света
 screen.shadows                         = Тени
-screen.ao                              = Окружающая окклюзия
 screen.color_grading                   = Цветовая гамма
 screen.exposure                        = Экспозиция
-screen.lpv_vl                          = Освещение тумана цветным светом
 screen.box                             = Контур блоков
 screen.distant_horizons                = Distant Horizons
 screen.developer                       = Настройки разработчика
@@ -110,9 +107,6 @@ option.WEATHER_WIND_VARIATION_SPEED        = Скорость изменения
 
 # Lighting settings
 
-option.COLORED_LIGHTS                  = Цветное освещение
-option.COLORED_LIGHTS.comment          = Варьирующиеся цвета освещения блоков, использующие алгоритм заливки. Необходим Iris 1.6 или новее
-option.COLORED_LIGHTS_VANILLA_LIGHTMAP_CONTRIBUTION = Вклад ванильной карты освещения
 option.HANDHELD_LIGHTING               = Свет предметов
 option.HANDHELD_LIGHTING.comment       = Предметы в руках будут освещать мир. Если цветное освещение включено, свет от предметов будет такого же цвета, как и свет от блоков
 option.HANDHELD_LIGHTING_INTENSITY     = Сила света предметов
@@ -154,23 +148,8 @@ option.PIXELATED_SHADOWS_RESOLUTION    = Разрешение пикселизи
 option.SSS_STEPS                       = Шагов SSS 
 option.SSS_STEPS.comment               = Увеличьте, чтобы уменьшить количество шума на листве и других материалов с подповерхностным рассеиванием (SSS), ценой производительности.
 
-option.SHADER_AO                       = Шейдер AО
-option.SHADER_AO.comment               = Используемый метод окружающей окклюзии (AO). Off — без шейдерного AO. SSAO — более низкое качество, но требует меньше сэмплов/фильтрации. GTAO — лучшее качество, но требует больше сэмплов/фильтрации.
-value.SHADER_AO.SHADER_AO_NONE         = Выкл
-value.SHADER_AO.SHADER_AO_SSAO         = SSAO
-value.SHADER_AO.SHADER_AO_GTAO         = GTAO
 option.VANILLA_AO                      = Ванильный AO
 option.VANILLA_AO.comment              = Встроенная в Майнкрафт окружающая окклюзия
-option.SSAO_RADIUS                     = Радиус SSAO
-comment.SSAO_RADIUS                    = Регулирует радиус SSAO – расстояние, на котором объекты могут затенять друг друга
-option.SSAO_STEPS                      = Шаги SSAO
-comment.SSAO_STEPS                     = Управляет уровнем шума SSAO
-option.GTAO_RADIUS                     = Радиус GTAO
-comment.GTAO_RADIUS                    = Регулирует радиус GTAO – расстояние, на котором объекты могут затенять друг друга
-option.GTAO_SLICES                     = Срезы GTAO
-comment.GTAO_SLICES                    = Управляет уровнем шума GTAO
-option.GTAO_HORIZON_STEPS              = Горизонтальные шаги GTAO
-comment.GTAO_HORIZON_STEPS             = Контролирует точность GTAO
 
 option.SUN_NR                          = §cКрасный
 option.SUN_NG                          = §aЗеленый
@@ -426,7 +405,6 @@ option.BLOOMY_FOG_INTENSITY.comment    = Регулирует силу "свет
 option.OVERWORLD_FOG_INTENSITY         = Сила тумана верхнего мира
 option.NETHER_FOG_INTENSITY            = Сила тумана нижнего мира
 option.VL                              = Объемное освещение (VL)
-option.LPV_VL.comment                  = Источники света освещают туман. Требует включённого цветного освщения! 
 option.VL.comment                      = Создает световые волны и переменную плотность тумана
 option.VL_RENDER_SCALE                 = Масштаб рендеринга VL
 option.AIR_FOG_CLOUDY_NOISE            = Облачный туман
@@ -434,13 +412,6 @@ option.AIR_FOG_CLOUDY_NOISE.comment    = Едва заметные облачн�
 option.AIR_FOG_COLORED_LIGHT_SHAFTS    = Цветные световые лучи
 option.AIR_FOG_COLORED_LIGHT_SHAFTS.comment = Световые лучи, проходящие через полупрозрачные объекты, окрашиваются в зависимости от их цвета
 
-# LPV VL
-option.LPV_VL                          = Включено
-option.LPV_VL_STEPS                    = Шагов 
-option.LPV_VL_INTENSITY_OVERWORLD      = Интенсивность на поверхности
-option.LPV_VL_INTENSITY_UNDERGROUND    = Интенсивность под землей
-option.LPV_VL_INTENSITY_NETHER         = Интенсивность в нижнем мире
-option.LPV_VL_INTENSITY_END            = Интенсивность в крае
 
 # Rayleigh Fog
 option.AIR_FOG_RAYLEIGH_FALLOFF_START             = Начало уменьшения Рэлея

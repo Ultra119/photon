@@ -18,23 +18,17 @@ screen.misc = Opciones varias
 screen.mods = Opciones de mods
 
 screen.weather = Clima
-screen.colored_lights = Configuración de las luces de colores
 screen.rp_settings = Configuración de paquetes de recursos
 screen.reflections = Reflexiones
 screen.refraction = Refracción
 screen.light_sources = Fuentes de luz
 screen.shadows = Sombras
-screen.ao = Oclusión ambiental
 screen.color_grading = Gradación de color
 screen.exposure = Exposición
-screen.lpv_vl = Luces de colores que dispersan la niebla
 screen.box = Caja de selección
 screen.developer = Opciones de desarrollador
 
 screen.distant_horizons = Distant Horizons
-screen.photonics = Photonics
-screen.photonics_sharp = Ajustes de Sharp
-screen.photonics_restir = Ajustes de ReSTIR
 
 screen.aurora = Aurora
 screen.clouds = Nubes
@@ -116,8 +110,6 @@ option.WEATHER_WIND_VARIATION_SPEED = Velocidad de la variación del viento
 
 # Lighting settings
 
-option.COLORED_LIGHTS = Luces de colores
-option.COLORED_LIGHTS.comment = Iluminación de bloques de color variable con algoritmo de relleno de inundación. Requiere Iris 1.6 o superior.
 option.HANDHELD_LIGHTING = Iluminación en mano
 option.HANDHELD_LIGHTING.comment = Los items en la mano proyectan luz en el mundo. Si se activa la iluminación de colores, la iluminación en la mano se coloreará como las propias luces.
 option.HANDHELD_LIGHTING_INTENSITY = Intensidad de la iluminación en la mano
@@ -159,25 +151,10 @@ option.PIXELATED_SHADOWS_RESOLUTION = Resolución de sombras pixeladas
 option.SSS_STEPS = Pasos de SSS
 option.SSS_STEPS.comment = Aumenta para reducir el ruido en el follaje y otros materiales con SSS, a costa del rendimiento.
 
-option.SHADER_AO = Sombreador AO
-option.SHADER_AO.comment = Método AO utilizado. Desactivado: sin sombreador AO. SSAO: menor calidad, pero requiere menos muestras/menor filtrado. GTAO: mejor calidad, pero requiere más muestras/filtrado.
-value.SHADER_AO.SHADER_AO_NONE = Desactivado
-value.SHADER_AO.SHADER_AO_SSAO = SSAO
-value.SHADER_AO.SHADER_AO_GTAO = GTAO
 option.VANILLA_AO = AO vainilla
 option.VANILLA_AO.comment = Oclusión ambiental incorporada de Minecraft
 option.VANILLA_AO_INTENSITY = Intensidad de AO de Minecraft
 option.VANILLA_AO_INTENSITY.comment = Ajusta la intensidad de la oclusión ambiental integrada de Minecraft.
-option.SSAO_RADIUS = Radio SSAO
-option.SSAO_RADIUS.comment = Ajusta el radio de SSAO: distancia a la que los objetos pueden ocluirse entre sí.
-option.SSAO_STEPS = Pasos SSAO
-option.SSAO_STEPS.comment = Controla qué tan ruidoso parece el SSAO
-option.GTAO_RADIUS = Radio GTAO
-option.GTAO_RADIUS.comment = Ajusta el radio de GTAO: distancia a la que los objetos pueden ocluirse entre sí.
-option.GTAO_SLICES = Rebanadas de GTAO
-option.GTAO_SLICES.comment = Controla qué tan ruidoso parece el GTAO
-option.GTAO_HORIZON_STEPS = Pasos de horizonte de GTAO
-option.GTAO_HORIZON_STEPS.comment = Controla la precisión de GTAO
 
 option.SUN_NR = Rojo
 option.SUN_NG = Verde
@@ -216,17 +193,12 @@ option.BLOCKLIGHT_G = Verde
 option.BLOCKLIGHT_B = Azul
 option.BLOCKLIGHT_I = Intensidad de la luz del bloque
 
-option.COLORED_LIGHTS_VANILLA_LIGHTMAP_CONTRIBUTION = Contribución del mapa de la luz vainilla
-option.COLORED_LIGHTS_VANILLA_LIGHTMAP_CONTRIBUTION_FALLOFF = Caída de contribución
-option.COLORED_LIGHTS_VANILLA_LIGHTMAP_CONTRIBUTION_FALLOFF.comment = Cambia la caída de contribución del mapa de luz de Minecraft.\nCuadrado: la iluminación es más brillante en el origen y disminuye rápidamente.\nLineal: la iluminación es suave y recorre más distancia desde la fuente.
 option.VOXEL_VOLUME_SIZE = Tamaño del volumen del vóxel
 option.VOXEL_VOLUME_SIZE.comment = Impacto de alto rendimiento, también afectado por la distancia de sombra
 suffix.VOXEL_VOLUME_SIZE = m
 option.VOXEL_VOLUME_CENTER = Centro de volumen de vóxel
 option.VOXEL_VOLUME_CENTER.comment = Adelante: el volumen del vóxel se centra delante del jugador, lo que significa que se vea una mayor parte.
 
-value.COLORED_LIGHTS_VANILLA_LIGHTMAP_CONTRIBUTION_FALLOFF.COLORED_LIGHTS_VANILLA_LIGHTMAP_CONTRIBUTION_FALLOFF_SQUARED = Cuadrada
-value.COLORED_LIGHTS_VANILLA_LIGHTMAP_CONTRIBUTION_FALLOFF.COLORED_LIGHTS_VANILLA_LIGHTMAP_CONTRIBUTION_FALLOFF_LINEAR = Lineal
 
 value.VOXEL_VOLUME_CENTER.VOXEL_VOLUME_CENTER_AHEAD = Adelante
 value.VOXEL_VOLUME_CENTER.VOXEL_VOLUME_CENTER_PLAYER = Jugador
@@ -443,7 +415,6 @@ option.BLOOMY_FOG_INTENSITY.comment = Ajusta la intensidad de la "niebla luminos
 option.OVERWORLD_FOG_INTENSITY = Intensidad de la niebla en el Overworld
 option.NETHER_FOG_INTENSITY = Intensidad de la niebla en el Nether
 option.VL = Niebla volumétrica
-option.LPV_VL.comment = Las fuentes de luz iluminan la niebla. ¡Requiere luces de colores!
 option.VL.comment = Agrega haces de luz y densidad de niebla variable
 option.VL_RENDER_SCALE = Escala de renderizado de luz volumétrica
 option.AIR_FOG_CLOUDY_NOISE = Niebla nublada
@@ -451,13 +422,6 @@ option.AIR_FOG_CLOUDY_NOISE.comment = Formas de nubes sutiles dentro de la niebl
 option.AIR_FOG_COLORED_LIGHT_SHAFTS = Rayos de luz coloreados
 option.AIR_FOG_COLORED_LIGHT_SHAFTS.comment = Los rayos de luz que atraviesan objetos translúcidos se tiñen con el color de estos
 
-# LPV VL
-option.LPV_VL = Activado
-option.LPV_VL_STEPS = Pasos
-option.LPV_VL_INTENSITY_OVERWORLD = Intensidad del Overworld
-option.LPV_VL_INTENSITY_UNDERGROUND = Intensidad bajo tierra
-option.LPV_VL_INTENSITY_NETHER = Intensidad del Nether
-option.LPV_VL_INTENSITY_END = Intensidad del End
 
 # Rayleigh Fog
 option.AIR_FOG_RAYLEIGH_FALLOFF_START = Inicio de atenuación Rayleigh
@@ -788,35 +752,6 @@ option.DH_OVERDRAW_DISTANCE = Distancia de sobre-dibujo
 option.DH_OVERDRAW_FADE_LENGTH = Longitud de desvanecimiento de sobre-dibujo
 option.NOISE_ON_DH_TERRAIN = Ruido en terreno DH
 
-# Photonics
 
-option.PHOTONICS_ENABLED = Usar Photonics
-option.PHOTONICS_LIGHTING_MODE = Modo de iluminación
-option.PHOTONICS_LIGHTING_MODE.comment = El algoritmo de iluminación que usa Photonics.\n\nSharp: un algoritmo muy simple sin ruido, pero con un número limitado de luces (Máx. muestras)\nReSTIR: usa ReSTIR para iluminar, admite un número ilimitado de luces (Máx. luces), pero puede ser ruidoso en algunas zonas.
-value.PHOTONICS_LIGHTING_MODE.SIMPLE = Sharp
-value.PHOTONICS_LIGHTING_MODE.RESTIR = ReSTIR
-option.PHOTONICS_ALPHA_MODE = Modo de transparencia
-option.PHOTONICS_ALPHA_MODE.comment = Cambia la forma en que Photonics trata los voxeles transparentes. \n\nOpaca: trata los voxeles transparentes como opacos\nPor bloque: usa el primer voxel transparente y luego omite el resto del bloque\nPor voxel: usa cada voxel transparente del bloque (IMPACTO DE RENDIMIENTO MUY ALTO)
-value.PHOTONICS_ALPHA_MODE.NONE = Opaca
-value.PHOTONICS_ALPHA_MODE.BLOCK = Por bloque
-value.PHOTONICS_ALPHA_MODE.VOXEL = Por voxel
-option.PHOTONICS_MAX_LIGHTS = Máximas luces
-option.PHOTONICS_MAX_LIGHTS.comment = El número máximo de luces trazadas que pueden cargarse.
-option.PHOTONICS_GLINT_STRENGTH = Intensidad del brillo encantado
-option.PHOTONICS_GLINT_STRENGTH.comment = La intensidad de los objetos encantados en la iluminación en mano.
-value.PHOTONICS_GLINT_STRENGTH.0 = Desactivado
-option.PHOTONICS_TWO_HANDHELD_RAYS = Rayos separados de la mano
-option.PHOTONICS_TWO_HANDHELD_RAYS.comment = Si ambas luces en mano deben proyectar sombras. Si está desactivado, solo se proyectará una sombra.
-option.PHOTONICS_SHARP_MAX_SAMPLES = Máx. muestras
-option.PHOTONICS_RESTIR_INITIAL_SAMPLES = Muestras iniciales
-option.PHOTONICS_RESTIR_SPR_SAMPLES = Muestras de reutilización espacial
-value.PHOTONICS_RESTIR_SPR_SAMPLES.0 = Desactivado
-option.PHOTONICS_RESTIR_SPR_RADIUS = Radio de reutilización espacial
-option.PHOTONICS_RESTIR_ACCUMULATION = Fotogramas de acumulación
-option.PHOTONICS_RESTIR_ACCUMULATION.comment = El número máximo de fotogramas que usa ReSTIR para acumular. Valores bajos harán que la iluminación responda antes, a costa de más ruido.
-option.PHOTONICS_RESTIR_DENOISER_PASSES = Pasadas de denoiser
-option.PHOTONICS_RESTIR_SOFT_SHADOWS = Sombras suaves
-option.PHOTONICS_RESTIR_COMBINED_GI = Incluir GI de luz del cielo
-option.PHOTONICS_RESTIR_COMBINED_GI.comment = Si la GI debe pasar por el denoiser de ReSTIR en lugar de su ruta habitual. \nEsto da como resultado una GI mucho más nítida, a costa de rendimiento.
 
 

@@ -9,9 +9,6 @@
 #include "/include/utility/phase_functions.glsl"
 #include "/include/utility/spherical_harmonics.glsl"
 
-#ifdef COLORED_LIGHTS
-#include "/include/lighting/lpv/blocklight.glsl"
-#endif
 
 #ifdef HANDHELD_LIGHTING
 #include "/include/lighting/handheld_lighting.glsl"
@@ -25,14 +22,6 @@
 uniform sampler2D rtgi_filtered_sampler;
 #endif
 
-#if defined PHOTONICS_DIFFUSE
-#include "/photonics/ph_samplers.glsl"
-
-#ifndef PHOTONICS_RESTIR_COMBINED_GI
-uniform sampler2D radiosity_indirect;
-#endif
-
-#endif
 
 const float sss_density = 14.0;
 const float sss_scale = 5.0 * SSS_INTENSITY;
@@ -142,16 +131,7 @@ vec3 get_block_lighting(
     vec3 mc_blocklight = (blocklight_falloff * directional_lighting)
         * (blocklight_scale * blocklight_color);
 
-#ifdef COLORED_LIGHTS
-    lighting += get_lpv_blocklight(
-        scene_pos,
-        flat_normal,
-        mc_blocklight,
-        ao * directional_lighting
-    );
-#else
     lighting += mc_blocklight;
-#endif
 
 #ifdef HANDHELD_LIGHTING
     lighting += get_handheld_lighting(scene_pos, ao);
@@ -217,9 +197,6 @@ vec3 get_diffuse_lighting(
     float cloud_shadows,
 #endif
     float shadow_distance_fade,
-#ifdef PHOTONICS_DIFFUSE
-    bool is_lod,
-#endif
     float NoL,
     float NoV,
     float NoH,
@@ -254,12 +231,7 @@ vec3 get_diffuse_lighting(
         * (1.0 - 0.5 * material.sss_amount)
     );
 
-// Disable bounced lighting with Photonics
-#if defined PHOTONICS_DIFFUSE
-#define DO_BOUNCED_LIGHTING is_lod
-#else
 #define DO_BOUNCED_LIGHTING true
-#endif
 
     vec3 bounced = vec3(0.0);
     if (DO_BOUNCED_LIGHTING) {
@@ -338,38 +310,6 @@ vec3 get_diffuse_lighting(
     float player_dist = length(scene_pos);
     float voxel_edge_fade = smoothstep(48.0, 60.0, player_dist);
     lighting += mc_block * voxel_edge_fade;
-#elif defined PHOTONICS_DIFFUSE
-    if (is_lod) {
-        lighting += get_sky_lighting(
-            material,
-            bent_normal,
-            light_levels,
-            ao,
-            ambient_sss,
-            directional_lighting
-        );
-    } else {
-#ifndef PHOTONICS_RESTIR_COMBINED_GI
-        lighting += texture2D(radiosity_indirect, uv).xyz * SKYLIGHT_I;
-#endif
-    }
-
-    if (!is_lod) {
-        vec3 blocklight = vec3(0.0f);
-        blocklight += sample_photonics_direct(uv);
-#ifdef HANDHELD_LIGHTING
-        blocklight += sample_photonics_handheld(uv);
-#endif
-        lighting += blocklight * blocklight_scale;
-    } else {
-        lighting += get_block_lighting(
-            scene_pos,
-            flat_normal,
-            light_levels,
-            ao,
-            directional_lighting
-        );
-    }
 #else
     lighting += get_sky_lighting(
         material,

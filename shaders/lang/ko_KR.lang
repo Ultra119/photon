@@ -17,16 +17,13 @@ screen.post                            = 후처리
 screen.misc                            = 기타
 
 screen.weather                         = 날씨
-screen.colored_lights                  = 유색 조명 설정
 screen.rp_settings                     = 리소스팩 설정
 screen.reflections                     = 반사
 screen.refraction                      = 굴절
 screen.light_sources                   = 광원
 screen.shadows                         = 그림자
-screen.ao                              = 주변광 차폐 (AO)
 screen.color_grading                   = 색 보정
 screen.exposure                        = 노출
-screen.lpv_vl                          = 유색 조명 안개 산란
 screen.box                             = 선택 상자
 screen.distant_horizons                = Distant Horizons
 screen.developer                       = 개발자 옵션
@@ -111,9 +108,6 @@ option.WEATHER_WIND_VARIATION_SPEED        = 바람 변화 속도
 
 # Lighting settings
 
-option.COLORED_LIGHTS                  = 유색 조명
-option.COLORED_LIGHTS.comment          = 플러드 필 알고리즘을 사용한 가변 색상 블록 조명. Iris 1.6 이상이 필요합니다
-option.COLORED_LIGHTS_VANILLA_LIGHTMAP_CONTRIBUTION = 바닐라 라이트맵 기여도
 option.HANDHELD_LIGHTING               = 손에 든 조명
 option.HANDHELD_LIGHTING.comment       = 손에 든 아이템이 월드에 빛을 비춥니다. 유색 조명이 활성화되어 있으면 손에 든 조명도 해당 광원의 색상으로 표시됩니다
 option.HANDHELD_LIGHTING_INTENSITY     = 손에 든 조명 강도
@@ -155,23 +149,8 @@ option.PIXELATED_SHADOWS_RESOLUTION    = 픽셀화된 그림자 해상도
 option.SSS_STEPS                       = SSS 단계
 option.SSS_STEPS.comment               = 값을 높이면 SSS가 적용된 식물이나 기타 재질의 노이즈가 줄어들지만 성능 비용이 발생합니다.
 
-option.SHADER_AO                       = 셰이더 AO
-option.SHADER_AO.comment               = 사용할 AO 방식입니다. 끔 - 셰이더 AO 없음. SSAO - 품질은 낮지만 샘플/필터링이 적게 필요함. GTAO - 품질은 좋지만 더 많은 샘플/필터링이 필요함
-value.SHADER_AO.SHADER_AO_NONE         = 끔
-value.SHADER_AO.SHADER_AO_SSAO         = SSAO
-value.SHADER_AO.SHADER_AO_GTAO         = GTAO
 option.VANILLA_AO                      = 바닐라 AO
 option.VANILLA_AO.comment              = 마인크래프트 내장 주변광 차폐
-option.SSAO_RADIUS                     = SSAO 반경
-option.SSAO_RADIUS.comment             = SSAO의 반경을 조절합니다. 오브젝트가 서로 가려질 수 있는 거리입니다
-option.SSAO_STEPS                      = SSAO 단계
-option.SSAO_STEPS.comment              = SSAO가 얼마나 노이즈가 많게 보일지 조절합니다
-option.GTAO_RADIUS                     = GTAO 반경
-option.GTAO_RADIUS.comment             = GTAO의 반경을 조절합니다. 오브젝트가 서로 가려질 수 있는 거리입니다
-option.GTAO_SLICES                     = GTAO 슬라이스
-option.GTAO_SLICES.comment             = GTAO가 얼마나 노이즈가 많게 보일지 조절합니다
-option.GTAO_HORIZON_STEPS              = GTAO 수평선 단계
-option.GTAO_HORIZON_STEPS.comment      = GTAO의 정확도를 조절합니다
 
 option.SUN_NR                          = §c빨강
 option.SUN_NG                          = §a초록
@@ -427,7 +406,6 @@ option.BLOOMY_FOG_INTENSITY.comment         = "블룸 안개"의 강도를 조�
 option.OVERWORLD_FOG_INTENSITY              = 오버월드 안개 강도
 option.NETHER_FOG_INTENSITY                 = 네더 안개 강도
 option.VL                                   = 볼류메트릭 안개
-option.LPV_VL.comment                       = 광원이 안개를 비춥니다. 유색 조명이 필요합니다!
 option.VL.comment                           = 빛줄기(광축)와 가변 안개 밀도를 추가합니다
 option.VL_RENDER_SCALE                      = VL 렌더 스케일
 option.AIR_FOG_CLOUDY_NOISE                 = 구름 모양 안개
@@ -435,13 +413,6 @@ option.AIR_FOG_CLOUDY_NOISE.comment         = 안개 속 은은한 구름 모양
 option.AIR_FOG_COLORED_LIGHT_SHAFTS         = 유색 빛줄기
 option.AIR_FOG_COLORED_LIGHT_SHAFTS.comment = 반투명 물체를 통과하는 빛줄기가 해당 물체의 색상으로 물들게 합니다
 
-# LPV VL
-option.LPV_VL                          = 활성화
-option.LPV_VL_STEPS                    = 단계
-option.LPV_VL_INTENSITY_OVERWORLD      = 오버월드 강도
-option.LPV_VL_INTENSITY_UNDERGROUND    = 지하 강도
-option.LPV_VL_INTENSITY_NETHER         = 네더 강도
-option.LPV_VL_INTENSITY_END            = 엔드 강도
 
 # Rayleigh Fog
 option.AIR_FOG_RAYLEIGH_FALLOFF_START             = 레일리 감쇠 시작

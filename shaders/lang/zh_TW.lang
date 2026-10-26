@@ -17,16 +17,13 @@ screen.post                            = 後處理
 screen.misc                            = 其他
 
 screen.weather                         = 天氣 
-screen.colored_lights                  = 彩色光源設定
 screen.rp_settings                     = 資源包設定
 screen.reflections                     = 反射
 screen.refraction                      = 折射
 screen.light_sources                   = 光源
 screen.shadows                         = 陰影
-screen.ao                              = 環境光遮蔽
 screen.color_grading                   = 調色
 screen.exposure                        = 曝光
-screen.lpv_vl                          = 有色光霧散射
 screen.box                             = 選擇框
 screen.developer                       = 開發者選項
 
@@ -112,9 +109,6 @@ option.WEATHER_WIND_VARIATION_SPEED        = 風速變化速率
 
 # Lighting settings
 
-option.COLORED_LIGHTS                  = 有色光線
-option.COLORED_LIGHTS.comment          = 使用泛洪算法的多色方塊光線，需要 Iris 1.6+
-option.COLORED_LIGHTS_VANILLA_LIGHTMAP_CONTRIBUTION = 原版光照貼圖貢獻
 option.HANDHELD_LIGHTING               = 手持光源
 option.HANDHELD_LIGHTING.comment       = 手持物品會投射光源;若啟用有色光線，手持光源也會染色
 option.HANDHELD_LIGHTING_INTENSITY     = 手持光源強度
@@ -154,23 +148,8 @@ option.PIXELATED_SHADOWS_RESOLUTION    = 像素化陰影解析度
 option.SSS_STEPS                       = 次表面散射取樣步數
 option.SSS_STEPS.comment               = 增加可減少雜訊，但會影響效能
 
-option.SHADER_AO                       = Shader AO
-option.SHADER_AO.comment               = AO 演算法。Off-關閉, SSAO-品質低但計算量少, GTAO-品質佳但計算量大
-value.SHADER_AO.SHADER_AO_NONE         = 關閉
-value.SHADER_AO.SHADER_AO_SSAO         = SSAO
-value.SHADER_AO.SHADER_AO_GTAO         = GTAO
 option.VANILLA_AO                      = 原版 AO
 option.VANILLA_AO.comment              = 遊戲內建遮蔽
-option.SSAO_RADIUS                     = SSAO 半徑
-option.SSAO_RADIUS.comment             = 調整 SSAO 半徑(遮蔽物體的最大距離)
-option.SSAO_STEPS                      = SSAO 取樣步數
-option.SSAO_STEPS.comment              = 控制 SSAO 的雜訊程度
-option.GTAO_RADIUS                     = GTAO 半徑
-option.GTAO_RADIUS.comment             = 調整 GTAO 半徑(遮蔽物體的最大距離)
-option.GTAO_SLICES                     = GTAO 切片
-option.GTAO_SLICES.comment             = 控制 GTAO 的雜訊程度
-option.GTAO_HORIZON_STEPS              = GTAO 地平線步數
-option.GTAO_HORIZON_STEPS.comment      = 控制 GTAO 地平線計算精度
 
 option.SUN_NR                          = 紅色陽光
 option.SUN_NG                          = 綠色陽光
@@ -411,20 +390,12 @@ option.OVERWORLD_FOG_INTENSITY         = 主世界霧強度
 option.NETHER_FOG_INTENSITY            = 地獄霧強度
 option.VL                              = 體積霧
 option.VL.comment                      = 新增光柱與可變霧密度
-option.LPV_VL.comment                  = 光源照亮體積霧，需要有色光線支援
 option.VL_RENDER_SCALE                 = 體積霧渲染縮放
 option.AIR_FOG_CLOUDY_NOISE            = 雲狀霧
 option.AIR_FOG_CLOUDY_NOISE.comment    = 早晨最明顯的細微雲狀霧，需要體積霧
 option.AIR_FOG_COLORED_LIGHT_SHAFTS    = 有色光束
 option.AIR_FOG_COLORED_LIGHT_SHAFTS.comment = 穿透半透明物件的光束會被其色彩染色
 
-# LPV VL
-option.LPV_VL                          = 啟用
-option.LPV_VL_STEPS                    = 取樣步數
-option.LPV_VL_INTENSITY_OVERWORLD      = 主世界強度
-option.LPV_VL_INTENSITY_UNDERGROUND    = 地下強度
-option.LPV_VL_INTENSITY_NETHER         = 地獄強度
-option.LPV_VL_INTENSITY_END            = 終界強度
 
 # Rayleigh Fog
 option.AIR_FOG_RAYLEIGH_FALLOFF_START     = 瑞利散射衰減起始高度
