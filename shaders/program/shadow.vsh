@@ -82,7 +82,7 @@ uniform int renderStage;
 #endif
 
 void main() {
-    uv = gl_MultiTexCoord0.xy;
+    uv = (gl_TextureMatrix[0] * gl_MultiTexCoord0).xy;
     material_mask = uint(max0(mc_Entity.x - 10000.0));
     tint = gl_Color.rgb;
 

@@ -15,8 +15,10 @@ bool is_voxel_corner(vec3 pos, float tolerance) {
 bool should_voxelize(uint block_id, bool vertex_at_grid_corner) {
     bool is_transparent_block = (block_id == 1u || block_id == 18u || block_id == 28u || block_id == 30u || block_id == 80u);
     bool is_emitter = (32u <= block_id && block_id < 80u);
+    bool is_non_solid = (block_id == 2u || block_id == 3u || block_id == 14u || block_id == 15u);
+    bool is_stained_glass = (block_id >= 81u && block_id <= 96u);
 
-    return (vertex_at_grid_corner || is_emitter) && !is_transparent_block;
+    return ((vertex_at_grid_corner && !is_non_solid) || is_emitter || is_stained_glass) && !is_transparent_block;
 }
 
 void update_rt_voxel_grid(
@@ -46,7 +48,7 @@ void update_rt_voxel_grid(
     if (19u <= block_id && block_id < 23u) block_id = 46u;
     if (23u <= block_id && block_id < 27u) block_id = 58u;
 
-    bool is_translucent = (block_id == 5u || block_id == 14u || block_id == 15u || (80u <= block_id && block_id < 96u));
+    bool is_translucent = (block_id == 5u || block_id == 14u || block_id == 15u || (80u <= block_id && block_id <= 96u));
     bool is_emitter = (32u <= block_id && block_id < 80u);
 
     if (should_voxelize(block_id, at_corner) && is_inside_voxel_volume(voxel_pos)) {

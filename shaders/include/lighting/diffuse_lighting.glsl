@@ -294,10 +294,14 @@ vec3 get_diffuse_lighting(
     // Skylight & Indirect RTGI
 
 #if defined RAYTRACED_GI
-    vec3 rtgi_indirect = sample_rtgi_smooth(rtgi_filtered_sampler, uv);
+#if defined PROGRAM_DEFERRED4
+    vec2 rtgi_coord = uv;
+#else
+    vec2 rtgi_coord = gl_FragCoord.xy * view_pixel_size * rcp(taau_render_scale);
+#endif
+    vec3 rtgi_indirect = sample_rtgi_smooth(rtgi_filtered_sampler, rtgi_coord);
     // RTGI provides both diffuse indirect skylight bounce and colored blocklight bounce
-    float gi_foliage_attenuation = mix(1.0, 0.40, material.sss_amount);
-    lighting += rtgi_indirect * (1.6 * RTGI_BRIGHTNESS * gi_foliage_attenuation);
+    lighting += rtgi_indirect * (1.6 * RTGI_BRIGHTNESS);
 
     // Soft fallback for handheld lighting or areas outside voxel distance
     vec3 mc_block = get_block_lighting(

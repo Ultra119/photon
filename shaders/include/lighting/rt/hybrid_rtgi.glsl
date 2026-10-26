@@ -73,9 +73,9 @@ vec3 evaluate_hybrid_rtgi_ray(
         return vx_hit.radiance;
     }
 
-    // 3. Fallback to sky ambient (attenuated by surface skylight to prevent blue light leaking into caves)
+    // 3. Fallback to sky ambient (attenuated by surface skylight and stained glass transmittance)
     float sky_hemi = clamp01(ray_dir_world.y * 0.5 + 0.5);
-    return sky_ambient_color * (sky_hemi * pow4(surface_skylight));
+    return sky_ambient_color * (sky_hemi * sqr(surface_skylight)) * vx_hit.transmittance;
 }
 
 #endif // INCLUDE_LIGHTING_RT_HYBRID_RTGI

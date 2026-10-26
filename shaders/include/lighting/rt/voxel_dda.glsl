@@ -13,6 +13,7 @@ struct VoxelHit {
     vec3 hit_normal;
     vec3 radiance;
     float distance;
+    vec3 transmittance;
 };
 
 // Check if voxel point is in sunlight shadow using shadow map
@@ -62,6 +63,9 @@ VoxelHit trace_voxel_dda(
     result.hit_normal = -ray_dir;
     result.radiance = vec3(0.0);
     result.distance = max_dist;
+    result.transmittance = vec3(1.0);
+
+    vec3 ray_transmittance = vec3(1.0);
 
     // Offset ray origin along surface normal and forward to clear starting block boundary
     vec3 start_scene = ray_origin_scene + surface_normal * 0.25 + ray_dir * 0.05;
@@ -92,13 +96,16 @@ VoxelHit trace_voxel_dda(
                 VoxelSample sample_data = unpack_voxel_data(raw);
                 VoxelMaterial mat = get_voxel_material(sample_data.block_id, sample_data.color);
 
-                // Transparent glass blocks (clear and stained glass): light passes straight through
-                if (sample_data.block_id >= 80u && sample_data.block_id < 96u) {
-                    // Do not block diffuse GI ray; allow ray to continue through glass
+                // Transparent glass blocks: clear glass passes through, stained glass (81u - 96u) tints transmittance
+                if (sample_data.block_id >= 81u && sample_data.block_id <= 96u) {
+                    ray_transmittance *= mat.albedo;
+                } else if (sample_data.block_id == 80u) {
+                    // Clear glass: passes through without tinting
                 } else if (mat.is_solid) {
                     result.hit = true;
                     result.hit_normal = (dot(mask, mask) > 0.5) ? (-mask * step_dir) : -sign(ray_dir);
                     result.distance = t;
+                    result.transmittance = ray_transmittance;
 
                     vec3 hit_voxel_scene = voxel_to_scene_space(vec3(current_voxel) + 0.5);
                     result.hit_pos = hit_voxel_scene;
@@ -117,7 +124,7 @@ VoxelHit trace_voxel_dda(
 
                     // 2. Skylight bounce (diffuse irradiance from sky hemisphere; 0.0 in caves/interiors)
                     float sky_factor = clamp01(result.hit_normal.y * 0.5 + 0.5);
-                    vec3 sky_radiance = sky_ambient_color * (sky_factor * pow4(sample_data.sky_light));
+                    vec3 sky_radiance = sky_ambient_color * (sky_factor * sqr(sample_data.sky_light));
 
                     // 3. Blocklight bounce (light from torches, lanterns, lamps illuminating this surface)
                     vec3 blocklight_bounce = blocklight_color * (sqr(sample_data.block_light) * blocklight_scale);
@@ -128,12 +135,12 @@ VoxelHit trace_voxel_dda(
                     // Organic foliage (leaves & plants): absorb light rather than concentrating it inside canopy
                     vec3 bounce_albedo = mat.albedo;
                     if (sample_data.block_id == 5u || sample_data.block_id == 14u || sample_data.block_id == 2u) {
-                        bounce_albedo *= 0.20;
-                        blocklight_bounce *= 0.25;
+                        bounce_albedo *= 0.35;
+                        blocklight_bounce *= 0.50;
                     }
 
-                    // Combined indirect bounce: emission + diffuse bounce of local illumination
-                    result.radiance = emission_radiance + bounce_albedo * (blocklight_bounce + sun_radiance + sky_radiance);
+                    // Combined indirect bounce: emission + diffuse bounce of local illumination, tinted by stained glass transmittance
+                    result.radiance = (emission_radiance + bounce_albedo * (blocklight_bounce + sun_radiance + sky_radiance)) * ray_transmittance;
                     break;
                 }
             }
@@ -146,6 +153,7 @@ VoxelHit trace_voxel_dda(
         current_voxel += ivec3(mask * step_dir);
     }
 
+    result.transmittance = ray_transmittance;
     return result;
 }
 

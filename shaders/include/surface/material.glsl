@@ -825,16 +825,16 @@ Material material_from(
         }
     }
 
-    if (64u <= material_mask && material_mask < 80u) {
-// Stained glass, honey and slime
+    if ((80u <= material_mask && material_mask <= 96u) || (64u <= material_mask && material_mask < 80u)) {
+        // Clear glass, stained glass, honey and slime
 #ifdef HARDCODED_SPECULAR
         material.f0 = vec3(0.04);
-        material.roughness = 0.1;
+        material.roughness = 0.04;
         material.ssr_multiplier = 1.0;
 #endif
 
 #ifdef HARDCODED_SSS
-        material.sss_amount = 0.5;
+        material.sss_amount = (material_mask == 80u) ? 0.0 : 0.2;
 #endif
     }
 

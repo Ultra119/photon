@@ -74,11 +74,17 @@ uniform sampler2D depthtex1;
 #ifdef WORLD_OVERWORLD
 uniform sampler2D shadowtex0;
 uniform sampler2DShadow shadowtex1;
+#ifdef SHADOW_COLOR
+uniform sampler2D shadowcolor0;
+#endif
 #endif
 
 #ifdef WORLD_END
 uniform sampler2D shadowtex0;
 uniform sampler2DShadow shadowtex1;
+#ifdef SHADOW_COLOR
+uniform sampler2D shadowcolor0;
+#endif
 #endif
 #endif
 
@@ -149,9 +155,7 @@ vec3 light_color, ambient_color;
 
 #define TEMPORAL_REPROJECTION
 
-#ifdef SHADOW_COLOR
-#undef SHADOW_COLOR
-#endif
+// SHADOW_COLOR supported
 
 #if defined PROGRAM_GBUFFERS_TEXTURED \
     || defined PROGRAM_GBUFFERS_PARTICLES_TRANSLUCENT
@@ -716,7 +720,11 @@ void main() {
     // Refraction data
 
 #if defined PROGRAM_GBUFFERS_WATER
-    refraction_data.xy = split_2x8(normal_tangent.x * 0.5 + 0.5);
-    refraction_data.zw = split_2x8(normal_tangent.y * 0.5 + 0.5);
+    if (is_water) {
+        refraction_data.xy = split_2x8(normal_tangent.x * 0.5 + 0.5);
+        refraction_data.zw = split_2x8(normal_tangent.y * 0.5 + 0.5);
+    } else {
+        refraction_data = vec4(0.0);
+    }
 #endif
 }

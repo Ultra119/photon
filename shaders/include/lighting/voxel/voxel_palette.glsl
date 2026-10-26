@@ -20,11 +20,12 @@ VoxelMaterial get_voxel_material(uint block_id, vec3 fallback_color) {
     mat.emission = vec3(0.0);
     mat.roughness = 0.85;
     mat.sss_amount = 0.0;
-    mat.is_solid = (block_id != 0u);
+    mat.is_solid = true;
     mat.is_translucent = false;
 
-    if (!mat.is_solid) {
+    if (block_id == 0u) {
         mat.albedo = vec3(0.0);
+        mat.is_solid = false;
         return mat;
     }
 
@@ -33,6 +34,7 @@ VoxelMaterial get_voxel_material(uint block_id, vec3 fallback_color) {
         uint light_idx = clamp(block_id - 32u, 0u, 47u);
         mat.emission = voxel_light_color_table[light_idx] * 2.5;
         mat.roughness = 0.5;
+        mat.is_solid = true;
     }
 
     // Base block types according to block.properties
@@ -41,25 +43,29 @@ VoxelMaterial get_voxel_material(uint block_id, vec3 fallback_color) {
         case 1u:
             mat.albedo = vec3(0.05, 0.15, 0.25);
             mat.roughness = 0.05;
+            mat.is_solid = false;
             mat.is_translucent = true;
             break;
 
-        // Grass block
+        // Small plants (grass, short_grass, flowers, dandelion, poppy, fern)
         case 2u:
             mat.albedo = (fallback_color.g > 0.05) ? fallback_color * 0.40 : vec3(0.12, 0.22, 0.06);
             mat.roughness = 0.90;
+            mat.is_solid = false;
             break;
 
-        // Dirt, coarse dirt, mud, farmland
+        // Tall plants (sunflowers, lilac, rose bush)
         case 3u:
-            mat.albedo = vec3(0.28, 0.18, 0.10);
-            mat.roughness = 0.95;
+            mat.albedo = (fallback_color.g > 0.05) ? fallback_color * 0.40 : vec3(0.12, 0.22, 0.06);
+            mat.roughness = 0.90;
+            mat.is_solid = false;
             break;
 
-        // Stone, cobblestone, andesite, deepslate
+        // Default Stone / unassigned terrain
         case 4u:
             mat.albedo = vec3(0.35, 0.35, 0.35);
             mat.roughness = 0.80;
+            mat.is_solid = true;
             break;
 
         // Leaves & foliage
@@ -67,69 +73,92 @@ VoxelMaterial get_voxel_material(uint block_id, vec3 fallback_color) {
             mat.albedo = (fallback_color.g > 0.05) ? fallback_color * 0.30 : vec3(0.06, 0.14, 0.03);
             mat.roughness = 0.90;
             mat.sss_amount = 0.0;
+            mat.is_solid = true;
             mat.is_translucent = true;
+            break;
+
+        // Dirt, grass block, coarse dirt, stone, cobblestone, deepslate
+        case 6u:
+            mat.albedo = (fallback_color.g > fallback_color.r * 1.05 && fallback_color.g > 0.08) ? fallback_color * 0.40 : vec3(0.35, 0.30, 0.25);
+            mat.roughness = 0.88;
+            mat.is_solid = true;
             break;
 
         // Sand, sandstone
-        case 6u:
-            mat.albedo = vec3(0.68, 0.62, 0.44);
-            mat.roughness = 0.88;
-            break;
-
-        // Wood planks / logs
         case 7u:
-            mat.albedo = vec3(0.42, 0.28, 0.16);
-            mat.roughness = 0.75;
+            mat.albedo = vec3(0.72, 0.65, 0.46);
+            mat.roughness = 0.88;
+            mat.is_solid = true;
             break;
 
-        // Snow & ice
+        // Ice, packed ice, blue ice
         case 8u:
-            mat.albedo = vec3(0.85, 0.88, 0.92);
-            mat.roughness = 0.30;
+            mat.albedo = vec3(0.75, 0.85, 0.95);
+            mat.roughness = 0.20;
             mat.sss_amount = 0.25;
-            break;
-
-        // Metals (Iron, gold, copper)
-        case 9u:
-            mat.albedo = vec3(0.65, 0.65, 0.65);
-            mat.roughness = 0.40;
-            break;
-
-        // Bricks, terracotta
-        case 10u:
-            mat.albedo = vec3(0.48, 0.25, 0.18);
-            mat.roughness = 0.85;
-            break;
-
-        // Netherrack, nether bricks
-        case 11u:
-            mat.albedo = vec3(0.32, 0.10, 0.10);
-            mat.roughness = 0.90;
-            break;
-
-        // End stone, purpur
-        case 12u:
-            mat.albedo = vec3(0.65, 0.68, 0.48);
-            mat.roughness = 0.80;
-            break;
-
-        // Strong SSS materials (azalea, sugar cane, bamboo, vine)
-        case 14u:
-            mat.albedo = (fallback_color.g > 0.05) ? fallback_color * 0.30 : vec3(0.10, 0.20, 0.05);
-            mat.roughness = 0.80;
-            mat.sss_amount = 0.0;
+            mat.is_solid = true;
             mat.is_translucent = true;
             break;
 
-        // Weak SSS materials
+        // Red sand, red sandstone
+        case 9u:
+            mat.albedo = vec3(0.68, 0.36, 0.18);
+            mat.roughness = 0.88;
+            mat.is_solid = true;
+            break;
+
+        // Wood planks / logs
+        case 10u:
+            mat.albedo = vec3(0.48, 0.32, 0.18);
+            mat.roughness = 0.75;
+            mat.is_solid = true;
+            break;
+
+        // Terracotta
+        case 11u:
+            mat.albedo = vec3(0.55, 0.35, 0.25);
+            mat.roughness = 0.85;
+            mat.is_solid = true;
+            break;
+
+        // Metals (Iron, gold, copper)
+        case 12u:
+            mat.albedo = vec3(0.70, 0.70, 0.70);
+            mat.roughness = 0.40;
+            mat.is_solid = true;
+            break;
+
+        // Netherrack, nether bricks
+        case 13u:
+            mat.albedo = vec3(0.38, 0.12, 0.12);
+            mat.roughness = 0.90;
+            mat.is_solid = true;
+            break;
+
+        // Strong SSS materials (azalea, sugar cane, bamboo, vine, lily pad)
+        case 14u:
+            mat.albedo = (fallback_color.g > 0.05) ? fallback_color * 0.30 : vec3(0.10, 0.20, 0.05);
+            mat.roughness = 0.80;
+            mat.is_solid = false;
+            mat.is_translucent = true;
+            break;
+
+        // Weak SSS materials (leaf litter, pink petals, cobwebs, wool)
         case 15u:
             mat.albedo = clamp(fallback_color, vec3(0.10), vec3(0.50));
             mat.roughness = 0.70;
-            mat.sss_amount = 0.0;
+            mat.is_solid = false; // Never block rays! Leaf litter & petals are flat decals!
             break;
 
-        // Stained glass / tinted translucent
+        // Clear glass, glass panes, snow layer, rails, carpets
         case 80u:
+            mat.albedo = vec3(0.95);
+            mat.roughness = 0.04;
+            mat.is_solid = false;
+            mat.is_translucent = true;
+            break;
+
+        // Stained glass / tinted translucent (10081 - 10096)
         case 81u:
         case 82u:
         case 83u:
@@ -144,10 +173,12 @@ VoxelMaterial get_voxel_material(uint block_id, vec3 fallback_color) {
         case 92u:
         case 93u:
         case 94u:
-        case 95u: {
-            uint tint_idx = clamp(block_id - 80u, 0u, 15u);
+        case 95u:
+        case 96u: {
+            uint tint_idx = clamp(block_id - 81u, 0u, 15u);
             mat.albedo = voxel_tint_color_table[tint_idx];
-            mat.roughness = 0.10;
+            mat.roughness = 0.04;
+            mat.is_solid = false;
             mat.is_translucent = true;
             break;
         }
@@ -155,6 +186,7 @@ VoxelMaterial get_voxel_material(uint block_id, vec3 fallback_color) {
         default:
             // Fallback to reasonable albedo
             mat.albedo = clamp(fallback_color, vec3(0.08), vec3(0.45));
+            mat.is_solid = true;
             break;
     }
 
