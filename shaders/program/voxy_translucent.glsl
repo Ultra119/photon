@@ -21,6 +21,8 @@
 vec3 ambient_color;
 vec3 light_color;
 
+uniform vec2 view_pixel_size;
+
 #ifdef WORLD_OVERWORLD
 // Unused
 OverworldFogParameters fog_params;

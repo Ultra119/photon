@@ -15,8 +15,9 @@
 #ifdef PROGRAM_GBUFFERS_WATER
 layout(location = 0) out vec4 refraction_data;
 layout(location = 1) out vec4 fragment_color;
+layout(location = 2) out vec4 glass_filter_data;
 
-/* RENDERTARGETS: 3,13 */
+/* RENDERTARGETS: 3,13,17 */
 #else
 layout(location = 0) out vec4 fragment_color;
 
@@ -360,6 +361,14 @@ vec4 draw_nether_portal(vec3 direction_world, float layer_dist) {
 #endif
 
 void main() {
+#ifdef PROGRAM_GBUFFERS_WATER
+    // Initialize both control buffers. Water uses refraction_data for its
+    // packed normal; stained glass uses glass_filter_data for its tint. Keeping
+    // them separate avoids the alpha-channel collision in colortex3.
+    refraction_data = vec4(0.0);
+    glass_filter_data = vec4(0.0);
+#endif
+
     vec2 coord = gl_FragCoord.xy * view_pixel_size * rcp(taau_render_scale);
 
     // Clip to TAAU viewport
@@ -725,12 +734,11 @@ void main() {
         refraction_data.xy = split_2x8(normal_tangent.x * 0.5 + 0.5);
         refraction_data.zw = split_2x8(normal_tangent.y * 0.5 + 0.5);
     } else if (material_mask >= 81u && material_mask <= 96u) {
-        // Stained glass optical filter: store filter tint color in rgb, mark flag in a
+        // Stained glass optical filter: store tint in a dedicated buffer so the
+        // water normal encoding in refraction_data stays untouched.
         uint tint_idx = clamp(material_mask - 81u, 0u, 15u);
         vec3 filter_color = voxel_tint_color_table[tint_idx];
-        refraction_data = vec4(filter_color, 1.0);
-    } else {
-        refraction_data = vec4(0.0);
+        glass_filter_data = vec4(filter_color, 1.0);
     }
 #endif
 }

@@ -16,6 +16,13 @@
 #include "/include/fog/overworld/analytic.glsl"
 #endif
 
+// The voxel reflection fallback needs shadowtex0/shadowModelView/shadowProjection.
+// Nether programs and programs compiled with SHADOW disabled do not declare
+// shadowtex0, so disable the fallback there instead of failing to compile.
+#if defined RT_REFLECTIONS && (defined WORLD_NETHER || !defined SHADOW)
+#undef RT_REFLECTIONS
+#endif
+
 #ifdef RT_REFLECTIONS
 #include "/include/lighting/rt/rt_reflections.glsl"
 uniform usampler3D voxel_sampler;

@@ -52,6 +52,7 @@ uniform sampler2D colortex7; // volumetric fog transmittance
 uniform sampler2D colortex11; // clouds history
 uniform sampler2D colortex12; // clouds data
 uniform sampler2D colortex13; // rendered translucent layer
+uniform sampler2D colortex17; // stained glass optical filter data
 
 #if defined SHADOW || defined RT_REFLECTIONS
 #if defined AIR_FOG_COLORED_LIGHT_SHAFTS || defined RT_REFLECTIONS
@@ -155,6 +156,16 @@ uniform mat4 shadowModelViewInverse;
 #include "/include/misc/distant_water.glsl"
 #endif
 
+vec3 apply_glass_filter(vec3 background_color, vec4 glass_filter_data) {
+    if (glass_filter_data.a <= 0.5) {
+        return background_color;
+    }
+
+    vec3 glass_tint = glass_filter_data.rgb;
+    float bg_lum = dot(background_color, luminance_weights_rec2020);
+    return mix(background_color * glass_tint, glass_tint * bg_lum, 0.75);
+}
+
 vec3 blend_layers_with_fog(
     vec3 background_color,
     vec4 translucent_color,
@@ -167,6 +178,11 @@ vec3 blend_layers_with_fog(
     bool back_is_hand
 ) {
     if (back_is_hand) {
+        if (is_translucent) {
+            background_color
+                = apply_glass_filter(background_color, glass_filter_data);
+        }
+
         return background_color * (1.0 - translucent_color.a)
             + translucent_color.rgb;
     }
@@ -187,13 +203,13 @@ vec3 blend_layers_with_fog(
     }
 #endif
 
-    if (glass_filter_data.a > 0.5) {
-        // Physical optical filter for stained glass:
-        // Converts transmitted light into the glass tint color while preserving luminance
-        vec3 glass_tint = glass_filter_data.rgb;
-        float bg_lum = dot(background_color, luminance_weights_rec2020);
-        vec3 filtered_bg = mix(background_color * glass_tint, glass_tint * bg_lum, 0.75);
-        return filtered_bg * (1.0 - translucent_color.a) + translucent_color.rgb;
+    if (is_translucent && glass_filter_data.a > 0.5) {
+        // Physical optical filter for stained glass. The marker now lives in
+        // colortex17, so water refraction data in colortex3 cannot trigger it.
+        background_color
+            = apply_glass_filter(background_color, glass_filter_data);
+        return background_color * (1.0 - translucent_color.a)
+            + translucent_color.rgb;
     }
 
     return background_color * (1.0 - translucent_color.a)
@@ -223,6 +239,7 @@ void main() {
     float back_depth = texelFetch(depthtex1, texel, 0).x;
 
     vec4 refraction_data = texelFetch(colortex3, texel, 0);
+    vec4 glass_filter_data = texelFetch(colortex17, texel, 0);
     vec4 translucent_color = texelFetch(colortex13, texel, 0);
 
 #if defined VL
@@ -250,6 +267,7 @@ void main() {
 
     bool is_translucent = front_depth != back_depth;
     bool is_sky = back_depth == 1.0 && back_depth_lod == 1.0;
+    bool is_glass_filter = is_translucent && glass_filter_data.a > 0.5;
 
     // Space conversions
 
@@ -289,7 +307,8 @@ void main() {
     float layer_dist = abs(view_distance - length(back_position_view));
 
 #if REFRACTION != REFRACTION_OFF
-    if (is_translucent && refraction_data != vec4(0.0) && refraction_data.a < 0.5) {
+    if (is_translucent && !is_glass_filter
+        && refraction_data != vec4(0.0)) {
         vec2 normal_tangent = vec2(
             unsplit_2x8(refraction_data.xy) * 2.0 - 1.0,
             unsplit_2x8(refraction_data.zw) * 2.0 - 1.0
@@ -411,7 +430,7 @@ void main() {
     fragment_color = blend_layers_with_fog(
         fragment_color,
         translucent_color,
-        refraction_data,
+        glass_filter_data,
         front_position_world,
         back_position_world,
         is_translucent,
