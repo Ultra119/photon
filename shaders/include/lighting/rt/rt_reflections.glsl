@@ -35,10 +35,10 @@ vec3 trace_voxel_specular_fallback(
     );
 
     if (vx_hit.hit) {
-        return vx_hit.radiance;
+        return vx_hit.radiance + vx_hit.accumulated_light;
     }
 
-    return sky_reflection;
+    return sky_reflection + vx_hit.accumulated_light;
 }
 
 #endif // INCLUDE_LIGHTING_RT_REFLECTIONS

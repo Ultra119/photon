@@ -14,6 +14,8 @@ struct VoxelHit {
     vec3 radiance;
     float distance;
     vec3 transmittance;
+    float sky_weight;
+    vec3 accumulated_light;
 };
 
 // Check if voxel point is in sunlight shadow using shadow map
@@ -64,8 +66,11 @@ VoxelHit trace_voxel_dda(
     result.radiance = vec3(0.0);
     result.distance = max_dist;
     result.transmittance = vec3(1.0);
+    result.sky_weight = 0.0;
+    result.accumulated_light = vec3(0.0);
 
     vec3 ray_transmittance = vec3(1.0);
+    vec3 accumulated_light = vec3(0.0);
 
     // Offset ray origin along surface normal and forward to clear starting block boundary
     vec3 start_scene = ray_origin_scene + surface_normal * 0.25 + ray_dir * 0.05;
@@ -82,25 +87,50 @@ VoxelHit trace_voxel_dda(
     vec3 mask = vec3(0.0);
     float t = 0.0;
 
-    const int MAX_STEPS = 80;
+    const int MAX_STEPS = voxel_dda_max_steps;
     for (int i = 0; i < MAX_STEPS; ++i) {
         if (!is_inside_voxel_grid(current_voxel) || t > max_dist) {
             break;
         }
 
+        float next_t = min(min(t_max.x, t_max.y), t_max.z);
+        float clamped_next_t = min(next_t, max_dist);
+        float segment_length = max(clamped_next_t - t, 0.0);
+        float segment_mid = 0.5 * (t + clamped_next_t);
+
         // Ignore the origin block to completely eliminate self-intersection
         if (current_voxel != origin_voxel) {
-            uvec4 raw = texelFetch(voxel_grid, current_voxel, 0);
-            if (raw.r != 0u) {
-                // Hit detected!
-                VoxelSample sample_data = unpack_voxel_data(raw);
+            uint packed = texelFetch(voxel_grid, current_voxel, 0).r;
+            VoxelSample sample_data = unpack_voxel_data(packed);
+
+            // Light-only voxel: block_id == 0, block_light > 0. Accumulate it
+            // as a camera-independent emissive medium instead of stopping the ray.
+            if (sample_data.block_id == 0u && sample_data.block_light > 0.0) {
+                float scatter = 1.0 - exp(-0.22 * segment_length);
+                float distance_falloff = exp(-0.16 * segment_mid);
+                accumulated_light += sample_data.color
+                    * (sample_data.block_light * blocklight_scale)
+                    * scatter * distance_falloff * ray_transmittance;
+            }
+
+            if (sample_data.block_id != 0u) {
                 VoxelMaterial mat = get_voxel_material(sample_data.block_id, sample_data.color);
 
-                // Transparent glass blocks: clear glass passes through, stained glass (81u - 96u) tints transmittance
+                // Stained glass tints transmittance but does not stop the ray.
                 if (sample_data.block_id >= 81u && sample_data.block_id <= 96u) {
                     ray_transmittance *= mat.albedo;
                 } else if (sample_data.block_id == 80u) {
                     // Clear glass: passes through without tinting
+                } else if (sample_data.is_emitter && is_point_light_emitter(sample_data.block_id)) {
+                    // Small emitters are transparent light sources. This lets rays
+                    // reach the surfaces they illuminate instead of stopping on
+                    // the torch/lantern voxel itself.
+                    vec3 emitter_pos = voxel_to_scene_space(vec3(current_voxel) + 0.5);
+                    float emitter_dist = length(emitter_pos - ray_origin_scene);
+                    float emitter_attenuation = exp(-0.30 * emitter_dist)
+                        * RTGI_POINT_LIGHT_STRENGTH;
+                    accumulated_light += mat.emission
+                        * emitter_attenuation * 0.20 * ray_transmittance;
                 } else if (mat.is_solid) {
                     result.hit = true;
                     result.hit_normal = (dot(mask, mask) > 0.5) ? (-mask * step_dir) : -sign(ray_dir);
@@ -139,8 +169,24 @@ VoxelHit trace_voxel_dda(
                         blocklight_bounce *= 0.50;
                     }
 
-                    // Combined indirect bounce: emission + diffuse bounce of local illumination, tinted by stained glass transmittance
-                    result.radiance = (emission_radiance + bounce_albedo * (blocklight_bounce + sun_radiance + sky_radiance)) * ray_transmittance;
+                    // Split sky/sun-origin radiance from emission/block-light radiance.
+                    // The radial point-light field is local and is included in
+                    // local_lit so sky leaks can still be gated independently.
+                    vec3 sky_lit = bounce_albedo * (sun_radiance + sky_radiance);
+                    vec3 local_lit = emission_radiance
+                        + bounce_albedo * blocklight_bounce
+                        + accumulated_light;
+                    float sky_lum = dot(sky_lit, luminance_weights);
+                    float local_lum = dot(local_lit, luminance_weights);
+                    result.sky_weight = clamp01(sky_lum / max(sky_lum + local_lum, eps));
+
+                    // Combined indirect bounce from the solid hit, tinted by
+                    // stained glass transmittance. accumulated_light is added
+                    // by the caller so it also appears on sky-miss rays.
+                    result.radiance = (
+                        emission_radiance
+                        + bounce_albedo * (blocklight_bounce + sun_radiance + sky_radiance)
+                    ) * ray_transmittance;
                     break;
                 }
             }
@@ -148,14 +194,14 @@ VoxelHit trace_voxel_dda(
 
         // Advance DDA to next boundary
         mask = step(t_max.xyz, min(t_max.yzx, t_max.zxy));
-        t = min(min(t_max.x, t_max.y), t_max.z);
+        t = next_t;
         t_max += mask * delta_t;
         current_voxel += ivec3(mask * step_dir);
     }
 
     result.transmittance = ray_transmittance;
+    result.accumulated_light = accumulated_light;
     return result;
 }
 
 #endif // INCLUDE_LIGHTING_RT_VOXEL_DDA
-

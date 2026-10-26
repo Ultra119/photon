@@ -2,6 +2,7 @@
 #define INCLUDE_LIGHTING_RT_HYBRID_RTGI
 
 // global.glsl included by parent program
+#include "/include/utility/color.glsl"
 #include "/include/utility/geometry.glsl"
 #include "ssgi.glsl"
 #include "voxel_dda.glsl"
@@ -16,8 +17,10 @@ vec3 sample_cosine_hemisphere(vec3 normal, vec2 u) {
     return normalize(tbn_basis * local_dir);
 }
 
-// Evaluate single hybrid RTGI sample
-vec3 evaluate_hybrid_rtgi_ray(
+// Evaluate single hybrid RTGI sample. RGB is radiance; A is the estimated
+// fraction of that radiance that originated from sun/sky rather than from
+// emissive blocks or block light.
+vec4 evaluate_hybrid_rtgi_ray(
     vec3 screen_pos,
     vec3 view_pos,
     vec3 view_normal,
@@ -52,11 +55,11 @@ vec3 evaluate_hybrid_rtgi_ray(
     );
 
     if (ss_hit.hit) {
-        return ss_hit.radiance;
+        return vec4(ss_hit.radiance, ss_hit.sky_weight);
     }
 
     // 2. Fallback to 3D Voxel DDA (handles occluded objects, off-screen surroundings, ceilings)
-    const float max_voxel_dist = 64.0;
+    const float max_voxel_dist = voxel_distance;
     VoxelHit vx_hit = trace_voxel_dda(
         voxel_grid,
         shadow_tex,
@@ -72,12 +75,25 @@ vec3 evaluate_hybrid_rtgi_ray(
     );
 
     if (vx_hit.hit) {
-        return vx_hit.radiance;
+        return vec4(
+            vx_hit.radiance + vx_hit.accumulated_light,
+            vx_hit.sky_weight
+        );
     }
 
-    // 3. Fallback to sky ambient (attenuated by surface skylight and stained glass transmittance)
+    // 3. Fallback to sky ambient (attenuated by surface skylight and stained
+    // glass transmittance) plus any camera-independent point light collected
+    // along the ray before it left the voxel volume.
     float sky_hemi = clamp01(ray_dir_world.y * 0.5 + 0.5);
-    return sky_ambient_color * (sky_hemi * sqr(surface_skylight)) * vx_hit.transmittance;
+    vec3 sky_radiance = sky_ambient_color
+        * (sky_hemi * sqr(surface_skylight))
+        * vx_hit.transmittance;
+    vec3 total_radiance = sky_radiance + vx_hit.accumulated_light;
+    float sky_lum = dot(sky_radiance, luminance_weights);
+    float local_lum = dot(vx_hit.accumulated_light, luminance_weights);
+    float sky_weight = clamp01(sky_lum / max(sky_lum + local_lum, eps));
+
+    return vec4(total_radiance, sky_weight);
 }
 
 #endif // INCLUDE_LIGHTING_RT_HYBRID_RTGI
