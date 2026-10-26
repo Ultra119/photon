@@ -4,7 +4,7 @@
   Photon Shader by SixthSurge
 
   program/d3_ao:
-  Calculate ambient occlusion (RTGI pass-through)
+  Calculate screen-space contact AO for RTGI
 
 --------------------------------------------------------------------------------
 */
@@ -28,8 +28,10 @@ uniform sampler2D colortex2; // gbuffer 1
 uniform sampler2D depthtex1;
 
 uniform mat4 gbufferModelView;
+uniform mat4 gbufferProjectionInverse;
 
 uniform vec2 view_res;
+uniform vec2 taa_offset;
 
 // ------------
 //   Includes
@@ -40,6 +42,75 @@ uniform vec2 view_res;
 #include "/include/utility/fast_math.glsl"
 
 const float ao_render_scale = 0.5;
+
+// Reconstruct a view-space position from a full-resolution depth texel. This
+// is a compact version of screen_to_view_space() without the extra include
+// dependencies; it still removes TAA jitter and respects the TAAU viewport.
+vec3 reconstruct_view_pos(ivec2 texel, float depth) {
+    vec2 framebuffer_uv = (vec2(texel) + 0.5) / view_res;
+    vec2 projection_uv = taau_projection_uv(framebuffer_uv);
+    vec2 ndc = projection_uv * 2.0 - 1.0;
+
+#ifdef TAA
+#ifdef TAAU
+    ndc -= taa_offset * rcp(taau_render_scale);
+#else
+    ndc -= taa_offset * 0.66;
+#endif
+#endif
+
+    return project_and_divide(
+        gbufferProjectionInverse,
+        vec3(ndc, depth * 2.0 - 1.0)
+    );
+}
+
+// Mild 8-tap horizon/contact AO. It only sees near geometry; RTGI remains
+// responsible for large-scale occlusion and indirect lighting.
+float compute_contact_ao(ivec2 texel, float depth, vec3 view_normal) {
+#if defined RAYTRACED_GI
+    if (RTGI_CONTACT_AO_STRENGTH <= 0.0) {
+        return 1.0;
+    }
+
+    vec3 center_pos = reconstruct_view_pos(texel, depth);
+    ivec2 active_res = max(ivec2(1), ivec2(view_res * taau_render_scale));
+
+    const ivec2 offsets[8] = ivec2[8](
+        ivec2( 1,  0), ivec2(-1,  0),
+        ivec2( 0,  1), ivec2( 0, -1),
+        ivec2( 2,  0), ivec2(-2,  0),
+        ivec2( 0,  2), ivec2( 0, -2)
+    );
+
+    float occlusion = 0.0;
+
+    for (int i = 0; i < 8; ++i) {
+        ivec2 sample_texel = clamp(
+            texel + offsets[i] * 2,
+            ivec2(0),
+            active_res - 1
+        );
+
+        float sample_depth = texelFetch(combined_depth_tex, sample_texel, 0).x;
+        if (sample_depth >= 1.0) {
+            continue;
+        }
+
+        vec3 sample_pos = reconstruct_view_pos(sample_texel, sample_depth);
+        vec3 delta = sample_pos - center_pos;
+        float dist = length(delta);
+        float NoD = dot(view_normal, delta / max(dist, eps));
+
+        // Ignore nearly coplanar samples and distant geometry.
+        occlusion += max(0.0, NoD - 0.10) * exp(-dist * 0.35);
+    }
+
+    return clamp01(1.0 - RTGI_CONTACT_AO_STRENGTH * occlusion * 0.125);
+#else
+    return 1.0;
+#endif
+}
 
 void main() {
     ivec2 texel = ivec2(gl_FragCoord.xy);
@@ -86,9 +157,8 @@ void main() {
 #endif
 
     vec3 view_normal = mat3(gbufferModelView) * world_normal;
+    float ao = compute_contact_ao(view_texel, depth, view_normal);
 
-    // With Ray Traced GI enabled, RTGI diffuse rays and 3D voxel traversal
-    // naturally provide 100% physically based ambient occlusion and cavity darkening.
-    ambient = vec4(1.0, 0.0, view_normal.xy * 0.5 + 0.5);
+    ambient = vec4(ao, 0.0, view_normal.xy * 0.5 + 0.5);
     ambient_history_data = vec2(1.0 - depth, 1.0);
 }
