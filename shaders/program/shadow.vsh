@@ -65,7 +65,9 @@ uniform float biome_temperature;
 uniform float biome_humidity;
 
 #if defined RAYTRACED_GI || defined RT_REFLECTIONS
-writeonly uniform uimage3D voxel_img;
+// R32UI supports imageAtomicMax(), which resolves concurrent voxel writes
+// from multiple vertices deterministically.
+layout(r32ui) uniform uimage3D voxel_img;
 
 uniform int renderStage;
 #endif
@@ -87,7 +89,7 @@ void main() {
     tint = gl_Color.rgb;
 
 #if (defined RAYTRACED_GI || defined RT_REFLECTIONS) && !defined PROGRAM_SHADOW_ENTITIES
-    update_rt_voxel_grid(voxel_img, material_mask, tint, at_midBlock, clamp01(gl_MultiTexCoord1.xy * (1.0 / 240.0)));
+    update_rt_voxel_grid(material_mask, tint, at_midBlock, clamp01(gl_MultiTexCoord1.xy * (1.0 / 240.0)));
 #endif
 
 #if defined WORLD_NETHER

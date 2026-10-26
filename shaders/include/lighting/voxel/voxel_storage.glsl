@@ -14,32 +14,64 @@ struct VoxelSample {
     bool is_emitter;
 };
 
-// Pack block information into voxel cell (including local blocklight and skylight)
-uvec4 pack_voxel_data(uint block_id, float block_light, float sky_light, vec3 albedo, bool is_translucent, bool is_emitter) {
-    uint b_light = uint(clamp(block_light * 255.0 + 0.5, 0.0, 255.0));
-    uint s_light = uint(clamp(sky_light * 255.0 + 0.5, 0.0, 255.0));
-    uint flags = (is_translucent ? 1u : 0u) | (is_emitter ? 2u : 0u);
-    uint tint_g = uint(clamp(albedo.g * 63.0 + 0.5, 0.0, 63.0));
-    return uvec4(block_id & 0xFFu, b_light, s_light, (tint_g << 2u) | (flags & 0x03u));
+// Pack/unpack a full-RGB albedo into 15 bits (RGB555). The voxel image is a
+// single-channel R32UI 3D image, so each texel is one deterministic 32-bit
+// payload. imageAtomicMax() is used by the voxelization pass; the most
+// significant fields therefore win in a write race:
+//
+//   bits  0..14 : albedo RGB555
+//   bits 15..18 : block light (4 bits)
+//   bits 19..22 : sky light (4 bits)
+//   bits 23..24 : translucent / emitter flags
+//   bits 25..31 : block ID (7 bits; block.properties currently stops at 96)
+//
+// Air is all-zero and always loses to any solid voxel. A voxel with
+// block_id == 0 but block_light > 0 is a light-only voxel injected around a
+// small emitter; DDA accumulates it without treating it as geometry.
+uint pack_unorm_rgb555(vec3 color) {
+    uvec3 quantized = uvec3(clamp(color, vec3(0.0), vec3(1.0)) * 31.0 + 0.5);
+    return quantized.r | (quantized.g << 5u) | (quantized.b << 10u);
 }
 
-// Unpack voxel cell data
-VoxelSample unpack_voxel_data(uvec4 raw_data) {
-    VoxelSample sample_data;
-    sample_data.block_id = raw_data.r;
-    sample_data.is_solid = (raw_data.r != 0u);
-    sample_data.block_light = float(raw_data.g) / 255.0;
-    sample_data.sky_light = float(raw_data.b) / 255.0;
+vec3 unpack_unorm_rgb555(uint packed) {
+    uvec3 quantized = uvec3(
+        packed & 0x1Fu,
+        (packed >> 5u) & 0x1Fu,
+        (packed >> 10u) & 0x1Fu
+    );
+    return vec3(quantized) * (1.0 / 31.0);
+}
 
-    uint flags = raw_data.a & 0x03u;
+// Pack block information into one deterministic 32-bit voxel texel.
+uint pack_voxel_data(uint block_id, float block_light, float sky_light, vec3 albedo, bool is_translucent, bool is_emitter) {
+    uint color = pack_unorm_rgb555(albedo);
+    uint block_id7 = block_id & 0x7Fu;
+    uint b_light = uint(clamp(block_light * 15.0 + 0.5, 0.0, 15.0));
+    uint s_light = uint(clamp(sky_light * 15.0 + 0.5, 0.0, 15.0));
+    uint flags = (is_translucent ? 1u : 0u) | (is_emitter ? 2u : 0u);
+
+    return color
+        | (b_light << 15u)
+        | (s_light << 19u)
+        | (flags << 23u)
+        | (block_id7 << 25u);
+}
+
+// Unpack voxel cell data from one R32UI texel value.
+VoxelSample unpack_voxel_data(uint packed) {
+    VoxelSample sample_data;
+    sample_data.block_id = (packed >> 25u) & 0x7Fu;
+    sample_data.is_solid = sample_data.block_id != 0u;
+    sample_data.block_light = float((packed >> 15u) & 0xFu) * (1.0 / 15.0);
+    sample_data.sky_light = float((packed >> 19u) & 0xFu) * (1.0 / 15.0);
+
+    uint flags = (packed >> 23u) & 0x03u;
     sample_data.is_translucent = (flags & 1u) != 0u;
     sample_data.is_emitter = (flags & 2u) != 0u || (sample_data.block_id >= 32u && sample_data.block_id < 80u);
 
-    float tint_g = float(raw_data.a >> 2u) / 63.0;
-    sample_data.color = vec3(tint_g);
+    sample_data.color = unpack_unorm_rgb555(packed & 0x7FFFu);
 
     return sample_data;
 }
 
 #endif // INCLUDE_LIGHTING_VOXEL_STORAGE
-

@@ -13,6 +13,39 @@ struct VoxelMaterial {
     bool is_translucent;
 };
 
+// Full-block emitters are handled as solid emissive hits. Smaller emitters
+// (torches, lanterns, candles, end rods, etc.) get a radial light field and
+// should not stop a DDA ray by themselves.
+bool is_point_light_emitter(uint block_id) {
+    if (block_id < 32u || block_id >= 80u) {
+        return false;
+    }
+
+    switch (block_id) {
+        case 32u: // sea lantern
+        case 39u: // lava
+        case 42u: // jack o'lantern
+        case 44u: // beacon
+        case 47u: // spawner / heads / crying obsidian
+        case 51u: // ochre froglight
+        case 52u: // verdant froglight
+        case 53u: // pearlescent froglight
+        case 58u: // redstone block
+        case 61u: // copper bulb
+            return false;
+        default:
+            return true;
+    }
+}
+
+// Normalized emitter color for light-only voxels.
+vec3 get_voxel_light_color(uint block_id) {
+    uint idx = clamp(block_id, 32u, 79u) - 32u;
+    vec3 color = voxel_light_color_table[idx];
+    float peak = max_of(color);
+    return peak > 0.0 ? color / peak : vec3(1.0);
+}
+
 // Physically calibrated block albedos & materials
 VoxelMaterial get_voxel_material(uint block_id, vec3 fallback_color) {
     VoxelMaterial mat;
@@ -49,14 +82,14 @@ VoxelMaterial get_voxel_material(uint block_id, vec3 fallback_color) {
 
         // Small plants (grass, short_grass, flowers, dandelion, poppy, fern)
         case 2u:
-            mat.albedo = (fallback_color.g > 0.05) ? fallback_color * 0.40 : vec3(0.12, 0.22, 0.06);
+            mat.albedo = (max_of(fallback_color) > 0.05) ? fallback_color * 0.40 : vec3(0.12, 0.22, 0.06);
             mat.roughness = 0.90;
             mat.is_solid = false;
             break;
 
         // Tall plants (sunflowers, lilac, rose bush)
         case 3u:
-            mat.albedo = (fallback_color.g > 0.05) ? fallback_color * 0.40 : vec3(0.12, 0.22, 0.06);
+            mat.albedo = (max_of(fallback_color) > 0.05) ? fallback_color * 0.40 : vec3(0.12, 0.22, 0.06);
             mat.roughness = 0.90;
             mat.is_solid = false;
             break;
@@ -70,7 +103,7 @@ VoxelMaterial get_voxel_material(uint block_id, vec3 fallback_color) {
 
         // Leaves & foliage
         case 5u:
-            mat.albedo = (fallback_color.g > 0.05) ? fallback_color * 0.30 : vec3(0.06, 0.14, 0.03);
+            mat.albedo = (max_of(fallback_color) > 0.05) ? fallback_color * 0.30 : vec3(0.06, 0.14, 0.03);
             mat.roughness = 0.90;
             mat.sss_amount = 0.0;
             mat.is_solid = true;
@@ -137,7 +170,7 @@ VoxelMaterial get_voxel_material(uint block_id, vec3 fallback_color) {
 
         // Strong SSS materials (azalea, sugar cane, bamboo, vine, lily pad)
         case 14u:
-            mat.albedo = (fallback_color.g > 0.05) ? fallback_color * 0.30 : vec3(0.10, 0.20, 0.05);
+            mat.albedo = (max_of(fallback_color) > 0.05) ? fallback_color * 0.30 : vec3(0.10, 0.20, 0.05);
             mat.roughness = 0.80;
             mat.is_solid = false;
             mat.is_translucent = true;
