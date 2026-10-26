@@ -152,7 +152,7 @@ option.SSS_STEPS                       = SSS Steps
 option.SSS_STEPS.comment               = Increase to reduce noise on foliage and other materials with SSS, at the cost of performance.
 
 option.VANILLA_AO                      = Vanilla AO
-option.VANILLA_AO.comment              = Minecraft's built-in ambient occlusion
+option.VANILLA_AO.comment              = Minecraft's built-in ambient occlusion. Disabled by default because RTGI provides indirect occlusion.
 option.VANILLA_AO_INTENSITY            = Vanilla AO Intensity
 option.VANILLA_AO_INTENSITY.comment    = Adjusts the intensity of minecraft's built in ambient occlusion
 
@@ -768,15 +768,15 @@ option.RTGI_BRIGHTNESS.comment                                      = Controls t
 option.RTGI_INTERIOR_RETENTION                                      = RTGI Interior Retention
 option.RTGI_INTERIOR_RETENTION.comment                              = How much sky-origin RTGI is kept on low-skylight surfaces. 1.00 keeps all traced GI; emissive/block-light cave bounces are always preserved.
 option.RTGI_CONTACT_AO_STRENGTH                                     = RTGI Contact AO Strength
-option.RTGI_CONTACT_AO_STRENGTH.comment                             = Strength of the screen-space contact shadow term applied to diffuse lighting. 0.00 disables it.
+option.RTGI_CONTACT_AO_STRENGTH.comment                             = Optional screen-space contact shadow term. Disabled by default because RTGI provides indirect occlusion.
 option.RTGI_POINT_LIGHT_STRENGTH                                    = RTGI Point Light Strength
-option.RTGI_POINT_LIGHT_STRENGTH.comment                            = Strength of the camera-independent voxel light field injected around torches, lanterns, and other small emitters.
+option.RTGI_POINT_LIGHT_STRENGTH.comment                            = Strength of the camera-independent voxel light field injected around all emissive blocks.
 option.RTGI_POINT_LIGHT_RADIUS                                      = RTGI Point Light Radius
-option.RTGI_POINT_LIGHT_RADIUS.comment                              = Voxel radius of the point-light field around small emitters. Higher values spread light farther but cost more shadow-pass writes.
+option.RTGI_POINT_LIGHT_RADIUS.comment                              = Voxel radius of the light field around emissive blocks. Higher values spread light farther but cost more shadow-pass writes.
 option.RTGI_SSGI_LOCAL_LIGHT_SCALE                                  = SSGI Local Light Scale
 option.RTGI_SSGI_LOCAL_LIGHT_SCALE.comment                          = How strongly previous-frame screen color contributes to SSGI in low-skylight/local-light scenes. Lower values reduce camera-angle-dependent light smearing.
 option.RTGI_CAVE_AMBIENT_SCALE                                      = RTGI Cave Ambient Scale
-option.RTGI_CAVE_AMBIENT_SCALE.comment                              = Scales Photon's analytic cave ambient term. Lower values make fully dark caves darker.
+option.RTGI_CAVE_AMBIENT_SCALE.comment                              = Scales Photon's analytic cave ambient term. 0.00 keeps unlit caves fully dark.
 
 option.RTGI_RAY_COUNT                                                = RTGI Ray Count
 

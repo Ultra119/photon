@@ -22,9 +22,9 @@ There are two release blockers and one configuration blocker:
 3. **P0 — voxelization depends on the shadow pass being enabled.**  
    Voxels are written from `shadow.vsh`, but `program.world0/shadow.enabled = SHADOW`, `program.world1/shadow.enabled = SHADOW`, and `program.world-1/shadow.enabled = RAYTRACED_GI`. If `SHADOW` is disabled, or if `RAYTRACED_GI` is off while `RT_REFLECTIONS` is on, the voxel grid is cleared but never populated. RTGI then degrades to SSGI/sky fallback.
 
-**Status:** Steps 0–10 are applied in the working tree. Step 10 is a runtime-tuning hotfix: SSGI previous-frame color is disabled by default in local-light scenes, and cave ambient brightness is reduced via a tunable scale.
+**Status:** Steps 0–11 are applied in the working tree. Step 11 removes the remaining SSGI fallback blocker, extends the radial light field to full-block emitters, disables non-raytraced AO by default, and makes unlit caves fully dark by default.
 
-TAAU, translucent-GI, sky/emissive gating, voxel-range constants, colored voxel albedo, contact AO, deterministic voxel writes, point-light propagation, SSGI local-light damping, and cave ambient tuning are now addressed; the remaining work is runtime validation plus optional debug views.
+TAAU, translucent-GI, sky/emissive gating, voxel-range constants, colored voxel albedo, deterministic voxel writes, point-light propagation, SSGI local-light damping, and cave ambient tuning are now addressed; the remaining work is runtime validation plus optional debug views.
 
 ---
 
@@ -325,7 +325,21 @@ After the user reported that the point-light field reduced noise but did not rem
 - Updated `settings.glsl`, `shaders.properties`, `en_US.lang`, `properties_lint.py`, and the reproduce commands.
 - Static checks still pass: `308`/`780` matrix cases, packing test, properties lint (14 RTGI menu options), `git diff --check`, and direct checks for `RTGI_SSGI_LOCAL_LIGHT_SCALE=0.00` and `RTGI_CAVE_AMBIENT_SCALE=0.00`.
 
-Runtime validation is still needed. If camera dependence persists with `RTGI_SSGI_LOCAL_LIGHT_SCALE=0.00`, the remaining source is likely in the SSGI reprojection path before the scale is applied or in the voxel light field itself; debug views would be the next diagnostic step.
+Runtime validation is still needed. Step 11 addresses the remaining reprojection and voxel-field causes identified after this hotfix.
+
+---
+
+## Step 11 status — camera-independent local GI + AO cleanup applied 2026-10-26
+
+Runtime screenshots showed a full-block emitter lighting the wall mainly when the source was behind the camera, while unlit caves stayed bright and corners showed non-raytraced AO. The following focused changes were applied:
+
+- `ssgi.glsl` no longer reports a zero-radiance SSGI hit when `RTGI_SSGI_LOCAL_LIGHT_SCALE` is `0.00`; low-skylight scenes bypass SSGI entirely. This lets the camera-independent voxel DDA fallback run instead of being suppressed by a dead hit.
+- `hybrid_rtgi.glsl` passes receiver skylight to SSGI so that bypass is based on the surface being shaded, not only the hit voxel.
+- `voxel_palette.glsl` and `voxel_update.glsl` now inject the radial light field for every emissive block ID, including full-block lamps such as sea lanterns and froglights. `is_point_light_emitter()` remains the separate DDA transparency test for small sources.
+- Defaults: `RTGI_POINT_LIGHT_STRENGTH=1.00`, `RTGI_POINT_LIGHT_RADIUS=4`, `RTGI_CONTACT_AO_STRENGTH=0.00`, `RTGI_CAVE_AMBIENT_SCALE=0.00`, and `VANILLA_AO` disabled. RTGI itself supplies the indirect occlusion; analytic/corner AO is optional.
+- Static validation still passes: voxel packing test, properties lint (14 RTGI options), `308` compute/fragment cases, `780` wrapper/option cases, and `git diff --check`.
+
+In-game validation is needed to confirm that walls beside a light source no longer brighten when the camera turns, that sealed caves are dark, and that corner AO is gone.
 
 ---
 
@@ -651,4 +665,6 @@ Or simply:
 
 Before the P0 fixes, the Nether and `!SHADOW` checks above failed with
 `'shadowtex0' : undeclared identifier`. They now pass. The TAAU 0.50 check
-exercises the P1-1 coordinate path.
+exercises the P1-1 coordinate path. Step 11 adds no new macros; the existing
+`RTGI_SSGI_LOCAL_LIGHT_SCALE=0.00`, `RTGI_CAVE_AMBIENT_SCALE=0.00`, and
+`RTGI_CONTACT_AO_STRENGTH=0.00` cases cover the new defaults.
