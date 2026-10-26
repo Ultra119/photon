@@ -45,18 +45,28 @@ SSGIHit trace_screen_space_gi(
         return result;
     }
 
+    // A tiny direction perturbation keeps screen-space rays off exact depth
+    // seams. The raymarch dither alone only offsets steps, not the ray plane.
+    vec3 ssgi_seed = ray_dir_view + vec3(dither);
+    vec3 ssgi_jitter = vec3(
+        fract(sin(dot(ssgi_seed, vec3(12.9898, 78.233, 37.719))) * 43758.5453),
+        fract(sin(dot(ssgi_seed, vec3(39.3468, 11.135, 83.155))) * 24634.6345),
+        fract(sin(dot(ssgi_seed, vec3(73.156, 52.235, 9.151))) * 91245.9421)
+    ) - 0.5;
+    vec3 march_dir_view = normalize(ray_dir_view + ssgi_jitter * 0.02);
+
     vec3 hit_screen_pos;
     const uint steps = 16u;
     const uint refinement = 2u;
 
     // Bias start point along normal to prevent self-intersection with the originating depth surface
-    vec3 start_view_pos = view_pos + view_normal * 0.15 + ray_dir_view * 0.05;
+    vec3 start_view_pos = view_pos + view_normal * 0.15 + march_dir_view * 0.05;
     vec3 start_screen_pos = view_to_screen_space(SSRT_PROJECTION_MATRIX, start_view_pos, true);
 
     bool hit = raymarch_depth_buffer(
         start_screen_pos,
         start_view_pos,
-        ray_dir_view,
+        march_dir_view,
         dither,
         steps,
         refinement,
@@ -74,8 +84,20 @@ SSGIHit trace_screen_space_gi(
             vec3 hit_pos_scene = view_to_scene_space(hit_pos_view);
             vec3 origin_pos_scene = view_to_scene_space(view_pos);
 
-            // Reject self-intersection (hit within 0.10m of originating surface)
+            // Reject self-intersection and adjacent faces of the same world
+            // block. Otherwise a pale sunlit/lamp-lit block can sample its own
+            // previous-frame color through a seam and create a glowing loop.
             if (distance(hit_pos_scene, origin_pos_scene) < 0.10) {
+                return result;
+            }
+
+            // Compare in camera-relative block space: only the camera's
+            // fractional offset is needed, avoiding precision loss at large
+            // world coordinates.
+            vec3 camera_block_offset = fract(cameraPosition);
+            ivec3 origin_block = ivec3(floor(origin_pos_scene + camera_block_offset));
+            ivec3 hit_block = ivec3(floor(hit_pos_scene + camera_block_offset));
+            if (origin_block == hit_block) {
                 return result;
             }
 
@@ -109,7 +131,7 @@ SSGIHit trace_screen_space_gi(
                 vec3 hit_normal_view = mat3(gbufferModelView) * hit_normal;
                 vec2 hit_light_levels = unpack_unorm_2x8(gbuf.w);
 
-                if (dot(hit_normal_view, -ray_dir_view) > -0.1) {
+                if (dot(hit_normal_view, -march_dir_view) > 0.05) {
                     // Previous-frame color is strongly view-dependent for
                     // local lights. Damp it in low-skylight scenes and let the
                     // voxel point-light field carry the stable bounce instead.

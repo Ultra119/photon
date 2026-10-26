@@ -7,6 +7,23 @@
 #include "/include/lighting/shadows/distortion.glsl"
 #include "/include/lighting/colors/blocklight_color.glsl"
 
+// Lambertian surfaces convert irradiance to radiance with 1/pi. Voxel DDA
+// only stores irradiance-like sun/sky/blocklight terms, so the bounce must be
+// divided by pi before being accumulated as GI radiance.
+const float voxel_bounce_rcp_pi = 0.31830988618;
+
+// Hemisphere samples can land exactly on a voxel face/corner seam. A tiny
+// deterministic perturbation keeps the DDA ray from traveling forever along
+// that plane and sampling sunlight or point lights through solid walls.
+vec3 rtgi_voxel_ray_jitter(float dither, vec3 ray_dir) {
+    vec3 seed = ray_dir + vec3(dither);
+    return vec3(
+        fract(sin(dot(seed, vec3(12.9898, 78.233, 37.719))) * 43758.5453),
+        fract(sin(dot(seed, vec3(39.3468, 11.135, 83.155))) * 24634.6345),
+        fract(sin(dot(seed, vec3(73.156, 52.235, 9.151))) * 91245.9421)
+    ) - 0.5;
+}
+
 struct VoxelHit {
     bool hit;
     vec3 hit_pos;
@@ -54,15 +71,17 @@ VoxelHit trace_voxel_dda(
     vec3 ray_origin_scene,
     vec3 surface_normal,
     vec3 ray_dir,
+    float dither,
     vec3 direct_sun_color,
     vec3 sky_ambient_color,
     vec3 l_dir,
     float max_dist
 ) {
     VoxelHit result;
+    vec3 dda_dir = normalize(ray_dir + rtgi_voxel_ray_jitter(dither, ray_dir) * 0.05);
     result.hit = false;
-    result.hit_pos = ray_origin_scene + ray_dir * max_dist;
-    result.hit_normal = -ray_dir;
+    result.hit_pos = ray_origin_scene + dda_dir * max_dist;
+    result.hit_normal = -dda_dir;
     result.radiance = vec3(0.0);
     result.distance = max_dist;
     result.transmittance = vec3(1.0);
@@ -73,15 +92,18 @@ VoxelHit trace_voxel_dda(
     vec3 accumulated_light = vec3(0.0);
 
     // Offset ray origin along surface normal and forward to clear starting block boundary
-    vec3 start_scene = ray_origin_scene + surface_normal * 0.25 + ray_dir * 0.05;
+    vec3 start_scene = ray_origin_scene + surface_normal * 0.25 + dda_dir * 0.05;
     vec3 start_voxel = scene_to_voxel_space(start_scene);
     ivec3 current_voxel = ivec3(floor(start_voxel));
 
-    // Voxel containing the origin surface point (must not self-intersect)
+    // Voxels containing the origin surface point (must not self-intersect).
+    // Use both the geometric normal and the traced ray so mapped normals or
+    // exact seams cannot leave an unignored solid voxel at the ray start.
     ivec3 origin_voxel = ivec3(floor(scene_to_voxel_space(ray_origin_scene - surface_normal * 0.1)));
+    ivec3 origin_voxel_ray = ivec3(floor(scene_to_voxel_space(ray_origin_scene - dda_dir * 0.1)));
 
-    vec3 step_dir = sign(ray_dir);
-    vec3 delta_t = abs(1.0 / (ray_dir + vec3(1e-7)));
+    vec3 step_dir = sign(dda_dir);
+    vec3 delta_t = abs(1.0 / (dda_dir + vec3(1e-7)));
     vec3 t_max = (step_dir * (vec3(current_voxel) - start_voxel) + step_dir * 0.5 + 0.5) * delta_t;
 
     vec3 mask = vec3(0.0);
@@ -99,7 +121,7 @@ VoxelHit trace_voxel_dda(
         float segment_mid = 0.5 * (t + clamped_next_t);
 
         // Ignore the origin block to completely eliminate self-intersection
-        if (current_voxel != origin_voxel) {
+        if (current_voxel != origin_voxel && current_voxel != origin_voxel_ray) {
             uint packed = texelFetch(voxel_grid, current_voxel, 0).r;
             VoxelSample sample_data = unpack_voxel_data(packed);
 
@@ -133,7 +155,7 @@ VoxelHit trace_voxel_dda(
                         * emitter_attenuation * 0.20 * ray_transmittance;
                 } else if (mat.is_solid) {
                     result.hit = true;
-                    result.hit_normal = (dot(mask, mask) > 0.5) ? (-mask * step_dir) : -sign(ray_dir);
+                    result.hit_normal = (dot(mask, mask) > 0.5) ? (-mask * step_dir) : -sign(dda_dir);
                     result.distance = t;
                     result.transmittance = ray_transmittance;
 

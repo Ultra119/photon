@@ -69,6 +69,7 @@ vec4 evaluate_hybrid_rtgi_ray(
         scene_pos,
         world_normal,
         ray_dir_world,
+        dither,
         direct_sun_color,
         sky_ambient_color,
         l_dir,
