@@ -78,8 +78,15 @@ void main() {
         return;
     }
 
-    // Exact UV at the mathematical center of this half-resolution texel
+    // uv is a full-framebuffer UV. Under TAAU only the lower-left
+    // taau_render_scale x taau_render_scale region contains scene data.
     vec2 uv = (vec2(texel) + 0.5) / vec2(target_res);
+
+    if (taau_uv_outside_viewport(uv)) {
+        imageStore(rtgi_raw_img, texel, vec4(0.0));
+        return;
+    }
+
     ivec2 full_texel = ivec2(uv * view_res);
 
     float depth = texelFetch(depthtex1, full_texel, 0).x;
@@ -101,8 +108,9 @@ void main() {
     vec3 mapped_normal = world_normal;
 #endif
 
-    // Reconstruct position (handle_jitter = true to correctly invert TAA camera jitter)
-    vec3 screen_pos = vec3(uv, depth);
+    // Convert the framebuffer UV back to projection UV before inverting the
+    // (jittered, TAAU-scaled) projection.
+    vec3 screen_pos = vec3(taau_projection_uv(uv), depth);
     vec3 view_pos = screen_to_view_space(screen_pos, true);
     vec3 scene_pos = view_to_scene_space(view_pos);
 
@@ -122,7 +130,7 @@ void main() {
 #define RTGI_RAY_COUNT 2
 #endif
 
-    vec3 accum_radiance = vec3(0.0);
+    vec4 accum_radiance = vec4(0.0);
 
     for (int r = 0; r < RTGI_RAY_COUNT; ++r) {
         vec2 u = r2(r, dither);
@@ -133,7 +141,7 @@ void main() {
             ray_dir = reflect(ray_dir, world_normal);
         }
 
-        vec3 radiance = evaluate_hybrid_rtgi_ray(
+        vec4 radiance = evaluate_hybrid_rtgi_ray(
             screen_pos,
             view_pos,
             mat3(gbufferModelView) * world_normal,
@@ -155,16 +163,17 @@ void main() {
         );
 
         // Firefly suppression: limit extreme single-ray radiance spikes
-        float lum = dot(radiance, luminance_weights);
+        float lum = dot(radiance.rgb, luminance_weights);
         const float max_radiance_lum = 12.0;
         if (lum > max_radiance_lum) {
-            radiance *= max_radiance_lum / lum;
+            radiance.rgb *= max_radiance_lum / lum;
         }
 
         accum_radiance += radiance;
     }
 
-    vec3 final_radiance = accum_radiance * (1.0 / float(RTGI_RAY_COUNT));
+    vec4 final_radiance = accum_radiance * (1.0 / float(RTGI_RAY_COUNT));
+    final_radiance.a = clamp01(final_radiance.a);
 
-    imageStore(rtgi_raw_img, texel, vec4(final_radiance, 1.0));
+    imageStore(rtgi_raw_img, texel, final_radiance);
 }

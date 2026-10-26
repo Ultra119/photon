@@ -91,6 +91,17 @@ const float taau_render_scale = 1.0;
 
 #define rcp(x) (1.0 / (x))
 #define clamp01(x) clamp(x, 0.0, 1.0) // free on operation output
+
+// TAAU renders the scene into a sub-viewport of the full-size render targets.
+// Projection-space UVs are 0..1 across that viewport (what the projection
+// matrices and screen_to_view_space() expect); framebuffer UVs are 0..1 across
+// the full-size color/depth targets (what custom images and texelFetch() use).
+// At native resolution taau_render_scale is 1, so both helpers are identity.
+vec2 taau_framebuffer_uv(vec2 uv) { return uv * taau_render_scale; }
+vec2 taau_projection_uv(vec2 uv) { return uv * rcp(taau_render_scale); }
+bool taau_uv_outside_viewport(vec2 uv) {
+    return any(greaterThanEqual(uv, vec2(taau_render_scale)));
+}
 #define max0(x) max(x, 0.0)
 #define min1(x) min(x, 1.0)
 

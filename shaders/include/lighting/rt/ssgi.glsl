@@ -11,6 +11,7 @@ struct SSGIHit {
     vec2 hit_uv;
     vec3 hit_pos_scene;
     vec3 radiance;
+    float sky_weight;
 };
 
 // Screen-space GI raymarcher
@@ -29,6 +30,7 @@ SSGIHit trace_screen_space_gi(
     result.hit_uv = vec2(0.0);
     result.hit_pos_scene = vec3(0.0);
     result.radiance = vec3(0.0);
+    result.sky_weight = 0.0;
 
     // Skip rays that face backwards or are too grazing into the surface
     if (dot(ray_dir_view, view_normal) <= 0.05) {
@@ -69,9 +71,18 @@ SSGIHit trace_screen_space_gi(
                 return result;
             }
 
+            // hit_screen_pos is in projection space; convert to full-framebuffer
+            // texel coordinates before fetching depth/G-buffer data.
+            vec2 hit_framebuffer_uv = taau_framebuffer_uv(hit_screen_pos.xy);
+            ivec2 hit_texel = clamp(
+                ivec2(hit_framebuffer_uv * view_res),
+                ivec2(0),
+                ivec2(view_res) - 1
+            );
+
             // Check if the hit surface is behind translucent geometry (glass/water)
-            float d_trans = texelFetch(depth_translucent_sampler, ivec2(hit_screen_pos.xy * view_res), 0).x;
-            float d_solid = texelFetch(SSRT_DEPTH_SAMPLER, ivec2(hit_screen_pos.xy * view_res), 0).x;
+            float d_trans = texelFetch(depth_translucent_sampler, hit_texel, 0).x;
+            float d_solid = texelFetch(SSRT_DEPTH_SAMPLER, hit_texel, 0).x;
             if (d_trans < d_solid - 1e-4) {
                 // Target is behind translucent geometry: bypass SSGI and let 3D Voxel DDA
                 // trace through the glass voxels for 100% physically accurate colored transmission!
@@ -85,15 +96,30 @@ SSGIHit trace_screen_space_gi(
                 sample_col = max(vec3(0.0), min(sample_col, vec3(6.0)));
 
                 // Validate hit normal opposing ray using current-frame gbuffer at hit screen coord
-                vec4 gbuf = textureLod(gbuffer0_sampler, hit_screen_pos.xy, 0.0);
+                vec4 gbuf = textureLod(gbuffer0_sampler, hit_framebuffer_uv, 0.0);
                 vec3 hit_normal = decode_unit_vector(unpack_unorm_2x8(gbuf.z));
                 vec3 hit_normal_view = mat3(gbufferModelView) * hit_normal;
+                vec2 hit_light_levels = unpack_unorm_2x8(gbuf.w);
 
                 if (dot(hit_normal_view, -ray_dir_view) > -0.1) {
+                    // Previous-frame color is strongly view-dependent for
+                    // local lights. Damp it in low-skylight scenes and let the
+                    // voxel point-light field carry the stable bounce instead.
+                    float local_light_factor = clamp01(1.0 - sqr(hit_light_levels.y));
+                    float ssgi_scale = mix(
+                        1.2,
+                        RTGI_SSGI_LOCAL_LIGHT_SCALE,
+                        local_light_factor
+                    );
+
                     result.hit = true;
                     result.hit_uv = prev_screen_pos.xy;
                     result.hit_pos_scene = hit_pos_scene;
-                    result.radiance = sample_col * (edge_fade * 1.2);
+                    result.radiance = sample_col * edge_fade * ssgi_scale;
+                    // Previous-frame color from a high-skylight surface is
+                    // mostly sun/sky driven; low-skylight hits are treated as
+                    // emissive/block-light driven and are never gated indoors.
+                    result.sky_weight = clamp01(sqr(hit_light_levels.y));
                 }
             }
         }
