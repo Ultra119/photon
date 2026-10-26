@@ -172,7 +172,9 @@ VoxelHit trace_voxel_dda(
                         l_dir
                     );
                     float NoL = max(0.0, dot(result.hit_normal, l_dir));
-                    vec3 sun_radiance = direct_sun_color * (sun_vis * NoL * 3.0);
+                    // Direct light is already scaled by SUN_I / exposure. The
+                    // old 3.0 multiplier double-counted it in the GI bounce.
+                    vec3 sun_radiance = direct_sun_color * (sun_vis * NoL);
 
                     // 2. Skylight bounce (diffuse irradiance from sky hemisphere; 0.0 in caves/interiors)
                     float sky_factor = clamp01(result.hit_normal.y * 0.5 + 0.5);
@@ -194,9 +196,12 @@ VoxelHit trace_voxel_dda(
                     // Split sky/sun-origin radiance from emission/block-light radiance.
                     // The radial point-light field is local and is included in
                     // local_lit so sky leaks can still be gated independently.
-                    vec3 sky_lit = bounce_albedo * (sun_radiance + sky_radiance);
+                    vec3 bounce_irradiance = blocklight_bounce + sun_radiance + sky_radiance;
+                    vec3 bounce_radiance = bounce_albedo * bounce_irradiance * voxel_bounce_rcp_pi;
+
+                    vec3 sky_lit = bounce_albedo * (sun_radiance + sky_radiance) * voxel_bounce_rcp_pi;
                     vec3 local_lit = emission_radiance
-                        + bounce_albedo * blocklight_bounce
+                        + bounce_albedo * blocklight_bounce * voxel_bounce_rcp_pi
                         + accumulated_light;
                     float sky_lum = dot(sky_lit, luminance_weights);
                     float local_lum = dot(local_lit, luminance_weights);
@@ -206,8 +211,7 @@ VoxelHit trace_voxel_dda(
                     // stained glass transmittance. accumulated_light is added
                     // by the caller so it also appears on sky-miss rays.
                     result.radiance = (
-                        emission_radiance
-                        + bounce_albedo * (blocklight_bounce + sun_radiance + sky_radiance)
+                        emission_radiance + bounce_radiance
                     ) * ray_transmittance;
                     break;
                 }

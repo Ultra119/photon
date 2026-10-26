@@ -123,7 +123,7 @@ SSGIHit trace_screen_space_gi(
             vec3 prev_screen_pos = reproject_scene_space(hit_pos_scene, false, false);
             if (clamp01(prev_screen_pos.xy) == prev_screen_pos.xy) {
                 vec3 sample_col = textureLod(scene_color_sampler, prev_screen_pos.xy, 0.0).rgb;
-                sample_col = max(vec3(0.0), min(sample_col, vec3(6.0)));
+                sample_col = max(vec3(0.0), min(sample_col, vec3(4.0)));
 
                 // Validate hit normal opposing ray using current-frame gbuffer at hit screen coord
                 vec4 gbuf = textureLod(gbuffer0_sampler, hit_framebuffer_uv, 0.0);
@@ -137,7 +137,7 @@ SSGIHit trace_screen_space_gi(
                     // voxel point-light field carry the stable bounce instead.
                     float local_light_factor = clamp01(1.0 - sqr(hit_light_levels.y));
                     float ssgi_scale = mix(
-                        1.2,
+                        0.8,
                         RTGI_SSGI_LOCAL_LIGHT_SCALE,
                         local_light_factor
                     );

@@ -22,9 +22,9 @@ There are two release blockers and one configuration blocker:
 3. **P0 — voxelization depends on the shadow pass being enabled.**  
    Voxels are written from `shadow.vsh`, but `program.world0/shadow.enabled = SHADOW`, `program.world1/shadow.enabled = SHADOW`, and `program.world-1/shadow.enabled = RAYTRACED_GI`. If `SHADOW` is disabled, or if `RAYTRACED_GI` is off while `RT_REFLECTIONS` is on, the voxel grid is cleared but never populated. RTGI then degrades to SSGI/sky fallback.
 
-**Status:** Steps 0–11 are applied in the working tree. Step 11 removes the remaining SSGI fallback blocker, extends the radial light field to full-block emitters, disables non-raytraced AO by default, and makes unlit caves fully dark by default.
+**Status:** Steps 0–12 are applied in the working tree. Step 12 seals voxel/screen-space seam leaks and makes pale-block sunlight bounces energy conserving.
 
-TAAU, translucent-GI, sky/emissive gating, voxel-range constants, colored voxel albedo, deterministic voxel writes, point-light propagation, SSGI local-light damping, and cave ambient tuning are now addressed; the remaining work is runtime validation plus optional debug views.
+TAAU, translucent-GI, sky/emissive gating, voxel-range constants, colored voxel albedo, deterministic voxel writes, point-light propagation, SSGI local-light damping, cave ambient tuning, and seam-safe tracing are now addressed; the remaining work is runtime validation plus optional debug views.
 
 ---
 
@@ -340,6 +340,20 @@ Runtime screenshots showed a full-block emitter lighting the wall mainly when th
 - Static validation still passes: voxel packing test, properties lint (14 RTGI options), `308` compute/fragment cases, `780` wrapper/option cases, and `git diff --check`.
 
 In-game validation is needed to confirm that walls beside a light source no longer brighten when the camera turns, that sealed caves are dark, and that corner AO is gone.
+
+---
+
+## Step 12 status — seam leaks + pale-block overbounce applied 2026-10-26
+
+The user identified the bright sunlit sand sides as light leaking through block seams, with the same effect visible around cave lights. Static review found three contributors:
+
+- Voxel DDA rays with an exactly axis-aligned component could travel forever on a voxel face/corner seam, bypassing solid voxels and sampling sun/sky/point-light radiance through walls. DDA and SSGI now apply a tiny deterministic direction jitter; DDA also ignores both the normal-derived and ray-derived origin voxels.
+- Voxel DDA added sun/sky/blocklight irradiance as radiance without the Lambertian `1/pi` factor, and applied an extra `3.0` sun multiplier. Pale blocks such as sand became strong secondary lights. The multiplier is removed and all diffuse bounces now use `voxel_bounce_rcp_pi`.
+- SSGI could sample an adjacent face of the same world block and feed its previous-frame sun/lamp color back into itself. Same-block hits, back-facing hits, and excessive sample radiance are now rejected; the high-skylight SSGI scale is reduced from `1.2` to `0.8`.
+
+`dither` is now threaded through `trace_voxel_dda()` and `trace_voxel_specular_fallback()` so both diffuse and specular voxel traces get stable, per-ray seam offsets. Static validation still passes: voxel packing test, properties lint (14 RTGI options), `308` compute/fragment cases, `780` wrapper/option cases, and `git diff --check`.
+
+In-game validation is needed to confirm that sand sides no longer glow, cave walls stay dark behind sealed corners, and lamp-lit walls remain visible.
 
 ---
 
@@ -665,6 +679,6 @@ Or simply:
 
 Before the P0 fixes, the Nether and `!SHADOW` checks above failed with
 `'shadowtex0' : undeclared identifier`. They now pass. The TAAU 0.50 check
-exercises the P1-1 coordinate path. Step 11 adds no new macros; the existing
+exercises the P1-1 coordinate path. Steps 11–12 add no new macros; the existing
 `RTGI_SSGI_LOCAL_LIGHT_SCALE=0.00`, `RTGI_CAVE_AMBIENT_SCALE=0.00`, and
 `RTGI_CONTACT_AO_STRENGTH=0.00` cases cover the new defaults.
