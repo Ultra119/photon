@@ -194,7 +194,7 @@ option.BLOCKLIGHT_B                    = §9▍ §fBlue
 option.BLOCKLIGHT_I                    = Blocklight Intensity
 
 option.VOXEL_VOLUME_SIZE                                            = Voxel Volume Size
-option.VOXEL_VOLUME_SIZE.comment                                    = Adjusts the size of the volume in which colored lighting is calculated. High performance impact, also affected by shadow distance
+option.VOXEL_VOLUME_SIZE.comment                                    = Side length of the RTGI voxel volume in blocks; also controls GI range and DDA step budget. 256/512 use 64/512 MiB of VRAM.
 suffix.VOXEL_VOLUME_SIZE                                            = m³
 option.VOXEL_VOLUME_CENTER                                          = Voxel Volume Center
 option.VOXEL_VOLUME_CENTER.comment                                  = Ahead: voxel volume is centered in front of the player, meaning that more of it is visible
@@ -765,10 +765,20 @@ option.RAYTRACED_GI.comment                                          = Native Vo
 
 option.RTGI_BRIGHTNESS                                              = RTGI Indirect Brightness
 option.RTGI_BRIGHTNESS.comment                                      = Controls the strength and radiance of the indirect bounced lighting field. Higher values make GI bounces more prominent and vibrant.
+option.RTGI_INTERIOR_RETENTION                                      = RTGI Interior Retention
+option.RTGI_INTERIOR_RETENTION.comment                              = How much sky-origin RTGI is kept on low-skylight surfaces. 1.00 keeps all traced GI; emissive/block-light cave bounces are always preserved.
+option.RTGI_CONTACT_AO_STRENGTH                                     = RTGI Contact AO Strength
+option.RTGI_CONTACT_AO_STRENGTH.comment                             = Strength of the screen-space contact shadow term applied to diffuse lighting. 0.00 disables it.
+option.RTGI_POINT_LIGHT_STRENGTH                                    = RTGI Point Light Strength
+option.RTGI_POINT_LIGHT_STRENGTH.comment                            = Strength of the camera-independent voxel light field injected around torches, lanterns, and other small emitters.
+option.RTGI_POINT_LIGHT_RADIUS                                      = RTGI Point Light Radius
+option.RTGI_POINT_LIGHT_RADIUS.comment                              = Voxel radius of the point-light field around small emitters. Higher values spread light farther but cost more shadow-pass writes.
+option.RTGI_SSGI_LOCAL_LIGHT_SCALE                                  = SSGI Local Light Scale
+option.RTGI_SSGI_LOCAL_LIGHT_SCALE.comment                          = How strongly previous-frame screen color contributes to SSGI in low-skylight/local-light scenes. Lower values reduce camera-angle-dependent light smearing.
+option.RTGI_CAVE_AMBIENT_SCALE                                      = RTGI Cave Ambient Scale
+option.RTGI_CAVE_AMBIENT_SCALE.comment                              = Scales Photon's analytic cave ambient term. Lower values make fully dark caves darker.
 
 option.RTGI_RAY_COUNT                                                = RTGI Ray Count
-option.RTGI_BRIGHTNESS                                              = RTGI Indirect Brightness
-option.RTGI_BRIGHTNESS.comment                                      = Controls the strength and radiance of the indirect bounced lighting field. Higher values make GI bounces more prominent and vibrant.
 
 option.RTGI_RAY_COUNT.comment                                        = Number of indirect diffuse rays traced per pixel. Higher values reduce noise at the cost of framerate.
 
@@ -781,12 +791,5 @@ value.RTGI_RESOLUTION.2                                              = Full (1.0
 option.RT_REFLECTIONS                                                = Ray-Traced Reflections
 option.RT_REFLECTIONS.comment                                        = Traces specular reflection rays into the 3D voxel grid when screen-space reflections (SSR) miss or leave the viewport.
 
-option.RT_AMBIENT_OCCLUSION                                          = Ray-Traced AO
-option.RT_AMBIENT_OCCLUSION.comment                                  = Computes contact ambient occlusion and directional bent normals via local ray tracing.
-
 option.PHYSICAL_BSDF_ENERGY_COMP                                     = Multi-Scatter Conservation
 option.PHYSICAL_BSDF_ENERGY_COMP.comment                             = Kulla-Conty multi-scattering specular energy compensation preventing rough surfaces from unnaturally darkening.
-
-option.PHOTOMETRIC_EXPOSURE                                          = Photometric Camera Exposure
-option.PHOTOMETRIC_EXPOSURE.comment                                  = Physically calibrated illumination ratios (Lux/Lumens) balanced with EV100 camera exposure.
-
