@@ -1,7 +1,7 @@
 #if !defined INCLUDE_LIGHTING_VOXEL_LIGHT_COLORS
 #define INCLUDE_LIGHTING_VOXEL_LIGHT_COLORS
 
-const vec3[48] light_color = vec3[48](
+const vec3[48] voxel_light_color_table = vec3[48](
     vec3(1.00, 1.00, 1.00) * 12.0, // Strong white light
     vec3(1.00, 1.00, 1.00) * 6.0, // Medium white light
     vec3(1.00, 1.00, 1.00) * 1.0, // Weak white light
@@ -53,7 +53,7 @@ const vec3[48] light_color = vec3[48](
     vec3(1.00, 0.55, 0.85) * 10.0  // 47 - Pink        (block 79)
 );
 
-const vec3[16] tint_color = vec3[16](
+const vec3[16] voxel_tint_color_table = vec3[16](
     vec3(1.0, 0.1, 0.1), // Red
     vec3(1.0, 0.5, 0.1), // Orange
     vec3(1.0, 1.0, 0.1), // Yellow

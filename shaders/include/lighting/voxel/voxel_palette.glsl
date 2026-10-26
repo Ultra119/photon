@@ -31,7 +31,7 @@ VoxelMaterial get_voxel_material(uint block_id, vec3 fallback_color) {
     // Check emissive blocks
     if (block_id >= 32u && block_id < 80u) {
         uint light_idx = clamp(block_id - 32u, 0u, 47u);
-        mat.emission = light_color[light_idx] * 2.5;
+        mat.emission = voxel_light_color_table[light_idx] * 2.5;
         mat.roughness = 0.5;
     }
 
@@ -146,7 +146,7 @@ VoxelMaterial get_voxel_material(uint block_id, vec3 fallback_color) {
         case 94u:
         case 95u: {
             uint tint_idx = clamp(block_id - 80u, 0u, 15u);
-            mat.albedo = tint_color[tint_idx];
+            mat.albedo = voxel_tint_color_table[tint_idx];
             mat.roughness = 0.10;
             mat.is_translucent = true;
             break;

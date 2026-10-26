@@ -13,6 +13,10 @@
 #undef SHADOW_SSRT
 #endif
 
+#ifdef ENVIRONMENT_REFLECTIONS
+#undef ENVIRONMENT_REFLECTIONS
+#endif
+
 
 vec3 ambient_color;
 vec3 light_color;
