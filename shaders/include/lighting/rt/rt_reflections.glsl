@@ -7,6 +7,7 @@
 // Traces specular reflection fallback into the 3D voxel grid when screen-space reflections miss
 vec3 trace_voxel_specular_fallback(
     vec3 scene_pos,
+    vec3 surface_normal,
     vec3 ray_dir_world,
     usampler3D voxel_grid,
     sampler2D shadow_tex,
@@ -25,6 +26,7 @@ vec3 trace_voxel_specular_fallback(
         shadow_mv,
         shadow_proj,
         scene_pos,
+        surface_normal,
         ray_dir_world,
         direct_sun_color,
         sky_ambient_color,

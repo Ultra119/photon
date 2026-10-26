@@ -207,6 +207,7 @@ vec3 trace_specular_ray(
     vec3 screen_pos,
     vec3 view_pos,
     vec3 world_pos,
+    vec3 surface_normal,
     vec3 ray_dir,
     float dither,
     float skylight,
@@ -291,6 +292,7 @@ vec3 trace_specular_ray(
 #ifdef RT_REFLECTIONS
         vec3 voxel_fallback = trace_voxel_specular_fallback(
             world_pos - cameraPosition,
+            surface_normal,
             ray_dir,
             voxel_sampler,
             shadowtex0,
@@ -309,6 +311,7 @@ vec3 trace_specular_ray(
 #ifdef RT_REFLECTIONS
         return trace_voxel_specular_fallback(
             world_pos - cameraPosition,
+            surface_normal,
             ray_dir,
             voxel_sampler,
             shadowtex0,
@@ -383,6 +386,7 @@ vec3 get_specular_reflections(
                 screen_pos,
                 view_pos,
                 world_pos,
+                microfacet_normal,
                 ray_dir,
                 dither,
                 skylight,
@@ -450,6 +454,7 @@ vec3 get_specular_reflections(
         screen_pos,
         view_pos,
         world_pos,
+        normal,
         ray_dir,
         dither,
         skylight,
