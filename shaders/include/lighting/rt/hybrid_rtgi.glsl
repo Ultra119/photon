@@ -49,6 +49,7 @@ vec4 evaluate_hybrid_rtgi_ray(
         view_normal,
         ray_dir_view,
         dither,
+        surface_skylight,
         scene_color_sampler,
         gbuffer0_sampler,
         depth_translucent_sampler

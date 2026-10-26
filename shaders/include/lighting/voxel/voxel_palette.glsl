@@ -13,9 +13,15 @@ struct VoxelMaterial {
     bool is_translucent;
 };
 
-// Full-block emitters are handled as solid emissive hits. Smaller emitters
-// (torches, lanterns, candles, end rods, etc.) get a radial light field and
-// should not stop a DDA ray by themselves.
+// Every emissive block ID gets a radial light field. This includes full-block
+// lamps such as sea lanterns and froglights; otherwise their neighboring voxels
+// stay dark unless the emitter voxel itself is hit by a ray.
+bool is_voxel_light_source(uint block_id) {
+    return 32u <= block_id && block_id < 80u;
+}
+
+// Smaller emitters (torches, lanterns, candles, end rods, etc.) should not stop
+// a DDA ray by themselves. Full-block emitters remain solid emissive hits.
 bool is_point_light_emitter(uint block_id) {
     if (block_id < 32u || block_id >= 80u) {
         return false;

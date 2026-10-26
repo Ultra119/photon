@@ -100,7 +100,7 @@ void update_rt_voxel_grid(
         // Light-only voxels have block_id = 0, so they never overwrite solid
         // geometry under imageAtomicMax(); DDA accumulates them volumetrically.
         // gl_VertexID gating reduces duplicate writes from multi-vertex models.
-        if (is_emitter && is_point_light_emitter(block_id) && (gl_VertexID & 3) == 0) {
+        if (is_emitter && is_voxel_light_source(block_id) && (gl_VertexID & 3) == 0) {
             vec3 point_light_color = get_voxel_light_color(block_id);
             const int radius = RTGI_POINT_LIGHT_RADIUS;
             const float radius_f = float(radius);

@@ -21,6 +21,7 @@ SSGIHit trace_screen_space_gi(
     vec3 view_normal,
     vec3 ray_dir_view,
     float dither,
+    float surface_skylight,
     sampler2D scene_color_sampler,
     sampler2D gbuffer0_sampler,
     sampler2D depth_translucent_sampler
@@ -31,6 +32,13 @@ SSGIHit trace_screen_space_gi(
     result.hit_pos_scene = vec3(0.0);
     result.radiance = vec3(0.0);
     result.sky_weight = 0.0;
+
+    // When local-light SSGI is disabled, do not consume the ray in cave /
+    // low-skylight scenes. Returning a zero-radiance hit here would block the
+    // camera-independent voxel DDA fallback and recreate view dependence.
+    if (RTGI_SSGI_LOCAL_LIGHT_SCALE <= 0.0 && surface_skylight < 0.25) {
+        return result;
+    }
 
     // Skip rays that face backwards or are too grazing into the surface
     if (dot(ray_dir_view, view_normal) <= 0.05) {
@@ -111,6 +119,10 @@ SSGIHit trace_screen_space_gi(
                         RTGI_SSGI_LOCAL_LIGHT_SCALE,
                         local_light_factor
                     );
+
+                    if (ssgi_scale <= 0.001) {
+                        return result;
+                    }
 
                     result.hit = true;
                     result.hit_uv = prev_screen_pos.xy;
