@@ -32,13 +32,13 @@ bool is_voxel_terrain_stage() {
 #endif
 }
 
-bool should_voxelize(uint block_id, bool vertex_at_grid_corner) {
+bool should_voxelize(uint block_id) {
     bool is_transparent_block = (block_id == 1u || block_id == 18u || block_id == 28u || block_id == 30u || block_id == 80u);
-    bool is_emitter = (32u <= block_id && block_id < 80u);
-    bool is_non_solid = (block_id == 2u || block_id == 3u || block_id == 14u || block_id == 15u);
+    bool is_emitter = (32u <= block_id && block_id < 80u && block_id != 58u && block_id != 63u);
+    bool is_non_solid = (block_id == 2u || block_id == 3u || block_id == 14u || block_id == 15u || block_id == 58u);
     bool is_stained_glass = (block_id >= 81u && block_id <= 96u);
 
-    return ((vertex_at_grid_corner && !is_non_solid) || is_emitter || is_stained_glass)
+    return (!is_non_solid || is_emitter || is_stained_glass)
         && !is_transparent_block
         && is_voxel_terrain_stage();
 }
@@ -53,12 +53,6 @@ void update_rt_voxel_grid(
     vec3 view_pos = (gl_ModelViewMatrix * vec4(model_pos, 1.0)).xyz;
     vec3 scene_pos = (shadowModelViewInverse * vec4(view_pos, 1.0)).xyz;
     vec3 voxel_pos = scene_to_voxel_space(scene_pos);
-
-    // Grid corner test
-    vec3 block_pos = (gl_ModelViewMatrix * vec4(gl_Vertex.xyz, 1.0)).xyz;
-    block_pos = (shadowModelViewInverse * vec4(block_pos, 1.0)).xyz;
-    block_pos = fract(block_pos + cameraPosition);
-    bool at_corner = is_voxel_corner(block_pos, (1.0 / 16.0) - 1e-3);
 
     // Remap 0u (default unassigned terrain like stone, dirt, deepslate) to stone ID 4u
     if (block_id == 0u) {
@@ -76,9 +70,9 @@ void update_rt_voxel_grid(
     }
 
     bool is_translucent = (block_id == 5u || block_id == 14u || block_id == 15u || (80u <= block_id && block_id <= 96u));
-    bool is_emitter = (32u <= block_id && block_id < 80u);
+    bool is_emitter = (32u <= block_id && block_id < 80u && block_id != 58u && block_id != 63u);
 
-    if (should_voxelize(block_id, at_corner) && is_inside_voxel_volume(voxel_pos)) {
+    if (should_voxelize(block_id) && is_inside_voxel_volume(voxel_pos)) {
         ivec3 coord = clamp_to_voxel_grid(ivec3(voxel_pos));
         vec3 voxel_albedo = is_emitter ? get_voxel_light_color(block_id) : vertex_tint;
         float voxel_block_light = is_emitter ? 1.0 : light_levels.x;
@@ -96,10 +90,13 @@ void update_rt_voxel_grid(
         // so a solid / brighter / higher-ID voxel always wins over air.
         imageAtomicMax(voxel_img, coord, packed_data);
 
-        // Inject a camera-independent radial light field around small emitters.
+        // Inject a camera-independent radial light field around emitters.
         // Light-only voxels have block_id = 0, so they never overwrite solid
         // geometry under imageAtomicMax(); DDA accumulates them volumetrically.
+        // Line-of-sight is verified against solid blocks so light cannot
+        // penetrate through solid walls, floors, or ceilings.
         // gl_VertexID gating reduces duplicate writes from multi-vertex models.
+#if RTGI_POINT_LIGHT_STRENGTH > 0
         if (is_emitter && is_voxel_light_source(block_id) && (gl_VertexID & 3) == 0) {
             vec3 point_light_color = get_voxel_light_color(block_id);
             const int radius = RTGI_POINT_LIGHT_RADIUS;
@@ -109,7 +106,15 @@ void update_rt_voxel_grid(
                 for (int y = -radius; y <= radius; ++y) {
                     for (int x = -radius; x <= radius; ++x) {
                         ivec3 offset = ivec3(x, y, z);
+                        if (offset == ivec3(0)) {
+                            continue;
+                        }
+
                         float dist = length(vec3(offset));
+                        if (dist > radius_f) {
+                            continue;
+                        }
+
                         float attenuation = exp(-0.55 * dist)
                             * (1.0 - smoothstep(radius_f - 1.0, radius_f, dist))
                             * RTGI_POINT_LIGHT_STRENGTH;
@@ -120,6 +125,28 @@ void update_rt_voxel_grid(
 
                         ivec3 light_coord = coord + offset;
                         if (!is_inside_voxel_grid(light_coord)) {
+                            continue;
+                        }
+
+                        // Test occlusion along the path from coord to light_coord
+                        bool occluded = false;
+                        int max_step = max(abs(offset.x), max(abs(offset.y), abs(offset.z)));
+                        for (int s = 1; s <= max_step; ++s) {
+                            ivec3 check_coord = coord + ivec3(round(vec3(offset) * (float(s) / float(max_step))));
+                            if (!is_inside_voxel_grid(check_coord)) {
+                                occluded = true;
+                                break;
+                            }
+                            uint occ_packed = imageLoad(voxel_img, check_coord).r;
+                            uint occ_id = (occ_packed >> 25u) & 0x7Fu;
+                            // Any solid block (stone, wood, dirt, quartz, etc.) blocks light
+                            if (occ_id >= 4u && occ_id < 80u) {
+                                occluded = true;
+                                break;
+                            }
+                        }
+
+                        if (occluded) {
                             continue;
                         }
 
@@ -136,6 +163,7 @@ void update_rt_voxel_grid(
                 }
             }
         }
+#endif
     }
 }
 

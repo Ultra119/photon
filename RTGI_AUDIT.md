@@ -22,7 +22,7 @@ There are two release blockers and one configuration blocker:
 3. **P0 — voxelization depends on the shadow pass being enabled.**  
    Voxels are written from `shadow.vsh`, but `program.world0/shadow.enabled = SHADOW`, `program.world1/shadow.enabled = SHADOW`, and `program.world-1/shadow.enabled = RAYTRACED_GI`. If `SHADOW` is disabled, or if `RAYTRACED_GI` is off while `RT_REFLECTIONS` is on, the voxel grid is cleared but never populated. RTGI then degrades to SSGI/sky fallback.
 
-**Status:** Steps 0–12 are applied in the working tree. Step 12 seals voxel/screen-space seam leaks and makes pale-block sunlight bounces energy conserving.
+**Status:** Steps 0–15 are applied in the working tree. Step 12 seals voxel/screen-space seam leaks and makes pale-block sunlight bounces energy conserving.
 
 TAAU, translucent-GI, sky/emissive gating, voxel-range constants, colored voxel albedo, deterministic voxel writes, point-light propagation, SSGI local-light damping, cave ambient tuning, and seam-safe tracing are now addressed; the remaining work is runtime validation plus optional debug views.
 
@@ -354,6 +354,73 @@ The user identified the bright sunlit sand sides as light leaking through block 
 `dither` is now threaded through `trace_voxel_dda()` and `trace_voxel_specular_fallback()` so both diffuse and specular voxel traces get stable, per-ray seam offsets. Static validation still passes: voxel packing test, properties lint (14 RTGI options), `308` compute/fragment cases, `780` wrapper/option cases, and `git diff --check`.
 
 In-game validation is needed to confirm that sand sides no longer glow, cave walls stay dark behind sealed corners, and lamp-lit walls remain visible.
+
+---
+
+## Step 13 status — redstone mechanism light leaks and vanilla propagation decoupling applied 2026-10-27
+
+The user reported that walls and adjacent corridors were illuminated in bright red by redstone mechanisms located behind walls and ceilings when ceiling lamps were turned off.
+
+Investigation and Root Causes:
+1. **The Radial Point-Light Field in shadow.vsh (voxel_update.glsl)**:
+   - In Step 9/11, a radial injection loop was added in shadow.vsh to populate light-only voxels up to RTGI_POINT_LIGHT_RADIUS (4 blocks).
+   - In GPU rasterization, vertex shaders run asynchronously in parallel across GPU threads. When shadow.vsh executes for redstone torches/mechanisms, the intervening wall geometry has not yet been committed to voxel_img.
+   - The occlusion check (imageLoad) sees unwritten air (0) and fails.
+   - The shader then writes point_light_color (red for redstone torches) into all air voxels up to 4 blocks away in a sphere—directly through the solid walls into the room and corridor.
+   - When RTGI rays are traced in rtgi_trace.csh through the room air, voxel_dda.glsl accumulates this red light from the air voxels and tints the entire room red.
+2. **Redstone components classified as emitters**:
+   - block.properties previously grouped redstone wire, repeaters, comparators, and rails under block.10038 and block.10058 as light emitters. In Minecraft Java Edition, redstone wire, repeaters, comparators, and redstone blocks emit 0 light.
+3. **Vanilla Lightmap Propagation in Voxels**:
+   - voxel_update.glsl was passing light_levels.x into sample_data.block_light, causing non-emitter blocks to bounce vanilla block light in voxel_dda.glsl.
+
+Fixes Applied:
+- Set RTGI_POINT_LIGHT_STRENGTH 0.00 by default in settings.glsl.
+- Guarded the radial point-light injection loop in voxel_update.glsl and air-voxel accumulation in voxel_dda.glsl with #if RTGI_POINT_LIGHT_STRENGTH > 0, eliminating the loop overhead when disabled.
+- Restored direct ray hits on emitters in voxel_dda.glsl: rays directly collect emitter radiance without requiring artificial radial air fields, and solid walls strictly occlude hidden emitters.
+- Reclassified redstone wire, repeaters, comparators, rails, and redstone blocks into non-emitting block.10058 / block.10013 with emission = vec3(0.0).
+- Added #define RTGI_VANILLA_LIGHTMAP_PROPAGATION toggle in settings.glsl (disabled by default), allowing voxels to be lit purely by ray-traced emitter hits rather than vanilla lightmap values.
+- Re-packaged photon.zip into the 26.3 PrismLauncher profile.
+
+---
+
+## Step 14 status — temporal motion responsiveness, disocclusion anti-flicker, resolution-scaled filtering, and active pack synchronization applied 2026-10-27
+
+The user reported four interrelated symptoms in game:
+1. Flickering light (frequent brightness changes).
+2. Strange, muddy AO in corners.
+3. Strange white stripes along joints between blocks on the wall.
+4. Trails / ghosting left by camera movement.
+
+Root Causes:
+- **Active Pack Mismatch**: Iris was configured in iris.properties to load photon123.zip. That file was an older pre-Step 12/13 build which still had corner-only voxelization (causing the white seam leaks), VANILLA_AO enabled (causing the muddy corner triangles), and RTGI_RESOLUTION=2 in photon123.zip.txt without adequate spatial filtering.
+- **Camera Movement Trails**: rtgi_temporal.csh clamped motion alpha to a maximum of 0.25 (75% history retained during camera rotation), causing visible smearing / ghosting trails.
+- **Light Flickering**: rtgi_temporal.csh used a hard binary cutoff for dist_diff < dist_tolerance. Any slight depth deviation across glancing walls caused the pixel to instantly discard all history and flash with raw 2-ray Monte Carlo noise.
+- **Resolution Filter Gap**: At RTGI_RESOLUTION=2, rtgi_filter.csh used a fixed step_size=2, which only covered 4 pixels radius—too narrow to denoise 2 rays/pixel.
+
+Fixes Applied:
+- **Anti-Flicker Smooth Disocclusion**: In rtgi_temporal.csh, implemented continuous depth_confidence over [dist_tolerance, 2*dist_tolerance]. If geometry slightly shifts or jitters on angled walls, history smoothly transitions rather than popping violently to raw noise.
+- **Eliminate Motion Trails**: Scaled motion sensitivity (length(screen_motion) * 0.08) and increased maximum motion alpha to 0.70. Rapid camera turns now refresh 70% of lighting immediately, eliminating ghosting trails. Still accumulation settles at alpha = 0.08.
+- **Firefly Suppression**: Lowered max_radiance_lum from 12.0 to 8.0 in rtgi_trace.csh to suppress stochastic outlier flashes.
+- **Resolution-Scaled Filter Kernel**: rtgi_filter.csh now scales step_size with RTGI_RESOLUTION (4 for full-res, 2 for half-res, 1 for quarter-res) so the spatial filter consistently spans an 8-pixel radius.
+- **Dual Pack Sync**: Synchronized both photon.zip and photon123.zip in PrismLauncher's shaderpacks folder with all Step 0-14 updates.
+
+---
+
+## Step 15 status — smooth blocklight falloff, direct illumination restoration, and filter stippling removal applied 2026-10-27
+
+The user uploaded a screenshot showing a sea lantern in a room with severe stippling/grain on the ceiling, pitch-black shadows on block sides, and harsh light cutoff.
+
+Root Causes:
+1. **Mosaic Grid Stippling**: step_size=4 in rtgi_filter.csh skipped 3 pixels between taps, leaving unblended hole gaps that produced a regular checkerboard grid pattern on the ceiling and walls.
+2. **Missing Direct Local Illumination**: diffuse_lighting.glsl zeroed out mc_block inside the voxel volume (via voxel_edge_fade). This forced the room to rely entirely on 2 stochastic rays/pixel hitting the 1x1 sea lantern, leaving 95% of pixels with zero light and producing pitch-black shadows.
+3. **Abrupt Light Cutoff Exponent**: get_blocklight_falloff used pow12(blocklight), which dropped light intensity from 0.9 to 0.02 after only 2 blocks.
+
+Fixes Applied:
+- Restored direct block illumination in diffuse_lighting.glsl: lighting += mc_block. Direct light from emitters now smoothly covers all line-of-sight surfaces over a 15-block radius. Because Minecraft's light engine respects block opacity, it never leaks through solid walls (hidden redstone mechanisms stay dark).
+- Replaced the harsh pow12(blocklight) cutoff in get_blocklight_falloff with smooth natural 0.5 * pow4(blocklight).
+- Replaced step_size=4 in rtgi_filter.csh with step_size=2 uniformly, ensuring complete spatial filter overlap without mosaic holes or stippled dots.
+- Allowed voxel_block_light in voxel_update.glsl to store light_levels.x on solid surfaces so RTGI secondary rays bounce soft light into shadows.
+- Synchronized both photon.zip and photon123.zip in PrismLauncher.
 
 ---
 

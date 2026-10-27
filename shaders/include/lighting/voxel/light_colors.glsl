@@ -8,7 +8,7 @@ const vec3[48] voxel_light_color_table = vec3[48](
     vec3(1.00, 0.55, 0.27) * 14.0, // Strong golden light
     vec3(1.00, 0.57, 0.30) * 8.0, // Medium golden light
     vec3(1.00, 0.57, 0.30) * 6.0, // Weak golden light
-    vec3(1.00, 0.18, 0.10) * 5.0, // Redstone components
+    vec3(1.00, 0.20, 0.08) * 1.5, // Redstone torch and lit redstone ore
     vec3(1.00, 0.38, 0.10) * 7.0, // Lava
     vec3(1.00, 0.45, 0.10) * 9.0, // Medium orange light
     vec3(1.00, 0.63, 0.15) * 4.0, // Brewing stand
@@ -28,7 +28,7 @@ const vec3[48] voxel_light_color_table = vec3[48](
     vec3(0.75, 0.44, 1.00) * 4.0, // Amethyst cluster
     vec3(0.75, 0.44, 1.00) * 4.0, // Calibrated sculk sensor
     vec3(0.75, 1.00, 0.83) * 6.0, // Active sculk sensor
-    vec3(1.00, 0.18, 0.10) * 3.3, // Redstone block
+    vec3(0.0), // Redstone components and logic (non-emitting)
     vec3(1.00, 0.50, 0.25) * 3.0, // Open eyeblossom
     vec3(0.85, 1.3, 1.0) * 3.9, // Copper torch and lanterns
     vec3(1.00, 0.57, 0.30) * 8.0, // Copper Bulbs

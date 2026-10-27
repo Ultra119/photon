@@ -164,7 +164,7 @@ void main() {
 
         // Firefly suppression: limit extreme single-ray radiance spikes
         float lum = dot(radiance.rgb, luminance_weights);
-        const float max_radiance_lum = 12.0;
+        const float max_radiance_lum = 16.0;
         if (lum > max_radiance_lum) {
             radiance.rgb *= max_radiance_lum / lum;
         }

@@ -67,7 +67,7 @@ VoxelSample unpack_voxel_data(uint packed) {
 
     uint flags = (packed >> 23u) & 0x03u;
     sample_data.is_translucent = (flags & 1u) != 0u;
-    sample_data.is_emitter = (flags & 2u) != 0u || (sample_data.block_id >= 32u && sample_data.block_id < 80u);
+    sample_data.is_emitter = (flags & 2u) != 0u || (sample_data.block_id >= 32u && sample_data.block_id < 80u && sample_data.block_id != 58u && sample_data.block_id != 63u);
 
     sample_data.color = unpack_unorm_rgb555(packed & 0x7FFFu);
 

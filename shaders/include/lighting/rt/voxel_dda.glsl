@@ -127,6 +127,7 @@ VoxelHit trace_voxel_dda(
 
             // Light-only voxel: block_id == 0, block_light > 0. Accumulate it
             // as a camera-independent emissive medium instead of stopping the ray.
+#if RTGI_POINT_LIGHT_STRENGTH > 0
             if (sample_data.block_id == 0u && sample_data.block_light > 0.0) {
                 float scatter = 1.0 - exp(-0.22 * segment_length);
                 float distance_falloff = exp(-0.16 * segment_mid);
@@ -134,6 +135,7 @@ VoxelHit trace_voxel_dda(
                     * (sample_data.block_light * blocklight_scale)
                     * scatter * distance_falloff * ray_transmittance;
             }
+#endif
 
             if (sample_data.block_id != 0u) {
                 VoxelMaterial mat = get_voxel_material(sample_data.block_id, sample_data.color);
@@ -143,17 +145,18 @@ VoxelHit trace_voxel_dda(
                     ray_transmittance *= mat.albedo;
                 } else if (sample_data.block_id == 80u) {
                     // Clear glass: passes through without tinting
+#if RTGI_POINT_LIGHT_STRENGTH > 0
                 } else if (sample_data.is_emitter && is_point_light_emitter(sample_data.block_id)) {
-                    // Small emitters are transparent light sources. This lets rays
-                    // reach the surfaces they illuminate instead of stopping on
-                    // the torch/lantern voxel itself.
+                    // Small emitters are transparent light sources when radial point-light
+                    // accumulation is active.
                     vec3 emitter_pos = voxel_to_scene_space(vec3(current_voxel) + 0.5);
                     float emitter_dist = length(emitter_pos - ray_origin_scene);
                     float emitter_attenuation = exp(-0.30 * emitter_dist)
                         * RTGI_POINT_LIGHT_STRENGTH;
                     accumulated_light += mat.emission
                         * emitter_attenuation * 0.20 * ray_transmittance;
-                } else if (mat.is_solid) {
+#endif
+                } else if (mat.is_solid || sample_data.is_emitter) {
                     result.hit = true;
                     result.hit_normal = (dot(mask, mask) > 0.5) ? (-mask * step_dir) : -sign(dda_dir);
                     result.distance = t;
@@ -218,8 +221,20 @@ VoxelHit trace_voxel_dda(
             }
         }
 
-        // Advance DDA to next boundary
-        mask = step(t_max.xyz, min(t_max.yzx, t_max.zxy));
+        // Advance DDA strictly one axis per step to prevent diagonal corner slipping
+        if (t_max.x < t_max.y) {
+            if (t_max.x < t_max.z) {
+                mask = vec3(1.0, 0.0, 0.0);
+            } else {
+                mask = vec3(0.0, 0.0, 1.0);
+            }
+        } else {
+            if (t_max.y < t_max.z) {
+                mask = vec3(0.0, 1.0, 0.0);
+            } else {
+                mask = vec3(0.0, 0.0, 1.0);
+            }
+        }
         t = next_t;
         t_max += mask * delta_t;
         current_voxel += ivec3(mask * step_dir);

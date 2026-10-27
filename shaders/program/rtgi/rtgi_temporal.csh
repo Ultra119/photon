@@ -127,15 +127,24 @@ void main() {
 
         float prev_dist = prev_sample.a;
         float dist_diff = abs(current_dist - prev_dist);
-        float dist_tolerance = max(current_dist * 0.15, 0.40);
+        // Generous tolerance with smooth transition to avoid edge strobing/flickering
+        float dist_tolerance = max(current_dist * 0.20, 0.50);
 
-        // Valid if distance matches and history was initialized
-        if (dist_diff < dist_tolerance && prev_dist > 0.05) {
-            // Adaptive accumulation: 0.05 when still (20 frames accumulated), up to 0.25 when moving
+        // Valid if history was initialized and within disocclusion boundary
+        if (prev_dist > 0.05 && dist_diff < dist_tolerance * 2.0) {
+            // Smooth disocclusion confidence (1.0 = perfect match, 0.0 = total disocclusion)
+            float depth_confidence = clamp01(1.0 - max(0.0, dist_diff - dist_tolerance) / dist_tolerance);
+
+            // Motion-responsive accumulation:
+            // 0.08 when still (stable, flicker-free accumulation)
+            // Up to 0.70 when moving camera (responsive, completely eliminates ghosting trails)
             vec2 screen_motion
                 = abs(prev_framebuffer_uv - uv) * view_res * render_scale;
-            float motion_factor = clamp01(length(screen_motion) * 0.03);
-            float alpha = mix(0.05, 0.25, motion_factor);
+            float motion_factor = clamp01(length(screen_motion) * 0.08);
+            float base_alpha = mix(0.08, 0.70, motion_factor);
+
+            // Smoothly fall back to current frame if confidence drops, without hard pops
+            float alpha = mix(1.0, base_alpha, depth_confidence);
 
             accumulated.rgb = mix(prev_sample.rgb, current_radiance, alpha);
             accumulated_sky.r = mix(prev_sky_sample.r, current_sky_weight, alpha);

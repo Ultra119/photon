@@ -50,10 +50,7 @@ float get_blocklight_falloff(float blocklight, float skylight, float ao) {
     ); // Pulsing blocklight with darkness effect
     falloff *= 1.0 - 0.2 * time_noon * skylight
         - 0.2 * skylight; // Reduce blocklight intensity in daylight
-    falloff += min(
-        2.7 * pow12(blocklight),
-        0.9
-    ); // Strong highlight around the light source, visible even in the daylight
+    falloff += 0.5 * pow4(blocklight); // Smooth natural highlight around the light source
     falloff *= smoothstep(
         0.0,
         0.125,
@@ -342,7 +339,7 @@ vec3 get_diffuse_lighting(
         voxel_edge_fade_end,
         voxel_edge_dist
     );
-    lighting += mc_block * voxel_edge_fade;
+    lighting += mc_block;
 #else
     // Analytic fallback for forward-lit translucent surfaces and for builds
     // with RAYTRACED_GI disabled. The RTGI buffer describes the opaque layer,

@@ -768,8 +768,8 @@ Material material_from(
                     } else { // 58-60
                         if (material_mask == 58u) { // 58
 #ifdef HARDCODED_EMISSION
-                            // Redstone block
-                            material.emission = 0.33 * albedo_sqrt;
+                            // Redstone components and logic (non-emitting)
+                            material.emission = vec3(0.0);
 #endif
                         } else { // 59
                             // Open eyeblossom

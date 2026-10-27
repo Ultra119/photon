@@ -17,13 +17,13 @@ struct VoxelMaterial {
 // lamps such as sea lanterns and froglights; otherwise their neighboring voxels
 // stay dark unless the emitter voxel itself is hit by a ray.
 bool is_voxel_light_source(uint block_id) {
-    return 32u <= block_id && block_id < 80u;
+    return 32u <= block_id && block_id < 80u && block_id != 58u && block_id != 63u;
 }
 
 // Smaller emitters (torches, lanterns, candles, end rods, etc.) should not stop
 // a DDA ray by themselves. Full-block emitters remain solid emissive hits.
 bool is_point_light_emitter(uint block_id) {
-    if (block_id < 32u || block_id >= 80u) {
+    if (block_id < 32u || block_id >= 80u || block_id == 58u || block_id == 63u) {
         return false;
     }
 
@@ -36,7 +36,6 @@ bool is_point_light_emitter(uint block_id) {
         case 51u: // ochre froglight
         case 52u: // verdant froglight
         case 53u: // pearlescent froglight
-        case 58u: // redstone block
         case 61u: // copper bulb
             return false;
         default:
@@ -70,10 +69,16 @@ VoxelMaterial get_voxel_material(uint block_id, vec3 fallback_color) {
 
     // Check emissive blocks
     if (block_id >= 32u && block_id < 80u) {
-        uint light_idx = clamp(block_id - 32u, 0u, 47u);
-        mat.emission = voxel_light_color_table[light_idx] * 2.5;
-        mat.roughness = 0.5;
-        mat.is_solid = true;
+        if (block_id == 58u || block_id == 63u) {
+            mat.emission = vec3(0.0);
+            mat.roughness = 0.85;
+            mat.is_solid = (block_id != 58u);
+        } else {
+            uint light_idx = clamp(block_id - 32u, 0u, 47u);
+            mat.emission = voxel_light_color_table[light_idx] * 2.5;
+            mat.roughness = 0.5;
+            mat.is_solid = true;
+        }
     }
 
     // Base block types according to block.properties
@@ -187,6 +192,14 @@ VoxelMaterial get_voxel_material(uint block_id, vec3 fallback_color) {
             mat.albedo = clamp(fallback_color, vec3(0.10), vec3(0.50));
             mat.roughness = 0.70;
             mat.is_solid = false; // Never block rays! Leaf litter & petals are flat decals!
+            break;
+
+        // Redstone logic components and wire
+        case 58u:
+            mat.albedo = clamp(fallback_color, vec3(0.08), vec3(0.45));
+            mat.emission = vec3(0.0);
+            mat.roughness = 0.85;
+            mat.is_solid = false;
             break;
 
         // Clear glass, glass panes, snow layer, rails, carpets

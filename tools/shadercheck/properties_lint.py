@@ -63,7 +63,7 @@ DIRECTIVE_WORDS = {
 
 def read_settings_defines() -> dict[str, str]:
     defs: dict[str, str] = {}
-    for line in (SHADERS / "settings.glsl").read_text().splitlines():
+    for line in (SHADERS / "settings.glsl").read_text(encoding='utf-8', errors='replace').splitlines():
         m = re.match(r"^\s*#define\s+([A-Za-z_]\w*)\s+([^\s(/][^/]*?)\s*(?://.*)?$", line)
         if m:
             defs[m.group(1)] = m.group(2).strip()
@@ -78,7 +78,7 @@ def read_settings_defines() -> dict[str, str]:
 
 
 def preprocess_properties() -> str:
-    raw = (SHADERS / "shaders.properties").read_text()
+    raw = (SHADERS / "shaders.properties").read_text(encoding='utf-8', errors='replace')
     defs = read_settings_defines()
     lines = [f"#define {k} {v}" for k, v in defs.items()]
     for line in raw.splitlines():
@@ -132,15 +132,15 @@ def main() -> int:
 
     # Parse the raw properties file for menu/slider tokens: cpp would expand
     # those macro names into their configured values.
-    properties = (SHADERS / "shaders.properties").read_text()
+    properties = (SHADERS / "shaders.properties").read_text(encoding='utf-8', errors='replace')
     screen_line = ""
     for line in properties.splitlines():
         if line.strip().startswith("screen.raytracing"):
             screen_line = line
             break
 
-    lang = (SHADERS / "lang" / "en_US.lang").read_text()
-    settings = (SHADERS / "settings.glsl").read_text()
+    lang = (SHADERS / "lang" / "en_US.lang").read_text(encoding='utf-8', errors='replace')
+    settings = (SHADERS / "settings.glsl").read_text(encoding='utf-8', errors='replace')
 
     errors: list[str] = []
     warnings: list[str] = []
