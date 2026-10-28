@@ -96,8 +96,10 @@ void update_rt_voxel_grid(
         // Line-of-sight is verified against solid blocks so light cannot
         // penetrate through solid walls, floors, or ceilings.
         // gl_VertexID gating reduces duplicate writes from multi-vertex models.
-#if RTGI_POINT_LIGHT_STRENGTH > 0
-        if (is_emitter && is_voxel_light_source(block_id) && (gl_VertexID & 3) == 0) {
+        // NB: RTGI_POINT_LIGHT_STRENGTH is a float slider; use a runtime if
+        // (constant-folded by the driver) rather than #if, since float literals
+        // are illegal in GLSL preprocessor expressions.
+        if (RTGI_POINT_LIGHT_STRENGTH > 0.0 && is_emitter && is_voxel_light_source(block_id) && (gl_VertexID & 3) == 0) {
             vec3 point_light_color = get_voxel_light_color(block_id);
             const int radius = RTGI_POINT_LIGHT_RADIUS;
             const float radius_f = float(radius);
@@ -163,7 +165,6 @@ void update_rt_voxel_grid(
                 }
             }
         }
-#endif
     }
 }
 

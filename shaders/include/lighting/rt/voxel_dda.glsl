@@ -127,15 +127,16 @@ VoxelHit trace_voxel_dda(
 
             // Light-only voxel: block_id == 0, block_light > 0. Accumulate it
             // as a camera-independent emissive medium instead of stopping the ray.
-#if RTGI_POINT_LIGHT_STRENGTH > 0
-            if (sample_data.block_id == 0u && sample_data.block_light > 0.0) {
+            // NB: RTGI_POINT_LIGHT_STRENGTH is a float slider; it must be tested
+            // with a runtime if (constant-folded by the driver), never with #if,
+            // because float literals are illegal in GLSL preprocessor expressions.
+            if (RTGI_POINT_LIGHT_STRENGTH > 0.0 && sample_data.block_id == 0u && sample_data.block_light > 0.0) {
                 float scatter = 1.0 - exp(-0.22 * segment_length);
                 float distance_falloff = exp(-0.16 * segment_mid);
                 accumulated_light += sample_data.color
                     * (sample_data.block_light * blocklight_scale)
                     * scatter * distance_falloff * ray_transmittance;
             }
-#endif
 
             if (sample_data.block_id != 0u) {
                 VoxelMaterial mat = get_voxel_material(sample_data.block_id, sample_data.color);
@@ -145,8 +146,7 @@ VoxelHit trace_voxel_dda(
                     ray_transmittance *= mat.albedo;
                 } else if (sample_data.block_id == 80u) {
                     // Clear glass: passes through without tinting
-#if RTGI_POINT_LIGHT_STRENGTH > 0
-                } else if (sample_data.is_emitter && is_point_light_emitter(sample_data.block_id)) {
+                } else if (RTGI_POINT_LIGHT_STRENGTH > 0.0 && sample_data.is_emitter && is_point_light_emitter(sample_data.block_id)) {
                     // Small emitters are transparent light sources when radial point-light
                     // accumulation is active.
                     vec3 emitter_pos = voxel_to_scene_space(vec3(current_voxel) + 0.5);
@@ -155,7 +155,6 @@ VoxelHit trace_voxel_dda(
                         * RTGI_POINT_LIGHT_STRENGTH;
                     accumulated_light += mat.emission
                         * emitter_attenuation * 0.20 * ray_transmittance;
-#endif
                 } else if (mat.is_solid || sample_data.is_emitter) {
                     result.hit = true;
                     result.hit_normal = (dot(mask, mask) > 0.5) ? (-mask * step_dir) : -sign(dda_dir);
