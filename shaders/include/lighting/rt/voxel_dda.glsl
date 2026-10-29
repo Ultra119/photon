@@ -12,16 +12,89 @@
 // divided by pi before being accumulated as GI radiance.
 const float voxel_bounce_rcp_pi = 0.31830988618;
 
-// Hemisphere samples can land exactly on a voxel face/corner seam. A tiny
-// deterministic perturbation keeps the DDA ray from traveling forever along
-// that plane and sampling sunlight or point lights through solid walls.
-vec3 rtgi_voxel_ray_jitter(float dither, vec3 ray_dir) {
-    vec3 seed = ray_dir + vec3(dither);
+// Deterministic ray component safety: avoids division by zero and planar
+// seam lock without injecting random angular jitter.
+vec3 safe_ray_dir(vec3 dir) {
+    const float eps = 1e-5;
     return vec3(
-        fract(sin(dot(seed, vec3(12.9898, 78.233, 37.719))) * 43758.5453),
-        fract(sin(dot(seed, vec3(39.3468, 11.135, 83.155))) * 24634.6345),
-        fract(sin(dot(seed, vec3(73.156, 52.235, 9.151))) * 91245.9421)
-    ) - 0.5;
+        abs(dir.x) < eps ? (dir.x >= 0.0 ? eps : -eps) : dir.x,
+        abs(dir.y) < eps ? (dir.y >= 0.0 ? eps : -eps) : dir.y,
+        abs(dir.z) < eps ? (dir.z >= 0.0 ? eps : -eps) : dir.z
+    );
+}
+
+// Stage 5: Analytic Ray-AABB intersection for sub-block shapes.
+// Williams et al. slab method with voxel-entry normal fallback.
+bool intersect_sub_box(
+    vec3 ray_start,
+    vec3 inv_dir,
+    vec3 box_min,
+    vec3 box_max,
+    float seg_start,
+    float seg_end,
+    vec3 voxel_entry_normal,
+    out float hit_t,
+    out vec3 hit_normal
+) {
+    vec3 t0 = (box_min - ray_start) * inv_dir;
+    vec3 t1 = (box_max - ray_start) * inv_dir;
+    vec3 tnear = min(t0, t1);
+    vec3 tfar = max(t0, t1);
+
+    float tenter = max(max(tnear.x, tnear.y), tnear.z);
+    float texit = min(min(tfar.x, tfar.y), tfar.z);
+
+    if (tenter <= texit && texit >= seg_start && tenter <= seg_end) {
+        hit_t = max(tenter, seg_start);
+        if (tenter > seg_start + 1e-4) {
+            if (tenter == tnear.x) hit_normal = vec3(-sign(inv_dir.x), 0.0, 0.0);
+            else if (tenter == tnear.y) hit_normal = vec3(0.0, -sign(inv_dir.y), 0.0);
+            else hit_normal = vec3(0.0, 0.0, -sign(inv_dir.z));
+        } else {
+            hit_normal = voxel_entry_normal;
+        }
+        return true;
+    }
+    return false;
+}
+
+bool test_voxel_shape_hit(
+    uint shape_class,
+    ivec3 voxel_coord,
+    vec3 ray_start,
+    vec3 inv_dir,
+    float seg_start,
+    float seg_end,
+    vec3 voxel_entry_normal,
+    out float hit_t,
+    out vec3 hit_normal
+) {
+    vec3 v = vec3(voxel_coord);
+    if (shape_class == VOXEL_SHAPE_CUBE) {
+        return intersect_sub_box(ray_start, inv_dir, v, v + vec3(1.0), seg_start, seg_end, voxel_entry_normal, hit_t, hit_normal);
+    } else if (shape_class == VOXEL_SHAPE_SLAB_BOTTOM) {
+        return intersect_sub_box(ray_start, inv_dir, v, v + vec3(1.0, 0.5, 1.0), seg_start, seg_end, voxel_entry_normal, hit_t, hit_normal);
+    } else if (shape_class == VOXEL_SHAPE_SLAB_TOP) {
+        return intersect_sub_box(ray_start, inv_dir, v + vec3(0.0, 0.5, 0.0), v + vec3(1.0, 1.0, 1.0), seg_start, seg_end, voxel_entry_normal, hit_t, hit_normal);
+    } else if (shape_class == VOXEL_SHAPE_PANE_OR_FENCE) {
+        return intersect_sub_box(ray_start, inv_dir, v + vec3(0.375, 0.0, 0.375), v + vec3(0.625, 1.0, 0.625), seg_start, seg_end, voxel_entry_normal, hit_t, hit_normal);
+    } else if (shape_class == VOXEL_SHAPE_STAIRS) {
+        float t1; vec3 n1;
+        bool h1 = intersect_sub_box(ray_start, inv_dir, v, v + vec3(1.0, 0.5, 1.0), seg_start, seg_end, voxel_entry_normal, t1, n1);
+        float t2; vec3 n2;
+        bool h2 = intersect_sub_box(ray_start, inv_dir, v + vec3(0.0, 0.5, 0.0), v + vec3(0.5, 1.0, 1.0), seg_start, seg_end, voxel_entry_normal, t2, n2);
+        if (h1 && h2) {
+            if (t1 < t2) { hit_t = t1; hit_normal = n1; }
+            else { hit_t = t2; hit_normal = n2; }
+            return true;
+        } else if (h1) {
+            hit_t = t1; hit_normal = n1; return true;
+        } else if (h2) {
+            hit_t = t2; hit_normal = n2; return true;
+        }
+        return false;
+    }
+    return intersect_sub_box(ray_start, inv_dir, v, v + vec3(1.0), seg_start, seg_end, voxel_entry_normal, hit_t, hit_normal);
 }
 
 struct VoxelHit {
@@ -78,7 +151,8 @@ VoxelHit trace_voxel_dda(
     float max_dist
 ) {
     VoxelHit result;
-    vec3 dda_dir = normalize(ray_dir + rtgi_voxel_ray_jitter(dither, ray_dir) * 0.05);
+    vec3 dda_dir = normalize(safe_ray_dir(ray_dir));
+    vec3 inv_dir = 1.0 / dda_dir;
     result.hit = false;
     result.hit_pos = ray_origin_scene + dda_dir * max_dist;
     result.hit_normal = -dda_dir;
@@ -158,13 +232,30 @@ VoxelHit trace_voxel_dda(
                     accumulated_light += mat.emission
                         * emitter_attenuation * 0.20 * ray_transmittance;
                 } else if (mat.is_solid || sample_data.is_emitter) {
-                    result.hit = true;
-                    result.hit_normal = (dot(mask, mask) > 0.5) ? (-mask * step_dir) : -sign(dda_dir);
-                    result.distance = t;
-                    result.transmittance = ray_transmittance;
+                    float hit_t;
+                    vec3 hit_norm;
+                    vec3 entry_norm = (dot(mask, mask) > 0.5) ? (-mask * step_dir) : -sign(dda_dir);
 
-                    vec3 hit_face_pos = start_scene + dda_dir * t;
-                    result.hit_pos = hit_face_pos;
+                    bool did_hit = test_voxel_shape_hit(
+                        sample_data.shape_class,
+                        current_voxel,
+                        start_voxel,
+                        inv_dir,
+                        t,
+                        clamped_next_t,
+                        entry_norm,
+                        hit_t,
+                        hit_norm
+                    );
+
+                    if (did_hit) {
+                        result.hit = true;
+                        result.hit_normal = hit_norm;
+                        result.distance = hit_t;
+                        result.transmittance = ray_transmittance;
+
+                        vec3 hit_face_pos = start_scene + dda_dir * hit_t;
+                        result.hit_pos = hit_face_pos;
 
                     // 1. Direct Sun / Moonlight bounce
                     float sun_vis = sample_voxel_sun_shadow(
@@ -220,7 +311,8 @@ VoxelHit trace_voxel_dda(
                     result.radiance = (
                         emission_radiance + bounce_radiance
                     ) * ray_transmittance;
-                    break;
+                        break;
+                    }
                 }
             }
         }
@@ -247,6 +339,84 @@ VoxelHit trace_voxel_dda(
     result.transmittance = ray_transmittance;
     result.accumulated_light = accumulated_light;
     return result;
+}
+
+// Stage 5: Fast shadow / occlusion test (terminates on first opaque sub-box hit)
+bool trace_any_hit(
+    usampler3D voxel_grid,
+    vec3 ray_origin_scene,
+    vec3 surface_normal,
+    vec3 ray_dir,
+    float max_dist
+) {
+    vec3 dda_dir = normalize(safe_ray_dir(ray_dir));
+    vec3 inv_dir = 1.0 / dda_dir;
+    vec3 start_scene = ray_origin_scene + surface_normal * 0.03 + dda_dir * 0.02;
+    vec3 start_voxel = scene_to_voxel_space(start_scene);
+    ivec3 current_voxel = ivec3(floor(start_voxel));
+
+    ivec3 origin_voxel = ivec3(floor(scene_to_voxel_space(ray_origin_scene - surface_normal * 0.05)));
+    ivec3 origin_voxel_ray = ivec3(floor(scene_to_voxel_space(ray_origin_scene - dda_dir * 0.05)));
+
+    vec3 step_dir = sign(dda_dir);
+    vec3 delta_t = abs(inv_dir);
+    vec3 t_max = (step_dir * (vec3(current_voxel) - start_voxel) + step_dir * 0.5 + 0.5) * delta_t;
+
+    vec3 mask = vec3(0.0);
+    float t = 0.0;
+
+    const int MAX_STEPS = voxel_dda_max_steps;
+    for (int i = 0; i < MAX_STEPS; ++i) {
+        if (!is_inside_voxel_grid(current_voxel) || t > max_dist) {
+            break;
+        }
+
+        float next_t = min(min(t_max.x, t_max.y), t_max.z);
+        float clamped_next_t = min(next_t, max_dist);
+
+        if (current_voxel != origin_voxel && current_voxel != origin_voxel_ray) {
+            uint packed = texelFetch(voxel_grid, current_voxel, 0).r;
+            VoxelSample sample_data = unpack_voxel_data(packed);
+
+            if (sample_data.is_solid && !sample_data.is_translucent) {
+                float hit_t;
+                vec3 hit_norm;
+                vec3 entry_norm = (dot(mask, mask) > 0.5) ? (-mask * step_dir) : -sign(dda_dir);
+                if (test_voxel_shape_hit(
+                    sample_data.shape_class,
+                    current_voxel,
+                    start_voxel,
+                    inv_dir,
+                    t,
+                    clamped_next_t,
+                    entry_norm,
+                    hit_t,
+                    hit_norm
+                )) {
+                    return true;
+                }
+            }
+        }
+
+        if (t_max.x < t_max.y) {
+            if (t_max.x < t_max.z) {
+                mask = vec3(1.0, 0.0, 0.0);
+            } else {
+                mask = vec3(0.0, 0.0, 1.0);
+            }
+        } else {
+            if (t_max.y < t_max.z) {
+                mask = vec3(0.0, 1.0, 0.0);
+            } else {
+                mask = vec3(0.0, 0.0, 1.0);
+            }
+        }
+        t = next_t;
+        t_max += mask * delta_t;
+        current_voxel += ivec3(mask * step_dir);
+    }
+
+    return false;
 }
 
 #endif // INCLUDE_LIGHTING_RT_VOXEL_DDA

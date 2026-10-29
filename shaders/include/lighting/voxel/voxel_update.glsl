@@ -38,13 +38,44 @@ bool is_voxel_terrain_stage() {
 #endif
 }
 
-uint get_voxel_shape_class(uint block_id) {
+uint get_voxel_shape_class(uint block_id, vec3 mid_block_attr, vec3 normal) {
     if (block_id == 2u || block_id == 3u || block_id == 14u || block_id == 15u) {
         return VOXEL_SHAPE_PLANT;
     }
     if (block_id == 80u || (block_id >= 81u && block_id <= 96u)) {
         return VOXEL_SHAPE_GLASS;
     }
+
+    // Fences and panes: thin along horizontal axes
+    if (block_id == 30u || block_id == 28u) {
+        if (abs(mid_block_attr.x) < 22.0 && abs(mid_block_attr.z) < 22.0) {
+            return VOXEL_SHAPE_PANE_OR_FENCE;
+        }
+    }
+
+    // Half-slabs:
+    // mid_block_attr = (midBlock - vertex) * 64.0.
+    // For a cut face at y = 0.5, mid_block_attr.y is close to 0.0.
+    // Normal pointing UP (normal.y > 0.3) -> top of bottom slab.
+    // Normal pointing DOWN (normal.y < -0.3) -> bottom of top slab.
+    if (abs(mid_block_attr.y) < 4.0) {
+        if (normal.y > 0.3) {
+            return VOXEL_SHAPE_SLAB_BOTTOM;
+        } else if (normal.y < -0.3) {
+            return VOXEL_SHAPE_SLAB_TOP;
+        }
+    }
+
+    // Side faces of half-slabs:
+    // Vertices strictly within [4.0, 30.0] -> bottom half
+    if (mid_block_attr.y > 4.0 && mid_block_attr.y < 30.0) {
+        return VOXEL_SHAPE_SLAB_BOTTOM;
+    }
+    // Vertices strictly within [-30.0, -4.0] -> top half
+    if (mid_block_attr.y < -4.0 && mid_block_attr.y > -30.0) {
+        return VOXEL_SHAPE_SLAB_TOP;
+    }
+
     return VOXEL_SHAPE_CUBE;
 }
 
@@ -100,7 +131,7 @@ void update_rt_voxel_grid(
         // must NEVER store vanilla lightmap: because voxel cells lack face orientation,
         // any light on an exterior face (roof, outer wall) bleeds through to the interior.
         float voxel_block_light = is_emitter ? 1.0 : 0.0;
-        uint shape_class = get_voxel_shape_class(block_id);
+        uint shape_class = get_voxel_shape_class(block_id, mid_block_attr, gl_Normal);
 
         uint packed_data = pack_voxel_data(
             block_id,
