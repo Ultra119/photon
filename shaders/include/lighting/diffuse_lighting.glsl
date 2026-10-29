@@ -324,7 +324,9 @@ vec3 get_diffuse_lighting(
     // leaks from roof vertices, analytic_sky bleeds fake daylight onto ceiling corners.
     indirect_lighting = rtgi_local + rtgi_sky * sky_retention;
 
-    // Soft fallback for handheld lighting or areas outside voxel distance
+    // Direct block lighting from vanilla lightmap (clean, noise-free, and respects walls).
+    // In vanilla Minecraft, solid blocks block light, so a torch on the roof yields
+    // light_levels.x = 0 on interior ceiling/wall fragments, preventing any leak.
     vec3 mc_block = get_block_lighting(
         scene_pos,
         flat_normal,
@@ -332,19 +334,7 @@ vec3 get_diffuse_lighting(
         ao,
         directional_lighting
     );
-    // Analytic block light is the fallback for where the voxel volume has no
-    // data: outside it, and in the band near its edge that the DDA cannot
-    // reach. Inside the volume RTGI already supplies block light, so adding
-    // mc_block unconditionally counts it twice.
-    float voxel_edge_dist = get_voxel_edge_distance(scene_pos);
-    float voxel_edge_fade = smoothstep(
-        voxel_edge_fade_start,
-        voxel_edge_fade_end,
-        voxel_edge_dist
-    );
-#ifdef RTGI_DIRECT_BLOCK_FALLBACK
-    direct_lighting += mc_block * voxel_edge_fade;
-#endif
+    direct_lighting += mc_block;
 #else
     // Analytic fallback for forward-lit translucent surfaces and for builds
     // with RAYTRACED_GI disabled. The RTGI buffer describes the opaque layer,

@@ -185,8 +185,10 @@ VoxelHit trace_voxel_dda(
                     // by exterior roof/wall faces and leaks into dark interiors.
                     vec3 sky_radiance = vec3(0.0);
 
-                    // 3. Blocklight bounce (light from torches, lanterns, lamps illuminating this surface)
-                    vec3 blocklight_bounce = blocklight_color * (sqr(sample_data.block_light) * blocklight_scale);
+                    // 3. Blocklight bounce: solid non-emitter blocks do not bounce blocklight
+                    // (direct blocklight is handled by mc_block on the camera receiver).
+                    // Actual light emitters radiate their calibrated light via mat.emission.
+                    vec3 blocklight_bounce = vec3(0.0);
 
                     // 4. Emissive radiance from block itself
                     vec3 emission_radiance = mat.emission;

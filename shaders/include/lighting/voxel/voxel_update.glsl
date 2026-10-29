@@ -75,12 +75,17 @@ void update_rt_voxel_grid(
     if (should_voxelize(block_id) && is_inside_voxel_volume(voxel_pos)) {
         ivec3 coord = clamp_to_voxel_grid(ivec3(voxel_pos));
         vec3 voxel_albedo = is_emitter ? get_voxel_light_color(block_id) : vertex_tint;
-        float voxel_block_light = is_emitter ? 1.0 : light_levels.x;
+        // Only actual light-emitting blocks (torches, lanterns, glowstone, lava)
+        // store block light in the voxel grid. Solid blocks (stone, wood, quartz, etc.)
+        // must NEVER store vanilla lightmap: because voxel cells lack face orientation,
+        // any light on an exterior face (roof, outer wall) bleeds through to the interior.
+        float voxel_block_light = is_emitter ? 1.0 : 0.0;
+        float voxel_sky_light = 0.0;
 
         uint packed_data = pack_voxel_data(
             block_id,
             voxel_block_light,
-            light_levels.y,
+            voxel_sky_light,
             voxel_albedo,
             is_translucent,
             is_emitter
