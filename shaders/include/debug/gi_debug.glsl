@@ -110,6 +110,64 @@ vec3 gi_debug_spread(vec3 raw, vec3 accumulated) {
     return mix(vec3(0.5), sign_colour * magnitude * 3.0, clamp01(magnitude * 3.0));
 }
 
+// Box filter for display only. The hit and reject images carry one sample per
+// ray, so at RTGI_RAY_COUNT=2 every texel is 0 / 0.5 / 1 per channel and the
+// raw view is pure binary noise. Averaging a 3x3 neighbourhood makes the
+// spatial structure visible without touching the buffer itself, which is what
+// the acceptance criterion ("interpretable") actually asks for.
+vec3 gi_debug_smooth_3x3(sampler2D source, vec2 uv) {
+    ivec2 size = textureSize(source, 0);
+    ivec2 base = clamp(ivec2(uv * vec2(size)), ivec2(0), size - 1);
+    vec3 sum = vec3(0.0);
+    for (int y = -1; y <= 1; ++y) {
+        for (int x = -1; x <= 1; ++x) {
+            sum += texelFetch(source, clamp(base + ivec2(x, y), ivec2(0), size - 1), 0).rgb;
+        }
+    }
+    return sum * (1.0 / 9.0);
+}
+
+// A solid swatch in the bottom-left corner identifying the active view.
+//
+// Without it, a screenshot cannot prove which view produced it. That matters:
+// "the three voxel views look the same" is ambiguous between a broken encoder
+// and an option that did not switch, and this settles it in one glance.
+const vec3 gi_debug_swatch_size = vec3(24.0);
+
+vec3 gi_debug_view_swatch() {
+#if GI_DEBUG == GI_DEBUG_RAW
+    return vec3(1.0, 0.55, 0.10);
+#elif GI_DEBUG == GI_DEBUG_HISTORY
+    return vec3(0.10, 0.70, 1.0);
+#elif GI_DEBUG == GI_DEBUG_FILTERED
+    return vec3(0.20, 1.0, 0.30);
+#elif GI_DEBUG == GI_DEBUG_HIT
+    return vec3(1.0, 0.0, 1.0);
+#elif GI_DEBUG == GI_DEBUG_REJECT
+    return vec3(1.0, 1.0, 1.0);
+#elif GI_DEBUG == GI_DEBUG_VOXEL_ID
+    // Deliberately not palette index 4 (0.25, 0.45, 0.95): that is exactly the
+    // colour stone voxels get, and a corner swatch identical to the content it
+    // labels is worse than no swatch.
+    return vec3(0.0, 1.0, 1.0);
+#elif GI_DEBUG == GI_DEBUG_VOXEL_LIGHT
+    return vec3(1.0, 1.0, 0.0);
+#elif GI_DEBUG == GI_DEBUG_VOXEL_ALBEDO
+    return vec3(0.60, 0.60, 0.60);
+#elif GI_DEBUG == GI_DEBUG_VARIANCE
+    return vec3(1.0, 0.35, 0.0);
+#else
+    return vec3(0.0);
+#endif
+}
+
+vec3 gi_debug_stamp_swatch(vec3 color, ivec2 texel) {
+    return (texel.x < int(gi_debug_swatch_size.x)
+            && texel.y < int(gi_debug_swatch_size.y))
+        ? gi_debug_view_swatch()
+        : color;
+}
+
 // ---------------------------------------------------------------------------
 //   View dispatcher
 // ---------------------------------------------------------------------------
@@ -150,19 +208,32 @@ vec3 gi_debug_view(ivec2 texel, vec2 uv, vec3 fallback) {
              : texture(rtgi_history_sampler, rtgi_uv).rgb
     );
 #elif GI_DEBUG == GI_DEBUG_HIT
-    return gi_debug_hit_mask(texture(rtgi_hit_sampler, rtgi_uv));
+    return gi_debug_hit_mask(
+        vec4(gi_debug_smooth_3x3(rtgi_hit_sampler, rtgi_uv), 1.0)
+    );
 #elif GI_DEBUG == GI_DEBUG_REJECT
-    return gi_debug_reject_mask(texture(rtgi_reject_sampler, rtgi_uv));
+    return gi_debug_reject_mask(
+        vec4(gi_debug_smooth_3x3(rtgi_reject_sampler, rtgi_uv), 1.0)
+    );
 #else
     // Voxel views: reconstruct the opaque surface position and read the voxel
     // the camera actually sees, so a hole in this image is a hole in the volume
     // at the place the player is looking.
-    float depth = texelFetch(depthtex1, texel, 0).x;
+    //
+    // handle_jitter = true matches every other depth reconstruction in this
+    // pack (rtgi_trace, rtgi_temporal, d3_ao, and the DISTANCE_VIEW block in
+    // final.fsh itself): the depth buffer is rendered through a jittered
+    // projection, so the offset has to be compensated for. An earlier revision
+    // passed false on the reasoning that final runs after TAA resolves; that
+    // was not verified and it did not fix the flicker, so the codebase
+    // convention wins.
+    ivec2 depth_texel = ivec2(taau_framebuffer_uv(uv) * view_res);
+    float depth = texelFetch(depthtex1, depth_texel, 0).x;
     if (depth >= 1.0) {
         return vec3(0.0); // sky
     }
 
-    vec3 screen_pos = vec3(uv, depth);
+    vec3 screen_pos = vec3(taau_projection_uv(uv), depth);
     vec3 view_pos = screen_to_view_space(gbufferProjectionInverse, screen_pos, true);
     vec3 scene_pos = view_to_scene_space(view_pos);
 

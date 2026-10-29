@@ -109,7 +109,14 @@ def main() -> int:
             m for m in re.findall(r"return\s+gi_debug_([a-z_]+)\s*\(", text)
             if m != "palette_color"
         }
-        reads = set(re.findall(r"texture\(\s*(rtgi_[a-z]+)_sampler", text))
+        # Any *use* of a GI sampler, not just texture(...) -- the mask views
+        # hand theirs to a smoothing helper. A `uniform sampler2D rtgi_x_sampler;`
+        # declaration is not a read, so drop those lines first.
+        reads = set()
+        for line in text.splitlines():
+            if re.match(r"\s*uniform\s+\w+\s+rtgi_\w+_sampler\s*;", line):
+                continue
+            reads.update(re.findall(r"\b(rtgi_[a-z]+)_sampler\b", line))
 
         if encoders != want_encoders:
             failures.append(
@@ -121,6 +128,38 @@ def main() -> int:
                 f"final.fsh {view}: buffer reads {sorted(reads)}, "
                 f"expected {sorted(want_reads)}"
             )
+
+    # --- 2b: every view's corner swatch must be a different colour ----------
+    # The swatch exists so a screenshot identifies itself. Two views sharing a
+    # colour would silently defeat that, and it is the kind of thing that
+    # happens when a new view is added by copying an existing branch.
+    swatches: dict[str, str] = {}
+    for view in EXPECTED:
+        if view == "GI_DEBUG_OFF":
+            continue
+        rc, log, src = build(
+            "/world0/final.fsh", "frag",
+            ["DEBUG_VIEW=DEBUG_VIEW_GI", f"GI_DEBUG={view}"], env,
+        )
+        if rc != 0 or not src.is_file():
+            continue
+        text = preprocess(src)
+        block = re.search(
+            r"vec3 gi_debug_view_swatch\(\) \{(.*?)\n\}", text, re.S
+        )
+        if not block:
+            failures.append(f"{view}: gi_debug_view_swatch() not found")
+            continue
+        colour = re.search(r"vec3\(\s*[0-9.]+\s*,\s*[0-9.]+\s*,\s*[0-9.]+\s*\)", block.group(1))
+        if not colour:
+            failures.append(f"{view}: no literal swatch colour")
+            continue
+        swatches[colour.group(0)] = swatches.get(colour.group(0), "") + f" {view}"
+
+    checked += 1
+    dupes = {c: v for c, v in swatches.items() if len(v.split()) > 1}
+    if dupes:
+        failures.append(f"views share a swatch colour: {dupes}")
 
     # --- 3: the writer side ------------------------------------------------
     for wrapper, stage, image, owner in WRITERS:

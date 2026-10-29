@@ -195,6 +195,7 @@ void main() {
 #elif DEBUG_VIEW == DEBUG_VIEW_GI
 #ifdef RAYTRACED_GI
     fragment_color = gi_debug_view(texel, uv, fragment_color);
+    fragment_color = gi_debug_stamp_swatch(fragment_color, texel);
 #else
     // Magenta is not a bug report about the scene: it means the GI debug views
     // have nothing to read because ray-traced GI is disabled.

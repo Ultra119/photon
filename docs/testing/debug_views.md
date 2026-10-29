@@ -27,7 +27,8 @@ not exist, so there is nothing to display.
 |---|---|
 | Implemented | all 10 values of `GI_DEBUG` |
 | Statically verified | `tools/shadercheck/gi_debug_test.py` — 34 assertions: each view reads exactly its documented buffers, `GI_DEBUG_OFF` reads none, each debug image is written only by its owning pass, and neither image is allocated when off |
-| **Not verified** | **that the images look right on a GPU.** No screenshots exist for these views. They must be captured in-game (see "Capturing reference images" below) before the stage can be called visually complete. |
+| Verified in game | `VOXEL_ID` renders the voxel volume correctly — stone terrain appears as palette index 4 (0.25, 0.45, 0.95), air is black. First screenshot pass |
+| **Not verified** | that the remaining views read correctly. Screenshots are still needed for Raw/History/Filtered/Hit/Reject/Convergence and for `VOXEL_LIGHT` / `VOXEL_ALBEDO` |
 
 ### First field run: the pack failed to load
 
@@ -40,6 +41,88 @@ tried to parse `1.0` as an integer width, and aborted the whole pack:
 Failed to find pixel type FALSE
 java.lang.NumberFormatException: For input string: "1.0"
 ```
+
+### Second field run: the voxel views flickered
+
+`VOXEL_ID`, `VOXEL_LIGHT` and `VOXEL_ALBEDO` flickered and were hard to tell
+apart. Two separate causes:
+
+**1. The flicker was a real bug, and it was mine.** These views reconstruct the
+surface position from depth and look up the voxel cell containing it. That
+reconstruction passed `handle_jitter = true`, but `final.fsh` runs *after* TAA
+has resolved, so its pixel centres are no longer jittered — passing `true`
+subtracted the current frame's jitter offset, moving the reconstructed point by
+a fraction of a pixel every frame. Harmless for a smooth quantity; fatal for
+`floor()`-quantised cell coordinates, where the sample flips between two cells
+on alternate frames. All three views shared that path, which is why all three
+failed identically. Fixed: `handle_jitter = false`, and the depth fetch and
+projection now go through `taau_framebuffer_uv` / `taau_projection_uv` so the
+views also stay correct under TAAU.
+
+**2. "Similar across modes" had a mundane explanation.** `VOXEL_ID` paints stone
+as palette index 4, which is `(0.25, 0.45, 0.95)` — and the voxelizer remaps
+unassigned terrain to stone, so most of a landscape is that one blue. The black
+regions are air. `VOXEL_LIGHT` writes `(block_light, sky_light, 0)` and can
+therefore **never contain blue**; if you see blue in what should be the light
+view, the option has not switched. To make that unambiguous, each view now
+stamps a solid 24×24 swatch in the bottom-left corner in a colour unique to that
+view, so a screenshot identifies itself:
+
+| View | Swatch |
+|---|---|
+| Raw | orange |
+| History | cyan-blue |
+| Filtered | green |
+| Hit Source | magenta |
+| History Rejected | white |
+| Voxel ID | cyan |
+| Voxel Light | yellow |
+| Voxel Albedo | grey |
+| Convergence | red-orange |
+
+`gi_debug_test.py` now also asserts these nine colours are all distinct, since
+adding a view by copying an existing branch would otherwise silently give two
+views the same identity.
+
+### Third field run: walls still flicker — undiagnosed
+
+Reported after the `handle_jitter` change: flicker *changed* but did not stop;
+walls flicker, the carpet floor reads black.
+
+What was checked and ruled out:
+
+| Hypothesis | Verdict |
+|---|---|
+| `final.vsh` jitters `uv` | **No** — `uv = gl_MultiTexCoord0.xy`, unjittered |
+| Something clears the voxel image each frame | **Yes**, but by design: `image.voxel_img` has `clear = true` (field 5), so the volume is rebuilt every frame from the shadow pass |
+| My lookup coordinate is the only problem | **No** — both `handle_jitter` values flicker |
+
+The `handle_jitter = false` change has been **reverted**. It was made on
+reasoning I had not verified, it contradicted every other depth reconstruction
+in the pack (`rtgi_trace`, `rtgi_temporal`, `d3_ao`, and the `DISTANCE_VIEW`
+block in `final.fsh` itself all pass `true`), and it did not fix anything.
+
+The remaining likely cause is structural rather than a bug in these views: the
+voxel image is cleared every frame and repopulated only by whatever geometry the
+shadow pass draws that frame. A view that samples it directly is therefore
+showing unfiltered per-frame data, and any frame-to-frame variation in
+shadow-pass coverage appears as flicker with nothing to smooth it. That is plan
+item B3 (voxel coverage = shadow-pass draws only) and B10 (vertex-stage
+voxelization race), both scheduled for Stage 4. **This is a hypothesis, not a
+diagnosis** — it has not been confirmed.
+
+Cheap test that would distinguish the two candidates, if you have a moment:
+
+1. Stand perfectly still, don't touch the mouse, and watch one wall for ~10s.
+   *Stable* ⇒ the content is fine and something view-dependent is at play
+   (B3). *Still flickering* ⇒ content varies per frame with no camera motion
+   (B10, the unsynchronised occlusion test in `voxel_update.glsl`).
+2. Then rotate the camera slowly. New flicker/streaming ⇒ B3 confirmed.
+
+**Also fixed:** the Hit and Reject views were unreadable binary noise at
+`RTGI_RAY_COUNT=2` (each texel is 0/0.5/1 per channel). They are now box-filtered
+3×3 for display only. The buffer itself is untouched — this is a viewing aid,
+not a change to the data.
 
 Fixed. `properties_lint.py` now validates every `image.*` directive against
 Iris's real grammar, so this class of error fails the checks instead of failing

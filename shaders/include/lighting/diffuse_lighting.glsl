@@ -333,13 +333,21 @@ vec3 get_diffuse_lighting(
         ao,
         directional_lighting
     );
+    // Analytic block light is the fallback for where the voxel volume has no
+    // data: outside it, and in the band near its edge that the DDA cannot
+    // reach. Inside the volume RTGI already supplies block light, so adding
+    // mc_block unconditionally counts it twice.
+    //
+    // voxel_edge_fade was already being computed here for exactly this purpose
+    // and then discarded (plan item B6). It is 0 inside the volume and 1 beyond
+    // the fade band, which is the blend this term needs.
     float voxel_edge_dist = get_voxel_edge_distance(scene_pos);
     float voxel_edge_fade = smoothstep(
         voxel_edge_fade_start,
         voxel_edge_fade_end,
         voxel_edge_dist
     );
-    lighting += mc_block;
+    lighting += mc_block * voxel_edge_fade;
 #else
     // Analytic fallback for forward-lit translucent surfaces and for builds
     // with RAYTRACED_GI disabled. The RTGI buffer describes the opaque layer,
