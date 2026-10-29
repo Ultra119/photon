@@ -107,7 +107,7 @@ VoxelMaterial get_voxel_material(uint block_id, vec3 fallback_color) {
 
         // Default Stone / unassigned terrain
         case 4u:
-            mat.albedo = vec3(0.35, 0.35, 0.35);
+            mat.albedo = (max_of(fallback_color) > 0.01) ? fallback_color : vec3(0.35, 0.35, 0.35);
             mat.roughness = 0.80;
             mat.is_solid = true;
             break;
@@ -123,14 +123,16 @@ VoxelMaterial get_voxel_material(uint block_id, vec3 fallback_color) {
 
         // Dirt, grass block, coarse dirt, stone, cobblestone, deepslate
         case 6u:
-            mat.albedo = (fallback_color.g > fallback_color.r * 1.05 && fallback_color.g > 0.08) ? fallback_color * 0.40 : vec3(0.35, 0.30, 0.25);
+            mat.albedo = (fallback_color.g > fallback_color.r * 1.05 && fallback_color.g > 0.08)
+                ? fallback_color * 0.40
+                : ((max_of(fallback_color) > 0.01) ? fallback_color : vec3(0.35, 0.30, 0.25));
             mat.roughness = 0.88;
             mat.is_solid = true;
             break;
 
         // Sand, sandstone
         case 7u:
-            mat.albedo = vec3(0.72, 0.65, 0.46);
+            mat.albedo = (max_of(fallback_color) > 0.01) ? fallback_color : vec3(0.72, 0.65, 0.46);
             mat.roughness = 0.88;
             mat.is_solid = true;
             break;
@@ -146,35 +148,35 @@ VoxelMaterial get_voxel_material(uint block_id, vec3 fallback_color) {
 
         // Red sand, red sandstone
         case 9u:
-            mat.albedo = vec3(0.68, 0.36, 0.18);
+            mat.albedo = (max_of(fallback_color) > 0.01) ? fallback_color : vec3(0.68, 0.36, 0.18);
             mat.roughness = 0.88;
             mat.is_solid = true;
             break;
 
         // Wood planks / logs
         case 10u:
-            mat.albedo = vec3(0.48, 0.32, 0.18);
+            mat.albedo = (max_of(fallback_color) > 0.01) ? fallback_color : vec3(0.48, 0.32, 0.18);
             mat.roughness = 0.75;
             mat.is_solid = true;
             break;
 
         // Terracotta
         case 11u:
-            mat.albedo = vec3(0.55, 0.35, 0.25);
+            mat.albedo = (max_of(fallback_color) > 0.01) ? fallback_color : vec3(0.55, 0.35, 0.25);
             mat.roughness = 0.85;
             mat.is_solid = true;
             break;
 
         // Metals (Iron, gold, copper)
         case 12u:
-            mat.albedo = vec3(0.70, 0.70, 0.70);
+            mat.albedo = (max_of(fallback_color) > 0.01) ? fallback_color : vec3(0.70, 0.70, 0.70);
             mat.roughness = 0.40;
             mat.is_solid = true;
             break;
 
         // Netherrack, nether bricks
         case 13u:
-            mat.albedo = vec3(0.38, 0.12, 0.12);
+            mat.albedo = (max_of(fallback_color) > 0.01) ? fallback_color : vec3(0.38, 0.12, 0.12);
             mat.roughness = 0.90;
             mat.is_solid = true;
             break;
@@ -237,7 +239,7 @@ VoxelMaterial get_voxel_material(uint block_id, vec3 fallback_color) {
 
         default:
             // Fallback to reasonable albedo
-            mat.albedo = clamp(fallback_color, vec3(0.08), vec3(0.45));
+            mat.albedo = (max_of(fallback_color) > 0.01) ? fallback_color : clamp(fallback_color, vec3(0.08), vec3(0.45));
             mat.is_solid = true;
             break;
     }

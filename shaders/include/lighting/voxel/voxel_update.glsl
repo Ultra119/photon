@@ -3,6 +3,7 @@
 
 #include "voxel_constants.glsl"
 #include "voxel_storage.glsl"
+#include "/include/utility/color.glsl"
 
 #if defined PROGRAM_SHADOW || defined PROGRAM_GBUFFERS_TERRAIN
 
@@ -94,7 +95,9 @@ void update_rt_voxel_grid(
     uint block_id,
     vec3 vertex_tint,
     vec3 mid_block_attr,
-    vec2 light_levels
+    vec2 light_levels,
+    vec2 mid_tex_coord,
+    vec2 tex_coord
 ) {
     vec3 model_pos = gl_Vertex.xyz + mid_block_attr * (1.0 / 64.0);
     vec3 view_pos = (gl_ModelViewMatrix * vec4(model_pos, 1.0)).xyz;
@@ -125,7 +128,16 @@ void update_rt_voxel_grid(
 
     if (should_voxelize(block_id) && is_inside_voxel_volume(voxel_pos)) {
         ivec3 coord = clamp_to_voxel_grid(ivec3(voxel_pos));
-        vec3 voxel_albedo = is_emitter ? get_voxel_light_color(block_id) : vertex_tint;
+
+        vec2 sample_uv = (mid_tex_coord != vec2(0.0)) ? mid_tex_coord : tex_coord;
+        vec4 tex_sample = textureLod(tex, sample_uv, 0.0);
+        if (tex_sample.a < 0.1 && sample_uv != tex_coord) {
+            tex_sample = textureLod(tex, tex_coord, 0.0);
+        }
+        vec3 albedo_srgb = (tex_sample.a > 0.05) ? (tex_sample.rgb * vertex_tint) : vertex_tint;
+        vec3 linear_albedo = srgb_eotf_inv(clamp01(albedo_srgb));
+
+        vec3 voxel_albedo = is_emitter ? get_voxel_light_color(block_id) : linear_albedo;
         // Only actual light-emitting blocks (torches, lanterns, glowstone, lava)
         // store block light in the voxel grid. Solid blocks (stone, wood, quartz, etc.)
         // must NEVER store vanilla lightmap: because voxel cells lack face orientation,

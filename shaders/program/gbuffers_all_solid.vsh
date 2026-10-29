@@ -56,6 +56,7 @@ attribute vec3 at_midBlock;
 // ------------
 
 uniform sampler2D noisetex;
+uniform sampler2D tex;
 
 uniform mat4 gbufferModelView;
 uniform mat4 gbufferModelViewInverse;
@@ -114,7 +115,7 @@ void main() {
     tbn = get_tbn_matrix();
 
 #if (defined RAYTRACED_GI || defined RT_REFLECTIONS) && defined PROGRAM_GBUFFERS_TERRAIN
-    update_rt_voxel_grid(material_mask, tint.rgb, at_midBlock, light_levels);
+    update_rt_voxel_grid(material_mask, tint.rgb, at_midBlock, light_levels, mc_midTexCoord, uv);
 #endif
 
 
