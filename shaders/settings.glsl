@@ -60,6 +60,9 @@ const float wetnessHalflife         = 70.0;
 // ------------------------------------
 
   #define RAYTRACED_GI
+  #define RTGI_TRACER_VOXEL 0
+  #define RTGI_TRACER_HYBRID 1
+  #define RTGI_TRACER RTGI_TRACER_VOXEL // [RTGI_TRACER_VOXEL RTGI_TRACER_HYBRID]
   #define RTGI_RESOLUTION 1 // [0 1 2]
   #define RTGI_RAY_COUNT 2 // [2 4 8]
   #define RTGI_BRIGHTNESS 1.00 // [0.25 0.50 0.75 1.00 1.25 1.50 1.75 2.00 2.50 3.00]

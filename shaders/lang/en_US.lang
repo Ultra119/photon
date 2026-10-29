@@ -793,6 +793,11 @@ profile.extreme                                                      = Extreme (
 option.RAYTRACED_GI                                                  = Ray-Traced GI
 option.RAYTRACED_GI.comment                                          = Native Voxel RTGI + Screen-Space GI Hybrid for realistic indirect sunlight, skylight, and colored blocklight bounces.
 
+option.RTGI_TRACER                                                  = GI Ray Tracer
+option.RTGI_TRACER.comment                                          = Voxel RT: Pure 3D voxel ray tracing (SEUS PTGI style). 100% camera-independent and stable. Hybrid: Screen-space raymarching with voxel fallback.
+value.RTGI_TRACER.0                                                 = Voxel RT (SEUS Style)
+value.RTGI_TRACER.1                                                 = Hybrid (SSGI + Voxel)
+
 option.RTGI_BRIGHTNESS                                              = RTGI Indirect Brightness
 option.RTGI_BRIGHTNESS.comment                                      = Controls the strength and radiance of the indirect bounced lighting field. Higher values make GI bounces more prominent and vibrant.
 option.RTGI_INTERIOR_RETENTION                                      = RTGI Interior Retention

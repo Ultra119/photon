@@ -7,6 +7,13 @@
 #include "ssgi.glsl"
 #include "voxel_dda.glsl"
 
+#define RTGI_TRACER_VOXEL  0
+#define RTGI_TRACER_HYBRID 1
+
+#ifndef RTGI_TRACER
+#define RTGI_TRACER RTGI_TRACER_VOXEL
+#endif
+
 // Generate cosine-weighted hemisphere direction around normal
 vec3 sample_cosine_hemisphere(vec3 normal, vec2 u) {
     float r = sqrt(u.x);
@@ -56,6 +63,7 @@ vec4 evaluate_hybrid_rtgi_ray(
     vec3 ray_dir_view = mat3(gbufferModelView) * ray_dir_world;
     hit_source = RTGI_HIT_NONE;
 
+#if RTGI_TRACER == RTGI_TRACER_HYBRID
     // 1. Try Screen-Space GI first (highest detail, on-screen geometry & normal maps)
     SSGIHit ss_hit = trace_screen_space_gi(
         screen_pos,
@@ -73,6 +81,7 @@ vec4 evaluate_hybrid_rtgi_ray(
         hit_source = RTGI_HIT_SSGI;
         return vec4(ss_hit.radiance, ss_hit.sky_weight);
     }
+#endif
 
     // 2. Fallback to 3D Voxel DDA (handles occluded objects, off-screen surroundings, ceilings)
     const float max_voxel_dist = voxel_distance;
