@@ -798,6 +798,8 @@ option.RTGI_TRACER.comment                                          = Voxel RT: 
 value.RTGI_TRACER.0                                                 = Voxel RT (SEUS Style)
 value.RTGI_TRACER.1                                                 = Hybrid (SSGI + Voxel)
 
+option.RTGI_INTENSITY                                               = RTGI Physical Intensity
+option.RTGI_INTENSITY.comment                                       = Calibrated single-bounce physical indirect lighting multiplier (default 1.00). In a diffuse enclosure, energy conservation guarantees indirect illuminance matches the incoming radiance.
 option.RTGI_BRIGHTNESS                                              = RTGI Indirect Brightness
 option.RTGI_BRIGHTNESS.comment                                      = Controls the strength and radiance of the indirect bounced lighting field. Higher values make GI bounces more prominent and vibrant.
 option.RTGI_INTERIOR_RETENTION                                      = RTGI Interior Retention

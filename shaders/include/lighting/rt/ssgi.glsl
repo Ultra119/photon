@@ -5,6 +5,7 @@
 #include "/include/misc/raytracer.glsl"
 #include "/include/utility/encoding.glsl"
 #include "/include/utility/space_conversion.glsl"
+#include "voxel_dda.glsl"
 
 struct SSGIHit {
     bool hit;
@@ -12,9 +13,10 @@ struct SSGIHit {
     vec3 hit_pos_scene;
     vec3 radiance;
     float sky_weight;
+    float edge_fade;
 };
 
-// Screen-space GI raymarcher
+// Screen-space GI raymarcher (Stage 6 C.1: current-frame analytic radiance)
 SSGIHit trace_screen_space_gi(
     vec3 screen_pos,
     vec3 view_pos,
@@ -22,7 +24,12 @@ SSGIHit trace_screen_space_gi(
     vec3 ray_dir_view,
     float dither,
     float surface_skylight,
-    sampler2D scene_color_sampler,
+    sampler2D shadow_tex,
+    mat4 shadow_mv,
+    mat4 shadow_proj,
+    vec3 direct_sun_color,
+    vec3 sky_ambient_color,
+    vec3 l_dir,
     sampler2D gbuffer0_sampler,
     sampler2D depth_translucent_sampler
 ) {
@@ -32,6 +39,7 @@ SSGIHit trace_screen_space_gi(
     result.hit_pos_scene = vec3(0.0);
     result.radiance = vec3(0.0);
     result.sky_weight = 0.0;
+    result.edge_fade = 0.0;
 
     // When local-light SSGI is disabled, do not consume the ray in cave /
     // low-skylight scenes. Returning a zero-radiance hit here would block the
@@ -76,8 +84,8 @@ SSGIHit trace_screen_space_gi(
     if (hit) {
         // Border attenuation: fade out rays near the edge of the viewport
         vec2 border = abs(hit_screen_pos.xy * 2.0 - 1.0);
-        float edge_fade = clamp01(1.0 - max(border.x, border.y));
-        edge_fade = smoothstep(0.0, 0.08, edge_fade);
+        float edge_dist = clamp01(1.0 - max(border.x, border.y));
+        float edge_fade = smoothstep(0.0, 0.08, edge_dist);
 
         if (edge_fade > 0.01) {
             vec3 hit_pos_view = screen_to_view_space(SSRT_PROJECTION_MATRIX_INVERSE, hit_screen_pos, false);
@@ -86,7 +94,7 @@ SSGIHit trace_screen_space_gi(
 
             // Reject self-intersection and adjacent faces of the same world
             // block. Otherwise a pale sunlit/lamp-lit block can sample its own
-            // previous-frame color through a seam and create a glowing loop.
+            // color through a seam and create a glowing loop.
             if (distance(hit_pos_scene, origin_pos_scene) < 0.10) {
                 return result;
             }
@@ -119,42 +127,51 @@ SSGIHit trace_screen_space_gi(
                 return result;
             }
 
-            // Reproject hit to previous frame color buffer
-            vec3 prev_screen_pos = reproject_scene_space(hit_pos_scene, false, false);
-            if (clamp01(prev_screen_pos.xy) == prev_screen_pos.xy) {
-                vec3 sample_col = textureLod(scene_color_sampler, prev_screen_pos.xy, 0.0).rgb;
-                sample_col = max(vec3(0.0), min(sample_col, vec3(4.0)));
+            // Stage 6 C.1: Current-Frame Direct Lighting Evaluation
+            // Fetch hit G-buffer normal, albedo and light levels from colortex1 (gbuffer0_sampler)
+            vec4 gbuf = textureLod(gbuffer0_sampler, hit_framebuffer_uv, 0.0);
+            vec2 rg = unpack_unorm_2x8(gbuf.x);
+            vec2 b_mask = unpack_unorm_2x8(gbuf.y);
+            vec3 hit_albedo = vec3(rg, b_mask.x);
+            vec3 hit_normal = decode_unit_vector(unpack_unorm_2x8(gbuf.z));
+            vec3 hit_normal_view = mat3(gbufferModelView) * hit_normal;
+            vec2 hit_light_levels = unpack_unorm_2x8(gbuf.w);
 
-                // Validate hit normal opposing ray using current-frame gbuffer at hit screen coord
-                vec4 gbuf = textureLod(gbuffer0_sampler, hit_framebuffer_uv, 0.0);
-                vec3 hit_normal = decode_unit_vector(unpack_unorm_2x8(gbuf.z));
-                vec3 hit_normal_view = mat3(gbufferModelView) * hit_normal;
-                vec2 hit_light_levels = unpack_unorm_2x8(gbuf.w);
+            if (dot(hit_normal_view, -march_dir_view) > 0.05) {
+                // 1. Direct Sun / Moon incident irradiance [W/m^2]
+                float sun_vis = sample_voxel_sun_shadow(
+                    shadow_tex,
+                    shadow_mv,
+                    shadow_proj,
+                    hit_pos_scene,
+                    hit_normal,
+                    l_dir
+                );
+                float NoL = max(0.0, dot(hit_normal, l_dir));
+                vec3 direct_sun = direct_sun_color * (sun_vis * NoL);
 
-                if (dot(hit_normal_view, -march_dir_view) > 0.05) {
-                    // Previous-frame color is strongly view-dependent for
-                    // local lights. Damp it in low-skylight scenes and let the
-                    // voxel point-light field carry the stable bounce instead.
-                    float local_light_factor = clamp01(1.0 - sqr(hit_light_levels.y));
-                    float ssgi_scale = mix(
-                        0.8,
-                        RTGI_SSGI_LOCAL_LIGHT_SCALE,
-                        local_light_factor
-                    );
+                // 2. Direct Sky incident irradiance [W/m^2]
+                vec3 direct_sky = sky_ambient_color * sqr(hit_light_levels.y);
 
-                    if (ssgi_scale <= 0.001) {
-                        return result;
-                    }
+                // 3. Direct Blocklight incident irradiance [W/m^2]
+                float blocklight_falloff = pow8(hit_light_levels.x) + 0.18 * sqr(hit_light_levels.x) + 0.5 * pow4(hit_light_levels.x);
+                vec3 direct_block = blocklight_falloff * (blocklight_scale * blocklight_color);
 
-                    result.hit = true;
-                    result.hit_uv = prev_screen_pos.xy;
-                    result.hit_pos_scene = hit_pos_scene;
-                    result.radiance = sample_col * edge_fade * ssgi_scale;
-                    // Previous-frame color from a high-skylight surface is
-                    // mostly sun/sky driven; low-skylight hits are treated as
-                    // emissive/block-light driven and are never gated indoors.
-                    result.sky_weight = clamp01(sqr(hit_light_levels.y));
-                }
+                // Total direct irradiance at the hit surface
+                vec3 direct_irradiance = direct_sun + direct_sky + direct_block;
+
+                // Outgoing reflected radiance towards the ray: L_o = (albedo / pi) * E
+                vec3 hit_radiance = hit_albedo * direct_irradiance * voxel_bounce_rcp_pi;
+
+                result.hit = true;
+                result.hit_uv = hit_framebuffer_uv;
+                result.hit_pos_scene = hit_pos_scene;
+                result.radiance = hit_radiance;
+                result.edge_fade = edge_fade;
+
+                float sun_sky_lum = dot(direct_sun + direct_sky, luminance_weights);
+                float total_lum = dot(direct_irradiance, luminance_weights);
+                result.sky_weight = clamp01(sun_sky_lum / max(total_lum, eps));
             }
         }
     }
@@ -163,4 +180,3 @@ SSGIHit trace_screen_space_gi(
 }
 
 #endif // INCLUDE_LIGHTING_RT_SSGI
-

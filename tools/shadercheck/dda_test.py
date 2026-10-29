@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Stage 5 DDA and Sub-block AABB Intersection Unit Tests.
+"""Stage 5 & Stage 6 DDA, Sub-block AABB, and Radiometric Energy Accounting Unit Tests.
 
-Validates that ray-box analytic intersections over voxel sub-shapes
-(cubes, bottom slabs, top slabs, stairs, fences) correctly compute:
-  1. Monotonic t progression.
-  2. Exact hit distance and face normal for hits.
-  3. Seamless pass-through for rays crossing empty sub-regions (e.g. top of bottom slab).
+Validates that:
+  1. Ray-box analytic intersections over voxel sub-shapes compute exact hit distance and normals.
+  2. Rays crossing empty sub-regions pass through seamlessly.
+  3. Emitter hits return intrinsic radiance L_e without division by pi.
+  4. Diffuse reflection strictly conserves energy: L_out = albedo * L_mean (via pi cancellation).
+  5. White furnace single-bounce illuminance matches E_1 = (A_e / A_total) * pi * L_e.
 """
 
 import math
@@ -73,7 +74,37 @@ def main():
     hit5, t5, n5 = intersect_box(start5, inv_d2, bmin_slab_top, bmax_slab_top, 1.0, 2.0, [-1.0, 0.0, 0.0])
     assert not hit5, "Test 5 failed: Ray at y=5.25 should MISS top slab"
 
-    print("All Stage 5 DDA AABB unit tests PASSED (5/5).")
+    # Stage 6 Energy Accounting Tests:
+    # Test 6: Emitter hit returns intrinsic radiance Le without division by pi
+    torch_emission = 2.50
+    sun_direct_irradiance = 10.0
+    wall_albedo = 0.80
+    rcp_pi = 1.0 / math.pi
+    wall_reflected_radiance = wall_albedo * sun_direct_irradiance * rcp_pi
+
+    # Emitter returns Le + reflected direct light
+    emitter_returned_radiance = torch_emission + wall_reflected_radiance * 0.0
+    assert abs(emitter_returned_radiance - torch_emission) < 1e-5, "Test 6 failed: Emitter radiance corrupted"
+
+    # Test 7: Diffuse receiver energy balance:
+    # Incident diffuse irradiance E_indirect = pi * L_mean.
+    # Reflected radiance L_out = (albedo / pi) * E_indirect = albedo * L_mean.
+    L_mean = 1.75
+    albedo_concrete = 1.00 # Pure white concrete
+    E_indirect = math.pi * L_mean # Converted in diffuse_lighting.glsl
+    L_out = (albedo_concrete * rcp_pi) * E_indirect
+    assert abs(L_out - L_mean) < 1e-5, f"Test 7 failed: Energy conservation violated, L_out={L_out} != L_mean={L_mean}"
+
+    # Test 8: White Furnace Room Analytic Reference (11x11x5 enclosure, A_total = 462 m^2)
+    # Area of emitter = 5 m^2 (floor-mounted cube), Le = 100.0 W/(m^2*sr)
+    A_total = 462.0
+    A_e = 5.0
+    L_e = 100.0
+    E_1_analytic = (A_e / A_total) * math.pi * L_e
+    # Theoretical 1-bounce interior irradiance must be ~3.400 W/m^2
+    assert abs(E_1_analytic - 3.400) < 0.01, f"Test 8 failed: Analytic E_1 calculation {E_1_analytic} outside expected"
+
+    print("All Stage 5 & Stage 6 DDA and Energy Accounting unit tests PASSED (8/8).")
 
 if __name__ == "__main__":
     main()

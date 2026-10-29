@@ -4,8 +4,9 @@
 // global.glsl included by parent program
 #include "/include/utility/color.glsl"
 #include "/include/utility/geometry.glsl"
-#include "ssgi.glsl"
 #include "voxel_dda.glsl"
+#include "ssgi.glsl"
+#include "ray_query.glsl"
 
 #define RTGI_TRACER_VOXEL  0
 #define RTGI_TRACER_HYBRID 1
@@ -63,27 +64,7 @@ vec4 evaluate_hybrid_rtgi_ray(
     vec3 ray_dir_view = mat3(gbufferModelView) * ray_dir_world;
     hit_source = RTGI_HIT_NONE;
 
-#if RTGI_TRACER == RTGI_TRACER_HYBRID
-    // 1. Try Screen-Space GI first (highest detail, on-screen geometry & normal maps)
-    SSGIHit ss_hit = trace_screen_space_gi(
-        screen_pos,
-        view_pos,
-        view_normal,
-        ray_dir_view,
-        dither,
-        surface_skylight,
-        scene_color_sampler,
-        gbuffer0_sampler,
-        depth_translucent_sampler
-    );
-
-    if (ss_hit.hit) {
-        hit_source = RTGI_HIT_SSGI;
-        return vec4(ss_hit.radiance, ss_hit.sky_weight);
-    }
-#endif
-
-    // 2. Fallback to 3D Voxel DDA (handles occluded objects, off-screen surroundings, ceilings)
+    // 1. Evaluate 3D Voxel DDA (handles occluded objects, off-screen surroundings, ceilings)
     const float max_voxel_dist = voxel_distance;
     VoxelHit vx_hit = trace_voxel_dda(
         voxel_grid,
@@ -100,6 +81,53 @@ vec4 evaluate_hybrid_rtgi_ray(
         max_voxel_dist
     );
 
+    // 2. Evaluate sky ambient fallback (attenuated by stained glass transmittance)
+    float sky_hemi = clamp01(ray_dir_world.y * 0.5 + 0.5);
+    vec3 sky_radiance = sky_ambient_color
+        * (sky_hemi * sqr(surface_skylight))
+        * vx_hit.transmittance;
+    vec3 total_sky_radiance = sky_radiance + vx_hit.accumulated_light;
+    float sky_lum = dot(sky_radiance, luminance_weights);
+    float local_lum = dot(vx_hit.accumulated_light, luminance_weights);
+    float sky_weight = clamp01(sky_lum / max(sky_lum + local_lum, eps));
+
+#if RTGI_TRACER == RTGI_TRACER_HYBRID
+    // 3. Stage 6 C.2: Feathered Partition MIS between Screen-Space GI and Voxel DDA
+    SSGIHit ss_hit = trace_screen_space_gi(
+        screen_pos,
+        view_pos,
+        view_normal,
+        ray_dir_view,
+        dither,
+        surface_skylight,
+        shadow_tex,
+        shadow_mv,
+        shadow_proj,
+        direct_sun_color,
+        sky_ambient_color,
+        l_dir,
+        gbuffer0_sampler,
+        depth_translucent_sampler
+    );
+
+    float w_ss = ss_hit.hit ? ss_hit.edge_fade : 0.0;
+    vec3 vx_or_sky_radiance = vx_hit.hit ? (vx_hit.radiance + vx_hit.accumulated_light) : total_sky_radiance;
+    float vx_or_sky_weight = vx_hit.hit ? vx_hit.sky_weight : sky_weight;
+
+    vec3 final_radiance = ss_hit.radiance * w_ss + vx_or_sky_radiance * (1.0 - w_ss);
+    float final_sky_weight = ss_hit.sky_weight * w_ss + vx_or_sky_weight * (1.0 - w_ss);
+
+    if (w_ss > 0.5) {
+        hit_source = RTGI_HIT_SSGI;
+    } else if (vx_hit.hit) {
+        hit_source = RTGI_HIT_VOXEL;
+    } else {
+        hit_source = RTGI_HIT_SKY;
+    }
+
+    return vec4(final_radiance, final_sky_weight);
+#else
+    // Pure Voxel RT (SEUS-style robust offline-like GI): zero camera dependence
     if (vx_hit.hit) {
         hit_source = RTGI_HIT_VOXEL;
         return vec4(
@@ -108,20 +136,9 @@ vec4 evaluate_hybrid_rtgi_ray(
         );
     }
 
-    // 3. Fallback to sky ambient (attenuated by surface skylight and stained
-    // glass transmittance) plus any camera-independent point light collected
-    // along the ray before it left the voxel volume.
-    float sky_hemi = clamp01(ray_dir_world.y * 0.5 + 0.5);
-    vec3 sky_radiance = sky_ambient_color
-        * (sky_hemi * sqr(surface_skylight))
-        * vx_hit.transmittance;
-    vec3 total_radiance = sky_radiance + vx_hit.accumulated_light;
-    float sky_lum = dot(sky_radiance, luminance_weights);
-    float local_lum = dot(vx_hit.accumulated_light, luminance_weights);
-    float sky_weight = clamp01(sky_lum / max(sky_lum + local_lum, eps));
-
     hit_source = RTGI_HIT_SKY;
-    return vec4(total_radiance, sky_weight);
+    return vec4(total_sky_radiance, sky_weight);
+#endif
 }
 
 #endif // INCLUDE_LIGHTING_RT_HYBRID_RTGI

@@ -120,7 +120,8 @@ float sample_voxel_sun_shadow(
     float NoL = dot(normal, l_dir);
     if (NoL <= 0.0) return 0.0;
 
-    vec3 bias = normal * 0.08;
+    // Use physically matched shadow bias matching main pass (Stage 6 C.3)
+    vec3 bias = get_shadow_bias(scene_pos, normal, NoL, 1.0);
     vec3 shadow_view = mat3(shadow_mv) * (scene_pos + bias) + shadow_mv[3].xyz;
     vec4 shadow_clip = shadow_proj * vec4(shadow_view, 1.0);
     vec3 shadow_ndc = shadow_clip.xyz / shadow_clip.w;
@@ -222,16 +223,10 @@ VoxelHit trace_voxel_dda(
                     ray_transmittance *= mat.albedo;
                 } else if (sample_data.block_id == 80u) {
                     // Clear glass: passes through without tinting
-                } else if (RTGI_POINT_LIGHT_STRENGTH > 0.0 && sample_data.is_emitter && is_point_light_emitter(sample_data.block_id)) {
-                    // Small emitters are transparent light sources when radial point-light
-                    // accumulation is active.
-                    vec3 emitter_pos = voxel_to_scene_space(vec3(current_voxel) + 0.5);
-                    float emitter_dist = length(emitter_pos - ray_origin_scene);
-                    float emitter_attenuation = exp(-0.30 * emitter_dist)
-                        * RTGI_POINT_LIGHT_STRENGTH;
-                    accumulated_light += mat.emission
-                        * emitter_attenuation * 0.20 * ray_transmittance;
                 } else if (mat.is_solid || sample_data.is_emitter) {
+                    // Stage 6 C.4: All solid surfaces and emitters (torches, lanterns, lamps,
+                    // glowstone, lava) are opaque physical obstacles evaluated with exact
+                    // sub-box geometry. Emitters return intrinsic radiance + reflected direct light.
                     float hit_t;
                     vec3 hit_norm;
                     vec3 entry_norm = (dot(mask, mask) > 0.5) ? (-mask * step_dir) : -sign(dda_dir);
@@ -257,60 +252,59 @@ VoxelHit trace_voxel_dda(
                         vec3 hit_face_pos = start_scene + dda_dir * hit_t;
                         result.hit_pos = hit_face_pos;
 
-                    // 1. Direct Sun / Moonlight bounce
-                    float sun_vis = sample_voxel_sun_shadow(
-                        shadow_tex,
-                        shadow_mv,
-                        shadow_proj,
-                        hit_face_pos,
-                        result.hit_normal,
-                        l_dir
-                    );
-                    float NoL = max(0.0, dot(result.hit_normal, l_dir));
-                    // Direct light is already scaled by SUN_I / exposure.
-                    vec3 sun_radiance = direct_sun_color * (sun_vis * NoL);
+                        // Stage 6 C.3 Energy Accounting:
+                        // 1. Direct Sun / Moonlight incident irradiance [W/m^2]
+                        float sun_vis = sample_voxel_sun_shadow(
+                            shadow_tex,
+                            shadow_mv,
+                            shadow_proj,
+                            hit_face_pos,
+                            result.hit_normal,
+                            l_dir
+                        );
+                        float NoL = max(0.0, dot(result.hit_normal, l_dir));
+                        vec3 sun_irradiance = direct_sun_color * (sun_vis * NoL);
 
-                    // 2. Skylight bounce: solid voxels DO NOT inject ambient sky light.
-                    // Following SEUS PTGI, ambient skylight is only accumulated when a ray
-                    // escapes to the sky (RTGI_HIT_SKY). Stored voxel skylight is contaminated
-                    // by exterior roof/wall faces and leaks into dark interiors.
-                    vec3 sky_radiance = vec3(0.0);
+                        // 2. Skylight bounce: solid voxels DO NOT inject ambient sky light.
+                        // Following SEUS PTGI, ambient skylight is only accumulated when a ray
+                        // escapes to the sky (RTGI_HIT_SKY). Stored voxel skylight is contaminated
+                        // by exterior roof/wall faces and leaks into dark interiors.
+                        vec3 sky_radiance = vec3(0.0);
 
-                    // 3. Blocklight bounce: solid non-emitter blocks do not bounce blocklight
-                    // (direct blocklight is handled by mc_block on the camera receiver).
-                    // Actual light emitters radiate their calibrated light via mat.emission.
-                    vec3 blocklight_bounce = vec3(0.0);
+                        // 3. Blocklight bounce: solid non-emitter blocks do not bounce blocklight
+                        // (direct blocklight is handled by mc_block on the camera receiver).
+                        vec3 blocklight_bounce = vec3(0.0);
 
-                    // 4. Emissive radiance from block itself
-                    vec3 emission_radiance = mat.emission;
+                        // 4. Emissive radiance from block itself [W/(m^2*sr)]
+                        // Emission is intrinsic radiant exitance; it must NOT be divided by pi.
+                        vec3 emission_radiance = mat.emission;
 
-                    // Organic foliage (leaves & plants): absorb light rather than concentrating it inside canopy
-                    vec3 bounce_albedo = mat.albedo;
-                    if (sample_data.block_id == 5u || sample_data.block_id == 14u || sample_data.block_id == 2u) {
-                        bounce_albedo *= 0.35;
-                        blocklight_bounce *= 0.50;
-                    }
+                        // Organic foliage (leaves & plants): absorb light rather than concentrating it inside canopy
+                        vec3 bounce_albedo = mat.albedo;
+                        if (sample_data.block_id == 5u || sample_data.block_id == 14u || sample_data.block_id == 2u) {
+                            bounce_albedo *= 0.35;
+                            blocklight_bounce *= 0.50;
+                        }
 
-                    // Split sky/sun-origin radiance from emission/block-light radiance.
-                    // The radial point-light field is local and is included in
-                    // local_lit so sky leaks can still be gated independently.
-                    vec3 bounce_irradiance = blocklight_bounce + sun_radiance;
-                    vec3 bounce_radiance = bounce_albedo * bounce_irradiance * voxel_bounce_rcp_pi;
+                        // Diffuse reflected radiance from incident irradiance:
+                        // L_reflected = (albedo / pi) * E_incident
+                        vec3 bounce_irradiance = blocklight_bounce + sun_irradiance;
+                        vec3 bounce_radiance = bounce_albedo * bounce_irradiance * voxel_bounce_rcp_pi;
 
-                    vec3 sky_lit = bounce_albedo * sun_radiance * voxel_bounce_rcp_pi;
-                    vec3 local_lit = emission_radiance
-                        + bounce_albedo * blocklight_bounce * voxel_bounce_rcp_pi
-                        + accumulated_light;
-                    float sky_lum = dot(sky_lit, luminance_weights);
-                    float local_lum = dot(local_lit, luminance_weights);
-                    result.sky_weight = clamp01(sky_lum / max(sky_lum + local_lum, eps));
+                        // Split sky/sun-origin radiance from emission/block-light radiance.
+                        vec3 sky_lit = bounce_albedo * sun_irradiance * voxel_bounce_rcp_pi;
+                        vec3 local_lit = emission_radiance
+                            + bounce_albedo * blocklight_bounce * voxel_bounce_rcp_pi
+                            + accumulated_light;
+                        float sky_lum = dot(sky_lit, luminance_weights);
+                        float local_lum = dot(local_lit, luminance_weights);
+                        result.sky_weight = clamp01(sky_lum / max(sky_lum + local_lum, eps));
 
-                    // Combined indirect bounce from the solid hit, tinted by
-                    // stained glass transmittance. accumulated_light is added
-                    // by the caller so it also appears on sky-miss rays.
-                    result.radiance = (
-                        emission_radiance + bounce_radiance
-                    ) * ray_transmittance;
+                        // Total outgoing radiance along the ray:
+                        // L_out = (L_e + L_reflected) * transmittance
+                        result.radiance = (
+                            emission_radiance + bounce_radiance
+                        ) * ray_transmittance;
                         break;
                     }
                 }

@@ -309,7 +309,14 @@ vec3 get_diffuse_lighting(
 #ifndef RTGI_INTENSITY
 #define RTGI_INTENSITY 1.00
 #endif
-    vec3 rtgi_lighting = rtgi_indirect * (RTGI_INTENSITY * RTGI_BRIGHTNESS);
+    // Stage 6 Energy Accounting & Single-Bounce Correctness:
+    // rtgi_indirect stores mean incoming radiance L_i from cosine-weighted hemisphere sampling.
+    // Incident diffuse irradiance is E_indirect = pi * L_i.
+    // Multiplying by pi here guarantees that when final_diffuse multiplies (direct + indirect)
+    // by (albedo / pi), the pi terms cancel exactly:
+    // L_o,indirect = (pi * L_i) * (albedo / pi) = albedo * L_i.
+    // RTGI_INTENSITY (default 1.00) is the calibrated physical scale factor.
+    vec3 rtgi_lighting = rtgi_indirect * (pi * (RTGI_INTENSITY * RTGI_BRIGHTNESS));
 
     // Split sky/sun-origin GI from emissive/block-light GI. Only the sky part
     // is suppressed on low-skylight receivers, so lava/lantern/emissive cave
@@ -324,6 +331,7 @@ vec3 get_diffuse_lighting(
     // leaks from roof vertices, analytic_sky bleeds fake daylight onto ceiling corners.
     indirect_lighting = rtgi_local + rtgi_sky * sky_retention;
 
+#ifdef RTGI_DIRECT_BLOCK_FALLBACK
     // Direct block lighting from vanilla lightmap (clean, noise-free, and respects walls).
     // In vanilla Minecraft, solid blocks block light, so a torch on the roof yields
     // light_levels.x = 0 on interior ceiling/wall fragments, preventing any leak.
@@ -335,6 +343,7 @@ vec3 get_diffuse_lighting(
         directional_lighting
     );
     direct_lighting += mc_block;
+#endif
 #else
     // Analytic fallback for forward-lit translucent surfaces and for builds
     // with RAYTRACED_GI disabled. The RTGI buffer describes the opaque layer,
