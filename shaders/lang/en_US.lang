@@ -728,7 +728,7 @@ value.GI_DEBUG.GI_DEBUG_REJECT         = History Rejected
 value.GI_DEBUG.GI_DEBUG_VOXEL_ID       = Voxel ID
 value.GI_DEBUG.GI_DEBUG_VOXEL_LIGHT    = Voxel Light
 value.GI_DEBUG.GI_DEBUG_VOXEL_ALBEDO   = Voxel Albedo
-value.GI_DEBUG.GI_DEBUG_VARIANCE       = Convergence
+value.GI_DEBUG.GI_DEBUG_VARIANCE       = Variance
 
 value.tonemap_left.tonemap_aces_fit       = ACES Fit
 value.tonemap_left.tonemap_aces_full      = ACES Full

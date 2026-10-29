@@ -198,11 +198,13 @@ void main() {
         }
 #endif
 
-        // Firefly suppression: limit extreme single-ray radiance spikes
+        // Stage 7 Firefly suppression: limit extreme single-ray radiance spikes
         float lum = dot(radiance.rgb, luminance_weights);
-        const float max_radiance_lum = 16.0;
-        if (lum > max_radiance_lum) {
-            radiance.rgb *= max_radiance_lum / lum;
+#ifndef RTGI_MAX_RADIANCE
+#define RTGI_MAX_RADIANCE 64.0
+#endif
+        if (lum > RTGI_MAX_RADIANCE) {
+            radiance.rgb *= RTGI_MAX_RADIANCE / lum;
         }
 
         accum_radiance += radiance;

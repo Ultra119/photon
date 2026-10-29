@@ -119,3 +119,4 @@ RayHit trace_ray(
 }
 
 #endif // INCLUDE_LIGHTING_RT_RAY_QUERY
+

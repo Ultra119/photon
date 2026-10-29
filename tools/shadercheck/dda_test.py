@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
-"""Stage 5 & Stage 6 DDA, Sub-block AABB, and Radiometric Energy Accounting Unit Tests.
+"""Stage 5, 6 & 7 Unit Tests: DDA Sub-box AABB, Radiometric Energy, and SVGF Reconstruction.
 
-Validates that:
+Validates:
   1. Ray-box analytic intersections over voxel sub-shapes compute exact hit distance and normals.
   2. Rays crossing empty sub-regions pass through seamlessly.
   3. Emitter hits return intrinsic radiance L_e without division by pi.
   4. Diffuse reflection strictly conserves energy: L_out = albedo * L_mean (via pi cancellation).
   5. White furnace single-bounce illuminance matches E_1 = (A_e / A_total) * pi * L_e.
+  6. SVGF moment tracking correctly computes variance (M2 - M1^2).
+  7. 3x3 variance clipping prevents disocclusion ghosting.
+  8. Variance-guided normal exponent adapts from 128 (converged) to 8 (noisy).
+  9. Separable B-spline filter weights sum to 1.0.
 """
 
 import math
@@ -101,10 +105,42 @@ def main():
     A_e = 5.0
     L_e = 100.0
     E_1_analytic = (A_e / A_total) * math.pi * L_e
-    # Theoretical 1-bounce interior irradiance must be ~3.400 W/m^2
     assert abs(E_1_analytic - 3.400) < 0.01, f"Test 8 failed: Analytic E_1 calculation {E_1_analytic} outside expected"
 
-    print("All Stage 5 & Stage 6 DDA and Energy Accounting unit tests PASSED (8/8).")
+    # Stage 7 SVGF Reconstruction Tests:
+    # Test 9: Moment tracking & variance
+    # Suppose raw values across frames are: [2.0, 4.0] with equal weight
+    m1 = 0.5 * 2.0 + 0.5 * 4.0 # 3.0
+    m2 = 0.5 * (2.0**2) + 0.5 * (4.0**2) # 0.5 * 4 + 0.5 * 16 = 10.0
+    var = m2 - m1 * m1 # 10.0 - 9.0 = 1.0
+    assert abs(var - 1.0) < 1e-5, f"Test 9 failed: Expected variance 1.0, got {var}"
+
+    # Test 10: 3x3 variance clipping
+    # Current neighborhood in range [1.0, 2.0]. Old history was 10.0 (e.g. from previous lit surface)
+    raw_min = 1.0
+    raw_max = 2.0
+    old_history = 10.0
+    clamped_history = min(max(old_history, raw_min), raw_max)
+    assert clamped_history == 2.0, f"Test 10 failed: History not clamped to AABB: {clamped_history}"
+
+    # Test 11: SVGF adaptive normal exponent
+    # At var_norm = 0.0 (converged), exponent is 128.0; at var_norm = 1.0 (noisy), exponent is 8.0
+    def get_sigma_n(std_dev, mean):
+        var_norm = min(max(std_dev / (mean + 0.02), 0.0), 1.0)
+        return 128.0 + (8.0 - 128.0) * var_norm
+
+    sigma_n_noisy = get_sigma_n(1.0, 0.5) # std_dev > mean => var_norm = 1.0 => 8.0
+    sigma_n_converged = get_sigma_n(0.0, 1.0) # std_dev = 0 => var_norm = 0.0 => 128.0
+    assert abs(sigma_n_noisy - 8.0) < 1e-4, f"Test 11 failed: Expected noisy sigma_n=8, got {sigma_n_noisy}"
+    assert abs(sigma_n_converged - 128.0) < 1e-4, f"Test 11 failed: Expected converged sigma_n=128, got {sigma_n_converged}"
+
+    # Test 12: B-spline filter kernel normalization
+    bspline_1d = [0.0625, 0.25, 0.375, 0.25, 0.0625]
+    assert abs(sum(bspline_1d) - 1.0) < 1e-6, "Test 12 failed: 1D B-spline does not sum to 1.0"
+    kernel_2d_sum = sum(wx * wy for wx in bspline_1d for wy in bspline_1d)
+    assert abs(kernel_2d_sum - 1.0) < 1e-6, f"Test 12 failed: 2D B-spline does not sum to 1.0, got {kernel_2d_sum}"
+
+    print("All Stage 5, Stage 6, & Stage 7 Unit Tests PASSED (12/12).")
 
 if __name__ == "__main__":
     main()

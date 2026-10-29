@@ -80,3 +80,4 @@ The spectrum of the bounced light must exactly match $\rho_{\text{red}} \odot \t
 ### Acceptance Criteria
 - When `RTGI_DIRECT_BLOCK_FALLBACK` is ON, direct receiver lighting comes cleanly from vanilla `mc_block` without secondary double-scaling.
 - Solid non-emitter blocks in the voxel grid store zero lightmap bounce, guaranteeing that exterior roof torches do NOT leak light into interior spaces.
+

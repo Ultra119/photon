@@ -586,15 +586,13 @@ const float wetnessHalflife         = 70.0;
   #define GI_DEBUG_VOXEL_ID  6
   #define GI_DEBUG_VOXEL_LIGHT 7  // R = block light, G = sky light
   #define GI_DEBUG_VOXEL_ALBEDO 8
-  #define GI_DEBUG_VARIANCE  9  // convergence: raw vs accumulated disagreement
+  #define GI_DEBUG_VARIANCE  9  // SVGF measured local relative variance / standard deviation
 
   #define GI_DEBUG GI_DEBUG_OFF // [GI_DEBUG_OFF GI_DEBUG_RAW GI_DEBUG_HISTORY GI_DEBUG_FILTERED GI_DEBUG_HIT GI_DEBUG_REJECT GI_DEBUG_VOXEL_ID GI_DEBUG_VOXEL_LIGHT GI_DEBUG_VOXEL_ALBEDO GI_DEBUG_VARIANCE]
 
-// On GI_DEBUG_VARIANCE: this pack has no variance estimate, so this view cannot
-// show one. It shows temporal spread instead -- the disagreement between this
-// frame's raw estimate and the accumulated history -- which answers the same
-// practical question ("is the estimator converging, or is it view-dependent?")
-// for a static camera. It is not a variance and is not labelled as one.
+// On GI_DEBUG_VARIANCE: Stage 7 tracks 1st and 2nd luminance moments per-pixel.
+// Displays the relative standard deviation sqrt(var) / (mean + 0.05) using a
+// cold-to-hot colormap (blue = converged, green = stable, red = high variance / disoccluded).
   #define DEBUG_SAMPLER colortex1 // [colortex1 colortex2 colortex3 colortex4 colortex5 colortex6 colortex7 colortex8 colortex9 colortex10 colortex11 colortex12 colortex13 colortex14 colortex15 depthtex0 depthtex1 depthtex2 shadowtex0 shadowtex1 shadowcolor0 shadowcolor1]
 //#define WHITE_WORLD
 //#define TONEMAP_COMPARISON

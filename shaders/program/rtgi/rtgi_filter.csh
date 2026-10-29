@@ -3,7 +3,7 @@
 
   Photon Shader: Native Voxel RTGI + SSGI Hybrid
   program/rtgi/rtgi_filter.csh:
-  25-tap tangent-plane edge-avoiding bilateral filter (SEUS GFME / SVGF style)
+  SVGF Variance-Guided Edge-Avoiding À-Trous Wavelet Filter
 
 --------------------------------------------------------------------------------
 */
@@ -51,10 +51,15 @@ vec4 sample_accum_data(ivec2 t, bool ping) {
                 : texelFetch(rtgi_history_sampler, t, 0);
 }
 
-float sample_sky_weight(ivec2 t, bool ping) {
-    return ping ? texelFetch(rtgi_sky_accum_sampler, t, 0).r
-                : texelFetch(rtgi_sky_history_sampler, t, 0).r;
+vec4 sample_aux_data(ivec2 t, bool ping) {
+    return ping ? texelFetch(rtgi_sky_accum_sampler, t, 0)
+                : texelFetch(rtgi_sky_history_sampler, t, 0);
 }
+
+// 1D cubic B-spline filter kernel weights: [1/16, 4/16, 6/16, 4/16, 1/16]
+const float bspline_kernel[5] = float[5](
+    0.0625, 0.25, 0.375, 0.25, 0.0625
+);
 
 void main() {
 #if RTGI_RESOLUTION == 0
@@ -72,8 +77,6 @@ void main() {
         return;
     }
 
-    // center_uv is a full-framebuffer UV. Clamp the bilateral taps to the
-    // active TAAU viewport so we never filter stale data outside it.
     vec2 target_pixel_size = 1.0 / vec2(target_res);
     vec2 center_uv = (vec2(texel) + 0.5) * target_pixel_size;
     ivec2 active_res = max(ivec2(1), ivec2(vec2(target_res) * taau_render_scale));
@@ -97,22 +100,42 @@ void main() {
     vec3 center_view_pos = screen_to_view_space(center_screen_pos, true);
     float center_dist = -center_view_pos.z;
 
-    vec4 center_gbuf = texelFetch(colortex1, center_full, 0);
-    vec3 center_world_normal = decode_unit_vector(unpack_unorm_2x8(center_gbuf.z));
-    vec3 center_view_normal = mat3(gbufferModelView) * center_world_normal;
-
     vec4 center_sample = sample_accum_data(texel, ping);
     vec3 center_radiance = center_sample.rgb;
-    float center_sky_weight = clamp01(sample_sky_weight(texel, ping));
 
-    // 25-tap edge-avoiding bilateral filter with tangent-plane depth projection and step=2
+    vec4 center_aux = sample_aux_data(texel, ping);
+    float center_m1 = center_aux.r;
+    float center_m2 = center_aux.g;
+    float center_var = max(0.0, center_m2 - center_m1 * center_m1);
+    float center_std = sqrt(center_var);
+
+    vec3 center_world_normal = decode_unit_vector(unpack_unorm_2x8(center_aux.b));
+    vec3 center_view_normal = mat3(gbufferModelView) * center_world_normal;
+    float center_sky_weight = clamp01(unpack_unorm_2x8(center_aux.a).x);
+
+    // SVGF edge-stopping parameter scaling
+    // Variance-guided normal exponent: tight (128) when converged, wide (8) when noisy
+    float var_normalized = clamp01(center_std / (center_m1 + 0.02));
+    float sigma_n = mix(128.0, 8.0, var_normalized);
+
+    // Depth tolerance: 5% of metric distance
+    const int step_size = 2;
+    float sigma_z = max(center_dist * 0.05, 0.10) * float(step_size);
+
+    // Luminance tolerance: scaled by measured standard deviation
+    float sigma_l = 4.0 * center_std + 0.005;
+
     vec3 sum_radiance = vec3(0.0);
     float sum_sky_weight = 0.0;
     float sum_weights = 0.0;
-    const int step_size = 2;
 
     for (int dy = -2; dy <= 2; ++dy) {
+        float wy = bspline_kernel[dy + 2];
+
         for (int dx = -2; dx <= 2; ++dx) {
+            float wx = bspline_kernel[dx + 2];
+            float weight_spatial = wx * wy;
+
             ivec2 neighbor_texel = clamp(texel + ivec2(dx, dy) * step_size, ivec2(0), active_res - 1);
             vec2 n_uv = (vec2(neighbor_texel) + 0.5) * target_pixel_size;
 
@@ -127,28 +150,28 @@ void main() {
                 vec3(taau_projection_uv(n_uv), n_depth), true
             );
 
-            vec4 n_gbuf = texelFetch(colortex1, neighbor_full, 0);
-            vec3 n_world_normal = decode_unit_vector(unpack_unorm_2x8(n_gbuf.z));
-            vec3 n_color = sample_accum_data(neighbor_texel, ping).rgb;
-            float n_sky_weight = clamp01(sample_sky_weight(neighbor_texel, ping));
+            vec4 n_sample = sample_accum_data(neighbor_texel, ping);
+            vec3 n_color = n_sample.rgb;
 
-            // 1. Spatial gaussian weight (sigma ~ 1.8)
-            float dist_sq = float(dx * dx + dy * dy);
-            float weight_spatial = exp(-0.5 * dist_sq * (1.0 / 3.24));
+            vec4 n_aux = sample_aux_data(neighbor_texel, ping);
+            float n_m1 = n_aux.r;
+            vec3 n_world_normal = decode_unit_vector(unpack_unorm_2x8(n_aux.b));
+            float n_sky_weight = clamp01(unpack_unorm_2x8(n_aux.a).x);
 
-            // 2. Tangent-plane depth weight (SEUS / SVGF style)
-            // Distance from center surface plane: 0 on flat floors/walls, scales with distance
+            // 1. Tangent-plane depth weight: zero on flat surfaces regardless of view angle
             vec3 pos_diff = n_view_pos - center_view_pos;
             float plane_dist = abs(dot(pos_diff, center_view_normal));
-            float depth_tolerance = max(center_dist * 0.15, 0.45);
-            float weight_depth = exp(-plane_dist / depth_tolerance);
+            float weight_depth = exp(-plane_dist / sigma_z);
 
-            // 3. Normal weight (rejects perpendicular surfaces, forgiving of slight bumps)
+            // 2. Variance-guided normal weight
             float normal_dot = max(0.0, dot(center_world_normal, n_world_normal));
-            float weight_normal = pow(normal_dot, 4.0);
+            float weight_normal = pow(normal_dot, sigma_n);
 
-            // Total weight (no luminance rejection so diffuse light can smoothly illuminate surfaces)
-            float weight = weight_spatial * weight_depth * weight_normal;
+            // 3. Variance-guided luminance weight (preserves high-confidence indirect contrast)
+            float luma_diff = abs(n_m1 - center_m1);
+            float weight_luma = exp(-luma_diff / sigma_l);
+
+            float weight = weight_spatial * weight_depth * weight_normal * weight_luma;
 
             sum_radiance += n_color * weight;
             sum_sky_weight += n_sky_weight * weight;
@@ -157,9 +180,7 @@ void main() {
     }
 
     vec3 filtered = (sum_weights > 1e-4) ? (sum_radiance / sum_weights) : center_radiance;
-    float filtered_sky_weight = (sum_weights > 1e-4)
-        ? (sum_sky_weight / sum_weights)
-        : center_sky_weight;
+    float filtered_sky = (sum_weights > 1e-4) ? (sum_sky_weight / sum_weights) : center_sky_weight;
 
-    imageStore(rtgi_filtered_img, texel, vec4(filtered, clamp01(filtered_sky_weight)));
+    imageStore(rtgi_filtered_img, texel, vec4(filtered, clamp01(filtered_sky)));
 }

@@ -205,11 +205,22 @@ vec3 gi_debug_view(ivec2 texel, vec2 uv, vec3 fallback) {
 #elif GI_DEBUG == GI_DEBUG_FILTERED
     return gi_debug_tonemap(texture(rtgi_filtered_sampler, rtgi_uv).rgb);
 #elif GI_DEBUG == GI_DEBUG_VARIANCE
-    return gi_debug_spread(
-        texture(rtgi_raw_sampler, rtgi_uv).rgb,
-        ping ? texture(rtgi_accum_sampler, rtgi_uv).rgb
-             : texture(rtgi_history_sampler, rtgi_uv).rgb
-    );
+    vec4 aux_sample = ping ? texture(rtgi_sky_accum_sampler, rtgi_uv)
+                           : texture(rtgi_sky_history_sampler, rtgi_uv);
+    float m1 = aux_sample.r;
+    float m2 = aux_sample.g;
+    float variance = max(0.0, m2 - m1 * m1);
+    float rel_std_dev = sqrt(variance) / (m1 + 0.05);
+    // Cold-to-hot colormap: blue (converged / low variance) -> green -> yellow -> red (high variance)
+    vec3 col_blue = vec3(0.0, 0.25, 0.95);
+    vec3 col_green = vec3(0.1, 0.85, 0.25);
+    vec3 col_yellow = vec3(0.95, 0.90, 0.10);
+    vec3 col_red = vec3(0.95, 0.15, 0.05);
+    float t_var = clamp01(rel_std_dev);
+    vec3 var_color = t_var < 0.33 ? mix(col_blue, col_green, t_var * 3.0)
+                   : t_var < 0.66 ? mix(col_green, col_yellow, (t_var - 0.33) * 3.0)
+                   : mix(col_yellow, col_red, (t_var - 0.66) * 3.0);
+    return var_color;
 #elif GI_DEBUG == GI_DEBUG_HIT
     return gi_debug_hit_mask(
         vec4(gi_debug_smooth_3x3(rtgi_hit_sampler, rtgi_uv), 1.0)
