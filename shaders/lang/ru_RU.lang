@@ -750,6 +750,16 @@ option.RTGI_TRACER                                                   = Трас�
 option.RTGI_TRACER.comment                                           = Метод трассировки. Воксельный режим (RTGI_TRACER_VOXEL) полностью не зависит от положения и обзора камеры.
 value.RTGI_TRACER.RTGI_TRACER_VOXEL                                  = Воксельный
 value.RTGI_TRACER.RTGI_TRACER_HYBRID                                 = Гибридный
+option.RTGI_MULTIBOUNCE                                             = Мульти-отскоки (DDGI)
+option.RTGI_MULTIBOUNCE.comment                                     = Многократные отскоки света через 3D-кэш проб освещенности (DDGI). Обеспечивает реалистичные цветовые переотражения между поверхностями (color bleeding) и мягкое непрямое освещение комнат и пещер.
+value.RTGI_MULTIBOUNCE.RTGI_MULTIBOUNCE_OFF                         = ВЫКЛ (1 отскок)
+value.RTGI_MULTIBOUNCE.RTGI_MULTIBOUNCE_PROBES                      = Пробы DDGI
+value.RTGI_MULTIBOUNCE.0                                            = ВЫКЛ (1 отскок)
+value.RTGI_MULTIBOUNCE.1                                            = Пробы DDGI
+option.RTGI_PROBE_RAYS                                              = Лучи проб DDGI
+option.RTGI_PROBE_RAYS.comment                                      = Количество сферических лучей, выпускаемых каждой пробой для сбора непрямого света.
+option.RTGI_PROBE_HYSTERESIS                                        = Сглаживание проб DDGI
+option.RTGI_PROBE_HYSTERESIS.comment                                = Коэффициент временного накопления истории проб освещенности (0.85 обеспечивает стабильность без вспышек).
 
 option.RTGI_INTENSITY                                                = Физическая яркость RTGI
 option.RTGI_INTENSITY.comment                                        = Физический множитель интенсивности диффузного непрямого освещения.
@@ -796,3 +806,4 @@ option.PHYSICAL_BSDF_ENERGY_COMP                                     = Сохр�
 option.PHYSICAL_BSDF_ENERGY_COMP.comment                             = Физическая компенсация рассеяния для шероховатых поверхностей.
 
 value.GI_DEBUG.GI_DEBUG_VARIANCE                                     = Дисперсия (SVGF)
+value.GI_DEBUG.GI_DEBUG_PROBE                                        = Пробы DDGI

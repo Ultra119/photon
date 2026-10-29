@@ -218,6 +218,8 @@ COMMON_UNIFORMS = {
  'rtgi_filtered_sampler':'uniform sampler2D rtgi_filtered_sampler;',
  'rtgi_sky_accum_sampler':'uniform sampler2D rtgi_sky_accum_sampler;',
  'rtgi_sky_history_sampler':'uniform sampler2D rtgi_sky_history_sampler;',
+ 'ddgi_irradiance_sampler':'uniform sampler3D ddgi_irradiance_sampler;',
+ 'ddgi_direction_sampler':'uniform sampler3D ddgi_direction_sampler;',
 }
 
 INC_RE=re.compile(r'^\s*#include\s+"([^"]+)"\s*$')

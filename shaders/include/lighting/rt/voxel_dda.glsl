@@ -106,6 +106,7 @@ struct VoxelHit {
     vec3 transmittance;
     float sky_weight;
     vec3 accumulated_light;
+    vec3 albedo;
 };
 
 // Check if voxel point is in sunlight shadow using shadow map
@@ -162,6 +163,7 @@ VoxelHit trace_voxel_dda(
     result.transmittance = vec3(1.0);
     result.sky_weight = 0.0;
     result.accumulated_light = vec3(0.0);
+    result.albedo = vec3(0.0);
 
     vec3 ray_transmittance = vec3(1.0);
     vec3 accumulated_light = vec3(0.0);
@@ -285,6 +287,7 @@ VoxelHit trace_voxel_dda(
                             bounce_albedo *= 0.35;
                             blocklight_bounce *= 0.50;
                         }
+                        result.albedo = bounce_albedo;
 
                         // Diffuse reflected radiance from incident irradiance:
                         // L_reflected = (albedo / pi) * E_incident

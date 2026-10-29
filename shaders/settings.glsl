@@ -63,6 +63,11 @@ const float wetnessHalflife         = 70.0;
   #define RTGI_TRACER_VOXEL 0
   #define RTGI_TRACER_HYBRID 1
   #define RTGI_TRACER RTGI_TRACER_VOXEL // [RTGI_TRACER_VOXEL RTGI_TRACER_HYBRID]
+  #define RTGI_MULTIBOUNCE_OFF 0
+  #define RTGI_MULTIBOUNCE_PROBES 1
+  #define RTGI_MULTIBOUNCE RTGI_MULTIBOUNCE_PROBES // [RTGI_MULTIBOUNCE_OFF RTGI_MULTIBOUNCE_PROBES]
+  #define RTGI_PROBE_RAYS 16 // [8 16 32 64]
+  #define RTGI_PROBE_HYSTERESIS 0.85 // [0.50 0.60 0.70 0.80 0.85 0.90 0.95]
   #define RTGI_RESOLUTION 1 // [0 1 2]
   #define RTGI_RAY_COUNT 2 // [2 4 8]
   #define RTGI_BRIGHTNESS 1.00 // [0.25 0.50 0.75 1.00 1.25 1.50 1.75 2.00 2.50 3.00]
@@ -587,8 +592,9 @@ const float wetnessHalflife         = 70.0;
   #define GI_DEBUG_VOXEL_LIGHT 7  // R = block light, G = sky light
   #define GI_DEBUG_VOXEL_ALBEDO 8
   #define GI_DEBUG_VARIANCE  9  // SVGF measured local relative variance / standard deviation
+  #define GI_DEBUG_PROBE     10 // DDGI multi-bounce probe radiance cache visualization
 
-  #define GI_DEBUG GI_DEBUG_OFF // [GI_DEBUG_OFF GI_DEBUG_RAW GI_DEBUG_HISTORY GI_DEBUG_FILTERED GI_DEBUG_HIT GI_DEBUG_REJECT GI_DEBUG_VOXEL_ID GI_DEBUG_VOXEL_LIGHT GI_DEBUG_VOXEL_ALBEDO GI_DEBUG_VARIANCE]
+  #define GI_DEBUG GI_DEBUG_OFF // [GI_DEBUG_OFF GI_DEBUG_RAW GI_DEBUG_HISTORY GI_DEBUG_FILTERED GI_DEBUG_HIT GI_DEBUG_REJECT GI_DEBUG_VOXEL_ID GI_DEBUG_VOXEL_LIGHT GI_DEBUG_VOXEL_ALBEDO GI_DEBUG_VARIANCE GI_DEBUG_PROBE]
 
 // On GI_DEBUG_VARIANCE: Stage 7 tracks 1st and 2nd luminance moments per-pixel.
 // Displays the relative standard deviation sqrt(var) / (mean + 0.05) using a

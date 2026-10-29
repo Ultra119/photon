@@ -5,6 +5,9 @@
 // views need srgb_eotf(). Both have include guards, so this is free.
 #include "/include/utility/color.glsl"
 #include "/include/lighting/voxel/voxel_storage.glsl"
+#if GI_DEBUG == 10
+#include "/include/lighting/rt/ddgi.glsl"
+#endif
 
 // GI debug view encoding.
 //
@@ -159,6 +162,8 @@ vec3 gi_debug_view_swatch() {
     return vec3(0.60, 0.60, 0.60);
 #elif GI_DEBUG == GI_DEBUG_VARIANCE
     return vec3(1.0, 0.35, 0.0);
+#elif GI_DEBUG == GI_DEBUG_PROBE
+    return vec3(0.85, 0.20, 0.95);
 #else
     return vec3(0.0);
 #endif
@@ -280,8 +285,14 @@ vec3 gi_debug_view(ivec2 texel, vec2 uv, vec3 fallback) {
     return gi_debug_voxel_id(packed);
 #elif GI_DEBUG == GI_DEBUG_VOXEL_LIGHT
     return gi_debug_voxel_light(packed);
-#else
+#elif GI_DEBUG == GI_DEBUG_VOXEL_ALBEDO
     return gi_debug_voxel_albedo(packed);
+#elif GI_DEBUG == GI_DEBUG_PROBE
+    vec3 world_pos = scene_pos + cameraPosition;
+    vec4 probe_irr = sample_ddgi_irradiance(world_pos + scene_normal * 0.15, scene_normal, cameraPosition);
+    return gi_debug_tonemap(probe_irr.rgb);
+#else
+    return fallback;
 #endif
 #endif
 #endif

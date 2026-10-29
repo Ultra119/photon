@@ -7,6 +7,7 @@
 #include "voxel_dda.glsl"
 #include "ssgi.glsl"
 #include "ray_query.glsl"
+#include "ddgi.glsl"
 
 #define RTGI_TRACER_VOXEL  0
 #define RTGI_TRACER_HYBRID 1
@@ -111,7 +112,19 @@ vec4 evaluate_hybrid_rtgi_ray(
     );
 
     float w_ss = ss_hit.hit ? ss_hit.edge_fade : 0.0;
-    vec3 vx_or_sky_radiance = vx_hit.hit ? (vx_hit.radiance + vx_hit.accumulated_light) : total_sky_radiance;
+    vec3 vx_radiance = vx_hit.radiance + vx_hit.accumulated_light;
+#if RTGI_MULTIBOUNCE == RTGI_MULTIBOUNCE_PROBES
+    if (vx_hit.hit) {
+        vec3 hit_world_pos = vx_hit.hit_pos + cameraPosition;
+        vec4 probe_irr = sample_ddgi_irradiance(
+            hit_world_pos + vx_hit.hit_normal * 0.15,
+            vx_hit.hit_normal,
+            cameraPosition
+        );
+        vx_radiance += (vx_hit.albedo * voxel_bounce_rcp_pi) * probe_irr.rgb;
+    }
+#endif
+    vec3 vx_or_sky_radiance = vx_hit.hit ? vx_radiance : total_sky_radiance;
     float vx_or_sky_weight = vx_hit.hit ? vx_hit.sky_weight : sky_weight;
 
     vec3 final_radiance = ss_hit.radiance * w_ss + vx_or_sky_radiance * (1.0 - w_ss);
@@ -130,10 +143,24 @@ vec4 evaluate_hybrid_rtgi_ray(
     // Pure Voxel RT (SEUS-style robust offline-like GI): zero camera dependence
     if (vx_hit.hit) {
         hit_source = RTGI_HIT_VOXEL;
+#if RTGI_MULTIBOUNCE == RTGI_MULTIBOUNCE_PROBES
+        vec3 hit_world_pos = vx_hit.hit_pos + cameraPosition;
+        vec4 probe_irr = sample_ddgi_irradiance(
+            hit_world_pos + vx_hit.hit_normal * 0.15,
+            vx_hit.hit_normal,
+            cameraPosition
+        );
+        vec3 multi_bounce = (vx_hit.albedo * voxel_bounce_rcp_pi) * probe_irr.rgb;
+        return vec4(
+            vx_hit.radiance + vx_hit.accumulated_light + multi_bounce,
+            vx_hit.sky_weight
+        );
+#else
         return vec4(
             vx_hit.radiance + vx_hit.accumulated_light,
             vx_hit.sky_weight
         );
+#endif
     }
 
     hit_source = RTGI_HIT_SKY;

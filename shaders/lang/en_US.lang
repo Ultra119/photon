@@ -729,6 +729,7 @@ value.GI_DEBUG.GI_DEBUG_VOXEL_ID       = Voxel ID
 value.GI_DEBUG.GI_DEBUG_VOXEL_LIGHT    = Voxel Light
 value.GI_DEBUG.GI_DEBUG_VOXEL_ALBEDO   = Voxel Albedo
 value.GI_DEBUG.GI_DEBUG_VARIANCE       = Variance
+value.GI_DEBUG.GI_DEBUG_PROBE          = Probe Cache (DDGI)
 
 value.tonemap_left.tonemap_aces_fit       = ACES Fit
 value.tonemap_left.tonemap_aces_full      = ACES Full
@@ -797,6 +798,16 @@ option.RTGI_TRACER                                                  = GI Ray Tra
 option.RTGI_TRACER.comment                                          = Voxel RT: Pure 3D voxel ray tracing (SEUS PTGI style). 100% camera-independent and stable. Hybrid: Screen-space raymarching with voxel fallback.
 value.RTGI_TRACER.0                                                 = Voxel RT (SEUS Style)
 value.RTGI_TRACER.1                                                 = Hybrid (SSGI + Voxel)
+option.RTGI_MULTIBOUNCE                                             = Multi-Bounce GI (DDGI)
+option.RTGI_MULTIBOUNCE.comment                                     = Multi-bounce indirect light transport via a 3D irradiance probe radiance cache (DDGI). Delivers realistic color bleeding between surfaces and soft indirect illumination in rooms and caves.
+value.RTGI_MULTIBOUNCE.RTGI_MULTIBOUNCE_OFF                         = OFF (1-Bounce)
+value.RTGI_MULTIBOUNCE.RTGI_MULTIBOUNCE_PROBES                      = DDGI Probes
+value.RTGI_MULTIBOUNCE.0                                            = OFF (1-Bounce)
+value.RTGI_MULTIBOUNCE.1                                            = DDGI Probes
+option.RTGI_PROBE_RAYS                                              = DDGI Probe Rays
+option.RTGI_PROBE_RAYS.comment                                      = Number of spherical rays cast by each probe to gather indirect irradiance.
+option.RTGI_PROBE_HYSTERESIS                                        = DDGI Probe Hysteresis
+option.RTGI_PROBE_HYSTERESIS.comment                                = Temporal accumulation factor for probe radiance history (0.85 ensures smooth convergence without light flashes).
 
 option.RTGI_INTENSITY                                               = RTGI Physical Intensity
 option.RTGI_INTENSITY.comment                                       = Calibrated single-bounce physical indirect lighting multiplier (default 1.00). In a diffuse enclosure, energy conservation guarantees indirect illuminance matches the incoming radiance.

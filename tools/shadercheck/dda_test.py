@@ -140,7 +140,62 @@ def main():
     kernel_2d_sum = sum(wx * wy for wx in bspline_1d for wy in bspline_1d)
     assert abs(kernel_2d_sum - 1.0) < 1e-6, f"Test 12 failed: 2D B-spline does not sum to 1.0, got {kernel_2d_sum}"
 
-    print("All Stage 5, Stage 6, & Stage 7 Unit Tests PASSED (12/12).")
+    # Stage 8 DDGI Probe Radiance Cache Tests:
+    # Test 13: Probe grid origin snapping and world invariance
+    # Snapped to 4-block grid steps so probes remain static in world space
+    def get_ddgi_grid_origin(cam_x):
+        ddgi_grid_extent = 128.0
+        ddgi_rcp_spacing = 0.25
+        ddgi_probe_spacing = 4.0
+        return math.floor((cam_x - ddgi_grid_extent * 0.5) * ddgi_rcp_spacing) * ddgi_probe_spacing
+
+    origin_cam1 = get_ddgi_grid_origin(100.5)
+    origin_cam2 = get_ddgi_grid_origin(103.2) # Moved 2.7m
+    origin_cam3 = get_ddgi_grid_origin(104.8) # Moved 4.3m across 4m boundary
+    assert origin_cam1 == origin_cam2, f"Test 13 failed: Origin changed within 4m step ({origin_cam1} vs {origin_cam2})"
+    assert origin_cam3 - origin_cam1 == 4.0, f"Test 13 failed: Origin did not step by exactly 4m ({origin_cam3} - {origin_cam1})"
+
+    # Test 14: Fibonacci spherical ray distribution
+    num_rays = 16
+    rays = []
+    for r in range(num_rays):
+        y = 1.0 - (float(r) + 0.5) * (2.0 / float(num_rays))
+        radius = math.sqrt(max(0.0, 1.0 - y * y))
+        phi = float(r) * 2.399963229728653
+        x = math.cos(phi) * radius
+        z = math.sin(phi) * radius
+        mag = math.sqrt(x*x + y*y + z*z)
+        assert abs(mag - 1.0) < 1e-5, f"Test 14 failed: Ray {r} not unit length ({mag})"
+        rays.append((x, y, z))
+    mean_y = sum(ry for rx, ry, rz in rays) / num_rays
+    assert abs(mean_y) < 1e-5, f"Test 14 failed: Rays not symmetric around sphere (mean y={mean_y})"
+
+    # Test 15: Probe backface rejection
+    # Wall normal points +X [1, 0, 0].
+    # Probe inside room at [2, 0, 0] -> to_probe=[2, 0, 0], dot=1.0 -> weight=1.0
+    # Probe behind wall (exterior) at [-2, 0, 0] -> to_probe=[-2, 0, 0], dot=-1.0 -> weight=0.0
+    def backface_weight(normal, dir_to_probe):
+        backface_dot = normal[0]*dir_to_probe[0] + normal[1]*dir_to_probe[1] + normal[2]*dir_to_probe[2]
+        return min(max((backface_dot + 0.05) * (1.0 / 0.25), 0.0), 1.0)
+
+    w_interior = backface_weight([1.0, 0.0, 0.0], [1.0, 0.0, 0.0])
+    w_exterior = backface_weight([1.0, 0.0, 0.0], [-1.0, 0.0, 0.0])
+    assert w_interior == 1.0, f"Test 15 failed: Interior probe rejected ({w_interior})"
+    assert w_exterior == 0.0, f"Test 15 failed: Exterior probe not culled ({w_exterior})"
+
+    # Test 16: Multi-bounce contractive convergence (fixed-point iteration)
+    # L_bounce = albedo * L_prev. With albedo = 0.8 and direct E_0 = 1.0:
+    # E_inf = E_0 / (1 - rho) = 1.0 / 0.2 = 5.0.
+    rho = 0.80
+    E_0 = 1.0
+    E_curr = 0.0
+    hysteresis = 0.85
+    for frame in range(200):
+        E_new = E_0 + rho * E_curr
+        E_curr = hysteresis * E_curr + (1.0 - hysteresis) * E_new
+    assert abs(E_curr - 5.0) < 0.05, f"Test 16 failed: Multi-bounce did not converge to 5.0 ({E_curr})"
+
+    print("All Stage 5, Stage 6, Stage 7, & Stage 8 Unit Tests PASSED (16/16).")
 
 if __name__ == "__main__":
     main()
