@@ -318,18 +318,11 @@ vec3 get_diffuse_lighting(
     float sky_retention = mix(RTGI_INTERIOR_RETENTION, 1.0, sky_visibility);
     vec3 rtgi_sky = rtgi_lighting * rtgi_sky_weight;
     vec3 rtgi_local = rtgi_lighting - rtgi_sky;
-    vec3 analytic_sky = get_sky_lighting(
-        material,
-        bent_normal,
-        light_levels,
-        ao,
-        ambient_sss,
-        directional_lighting
-    );
 
-    indirect_lighting = rtgi_local
-        + rtgi_sky * sky_retention
-        + analytic_sky * (1.0 - sky_retention) * rtgi_sky_weight;
+    // Pure RTGI indirect illumination (SEUS PTGI HRR model).
+    // Do not add vanilla vertex analytic_sky: in interiors where vertex lighting
+    // leaks from roof vertices, analytic_sky bleeds fake daylight onto ceiling corners.
+    indirect_lighting = rtgi_local + rtgi_sky * sky_retention;
 
     // Soft fallback for handheld lighting or areas outside voxel distance
     vec3 mc_block = get_block_lighting(

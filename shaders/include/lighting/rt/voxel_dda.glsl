@@ -47,7 +47,7 @@ float sample_voxel_sun_shadow(
     float NoL = dot(normal, l_dir);
     if (NoL <= 0.0) return 0.0;
 
-    vec3 bias = normal * 0.15;
+    vec3 bias = normal * 0.08;
     vec3 shadow_view = mat3(shadow_mv) * (scene_pos + bias) + shadow_mv[3].xyz;
     vec4 shadow_clip = shadow_proj * vec4(shadow_view, 1.0);
     vec3 shadow_ndc = shadow_clip.xyz / shadow_clip.w;
@@ -55,7 +55,7 @@ float sample_voxel_sun_shadow(
     vec3 shadow_screen = shadow_ndc * 0.5 + 0.5;
 
     if (clamp01(shadow_screen) != shadow_screen) {
-        return 1.0; // Outside shadow map
+        return 0.0; // Outside shadow map: assume shadowed to avoid leaks
     }
 
     float shadow_depth = texture(shadow_tex, shadow_screen.xy).r;
@@ -92,15 +92,17 @@ VoxelHit trace_voxel_dda(
     vec3 accumulated_light = vec3(0.0);
 
     // Offset ray origin along surface normal and forward to clear starting block boundary
-    vec3 start_scene = ray_origin_scene + surface_normal * 0.25 + dda_dir * 0.05;
+    // Tight 3 cm normal bias and 2 cm directional offset prevents jumping across
+    // adjacent interior corners, walls, or ceilings while reliably clearing precision seams.
+    vec3 start_scene = ray_origin_scene + surface_normal * 0.03 + dda_dir * 0.02;
     vec3 start_voxel = scene_to_voxel_space(start_scene);
     ivec3 current_voxel = ivec3(floor(start_voxel));
 
     // Voxels containing the origin surface point (must not self-intersect).
     // Use both the geometric normal and the traced ray so mapped normals or
     // exact seams cannot leave an unignored solid voxel at the ray start.
-    ivec3 origin_voxel = ivec3(floor(scene_to_voxel_space(ray_origin_scene - surface_normal * 0.1)));
-    ivec3 origin_voxel_ray = ivec3(floor(scene_to_voxel_space(ray_origin_scene - dda_dir * 0.1)));
+    ivec3 origin_voxel = ivec3(floor(scene_to_voxel_space(ray_origin_scene - surface_normal * 0.05)));
+    ivec3 origin_voxel_ray = ivec3(floor(scene_to_voxel_space(ray_origin_scene - dda_dir * 0.05)));
 
     vec3 step_dir = sign(dda_dir);
     vec3 delta_t = abs(1.0 / (dda_dir + vec3(1e-7)));
@@ -161,26 +163,27 @@ VoxelHit trace_voxel_dda(
                     result.distance = t;
                     result.transmittance = ray_transmittance;
 
-                    vec3 hit_voxel_scene = voxel_to_scene_space(vec3(current_voxel) + 0.5);
-                    result.hit_pos = hit_voxel_scene;
+                    vec3 hit_face_pos = start_scene + dda_dir * t;
+                    result.hit_pos = hit_face_pos;
 
                     // 1. Direct Sun / Moonlight bounce
                     float sun_vis = sample_voxel_sun_shadow(
                         shadow_tex,
                         shadow_mv,
                         shadow_proj,
-                        hit_voxel_scene,
+                        hit_face_pos,
                         result.hit_normal,
                         l_dir
                     );
                     float NoL = max(0.0, dot(result.hit_normal, l_dir));
-                    // Direct light is already scaled by SUN_I / exposure. The
-                    // old 3.0 multiplier double-counted it in the GI bounce.
+                    // Direct light is already scaled by SUN_I / exposure.
                     vec3 sun_radiance = direct_sun_color * (sun_vis * NoL);
 
-                    // 2. Skylight bounce (diffuse irradiance from sky hemisphere; 0.0 in caves/interiors)
-                    float sky_factor = clamp01(result.hit_normal.y * 0.5 + 0.5);
-                    vec3 sky_radiance = sky_ambient_color * (sky_factor * sqr(sample_data.sky_light));
+                    // 2. Skylight bounce: solid voxels DO NOT inject ambient sky light.
+                    // Following SEUS PTGI, ambient skylight is only accumulated when a ray
+                    // escapes to the sky (RTGI_HIT_SKY). Stored voxel skylight is contaminated
+                    // by exterior roof/wall faces and leaks into dark interiors.
+                    vec3 sky_radiance = vec3(0.0);
 
                     // 3. Blocklight bounce (light from torches, lanterns, lamps illuminating this surface)
                     vec3 blocklight_bounce = blocklight_color * (sqr(sample_data.block_light) * blocklight_scale);
@@ -198,10 +201,10 @@ VoxelHit trace_voxel_dda(
                     // Split sky/sun-origin radiance from emission/block-light radiance.
                     // The radial point-light field is local and is included in
                     // local_lit so sky leaks can still be gated independently.
-                    vec3 bounce_irradiance = blocklight_bounce + sun_radiance + sky_radiance;
+                    vec3 bounce_irradiance = blocklight_bounce + sun_radiance;
                     vec3 bounce_radiance = bounce_albedo * bounce_irradiance * voxel_bounce_rcp_pi;
 
-                    vec3 sky_lit = bounce_albedo * (sun_radiance + sky_radiance) * voxel_bounce_rcp_pi;
+                    vec3 sky_lit = bounce_albedo * sun_radiance * voxel_bounce_rcp_pi;
                     vec3 local_lit = emission_radiance
                         + bounce_albedo * blocklight_bounce * voxel_bounce_rcp_pi
                         + accumulated_light;

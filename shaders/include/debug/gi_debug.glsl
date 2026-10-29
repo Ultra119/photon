@@ -235,11 +235,22 @@ vec3 gi_debug_view(ivec2 texel, vec2 uv, vec3 fallback) {
 
     vec3 screen_pos = vec3(taau_projection_uv(uv), depth);
     vec3 view_pos = screen_to_view_space(gbufferProjectionInverse, screen_pos, true);
-    // Push slightly into the surface along the view ray to prevent boundary precision
-    // and TAA jitter flipping between air and solid on surfaces facing the camera.
-    view_pos += normalize(view_pos) * 0.08;
-    vec3 scene_pos = view_to_scene_space(view_pos);
 
+    // Compute screen-space geometric normal from view position derivatives.
+    // Stepping perpendicularly into the surface normal ensures we penetrate
+    // cleanly into the solid block under any view angle (including grazing
+    // walls and ceilings), eliminating zebra stripes and block edge slits.
+    vec3 dpdx = dFdx(view_pos);
+    vec3 dpdy = dFdy(view_pos);
+    vec3 cross_n = cross(dpdx, dpdy);
+    float len_sq = dot(cross_n, cross_n);
+    vec3 view_normal = len_sq > 1e-8 ? cross_n * inversesqrt(len_sq) : -normalize(view_pos);
+    if (dot(view_normal, view_pos) > 0.0) {
+        view_normal = -view_normal;
+    }
+    vec3 scene_normal = mat3(gbufferModelViewInverse) * view_normal;
+
+    vec3 scene_pos = view_to_scene_space(view_pos) - scene_normal * 0.12;
     ivec3 voxel_coord = ivec3(floor(scene_to_voxel_space(scene_pos)));
     if (!is_inside_voxel_grid(voxel_coord)) {
         // Outside the volume there is no voxel data, which is different from
