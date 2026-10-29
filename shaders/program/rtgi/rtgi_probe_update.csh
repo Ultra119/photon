@@ -67,6 +67,7 @@ void main() {
 
     // Probe relocation: check if probe is inside a solid voxel
     ivec3 vx_coord = ivec3(floor(scene_to_voxel_space(probe_scene_pos)));
+    float relocation_code = 0.0;
 
     if (is_inside_voxel_grid(vx_coord)) {
         uint vx_data = texelFetch(voxel_sampler, vx_coord, 0).r;
@@ -79,6 +80,8 @@ void main() {
                 ivec3( 0, 1, 0), ivec3( 0,-1, 0),
                 ivec3( 0, 0, 1), ivec3( 0, 0,-1)
             );
+
+            // Step 1: Check 1 block outward (1.5m offset)
             for (int i = 0; i < 6; ++i) {
                 ivec3 neighbor_coord = vx_coord + offsets[i];
                 if (is_inside_voxel_grid(neighbor_coord)) {
@@ -87,11 +90,31 @@ void main() {
                     if (n_vs.block_id == 0u) {
                         probe_world_pos += vec3(offsets[i]) * 1.5;
                         probe_scene_pos = probe_world_pos - cameraPosition;
+                        relocation_code = float(i + 1);
                         found_air = true;
                         break;
                     }
                 }
             }
+
+            // Step 2: Check 2 blocks outward (2.5m offset for thicker walls)
+            if (!found_air) {
+                for (int i = 0; i < 6; ++i) {
+                    ivec3 neighbor_coord = vx_coord + offsets[i] * 2;
+                    if (is_inside_voxel_grid(neighbor_coord)) {
+                        uint n_data = texelFetch(voxel_sampler, neighbor_coord, 0).r;
+                        VoxelSample n_vs = unpack_voxel_data(n_data);
+                        if (n_vs.block_id == 0u) {
+                            probe_world_pos += vec3(offsets[i]) * 2.5;
+                            probe_scene_pos = probe_world_pos - cameraPosition;
+                            relocation_code = float(i + 7);
+                            found_air = true;
+                            break;
+                        }
+                    }
+                }
+            }
+
             if (!found_air) {
                 // Completely surrounded by solid geometry (deep underground / bedrock)
                 imageStore(ddgi_irradiance_img, probe_texel, vec4(0.0));
@@ -178,6 +201,6 @@ void main() {
     float blended_sky = mix(new_sky, prev_irr.a, hysteresis);
 
     imageStore(ddgi_irradiance_img, probe_texel, vec4(blended_E0, blended_sky));
-    imageStore(ddgi_direction_img, probe_texel, vec4(blended_dir, 1.0));
+    imageStore(ddgi_direction_img, probe_texel, vec4(blended_dir, relocation_code));
 #endif
 }

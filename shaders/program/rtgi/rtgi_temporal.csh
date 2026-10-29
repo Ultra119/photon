@@ -120,6 +120,7 @@ void main() {
     vec3 raw_max = current_radiance;
     vec3 raw_m1 = vec3(0.0);
     vec3 raw_m2 = vec3(0.0);
+    vec3 neighbor_max = vec3(0.0);
 
     for (int dy = -1; dy <= 1; ++dy) {
         for (int dx = -1; dx <= 1; ++dx) {
@@ -129,11 +130,24 @@ void main() {
             raw_max = max(raw_max, n_val);
             raw_m1 += n_val;
             raw_m2 += n_val * n_val;
+            if (dx != 0 || dy != 0) {
+                neighbor_max = max(neighbor_max, n_val);
+            }
         }
     }
     raw_m1 *= (1.0 / 9.0);
     raw_m2 *= (1.0 / 9.0);
     vec3 raw_sigma = sqrt(max(vec3(0.0), raw_m2 - raw_m1 * raw_m1));
+
+    // Pre-accumulation firefly suppression: clamp isolated raw sample spikes
+    // Diffuse GI cannot physically produce an isolated single-pixel spike vastly brighter than all 8 neighbours.
+    // Suppresses grazing-angle emitter fireflies before they contaminate temporal history.
+    float max_neighbor_lum = dot(neighbor_max, luminance_weights);
+    float firefly_ceiling = max_neighbor_lum * 2.0 + 0.15;
+    if (current_lum > firefly_ceiling) {
+        current_radiance *= firefly_ceiling / current_lum;
+        current_lum = firefly_ceiling;
+    }
 
     // Expand bounding box by 1.25 sigma to prevent color clipping on stationary gradients,
     // bounded by raw_max so variance never exceeds the local window maximum

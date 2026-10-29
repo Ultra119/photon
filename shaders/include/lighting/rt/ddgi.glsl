@@ -61,6 +61,30 @@ vec3 get_ddgi_probe_ray_dir(int ray_idx, int total_rays, vec2 rand_rot) {
     return vec3(cos(phi) * radius, y, sin(phi) * radius);
 }
 
+// Relocation offset decoding for probes adjusted away from solid geometry.
+// Ensures sampling query calculates exact to_probe vectors and prevents
+// backface culling collapse and planar wall seams.
+vec3 decode_ddgi_relocation(float code) {
+    int idx = int(code + 0.5);
+    const vec3 table[13] = vec3[13](
+        vec3( 0.0,  0.0,  0.0),
+        vec3( 1.5,  0.0,  0.0),
+        vec3(-1.5,  0.0,  0.0),
+        vec3( 0.0,  1.5,  0.0),
+        vec3( 0.0, -1.5,  0.0),
+        vec3( 0.0,  0.0,  1.5),
+        vec3( 0.0,  0.0, -1.5),
+        vec3( 2.5,  0.0,  0.0),
+        vec3(-2.5,  0.0,  0.0),
+        vec3( 0.0,  2.5,  0.0),
+        vec3( 0.0, -2.5,  0.0),
+        vec3( 0.0,  0.0,  2.5),
+        vec3( 0.0,  0.0, -2.5)
+    );
+    if (idx >= 1 && idx <= 12) return table[idx];
+    return vec3(0.0);
+}
+
 #if RTGI_MULTIBOUNCE == RTGI_MULTIBOUNCE_PROBES || (defined GI_DEBUG && GI_DEBUG == 10)
 uniform sampler3D ddgi_irradiance_sampler;
 uniform sampler3D ddgi_direction_sampler;
@@ -104,21 +128,24 @@ vec4 sample_ddgi_irradiance_skip(
                 // Skip current updating probe to strictly prevent recursive self-feedback
                 if (probe_c == skip_coord) continue;
 
-                vec3 probe_world_p = get_ddgi_probe_world_pos(probe_c);
+                ivec3 probe_texel = get_ddgi_texel_coord(probe_c);
+                vec4 probe_dir_sample = texelFetch(ddgi_direction_sampler, probe_texel, 0);
+                vec3 probe_reloc = decode_ddgi_relocation(probe_dir_sample.w);
+
+                vec3 probe_world_p = get_ddgi_probe_world_pos(probe_c) + probe_reloc;
                 vec3 to_probe = probe_world_p - world_pos;
                 float normal_dist = dot(normal, to_probe);
 
                 // Normal-distance weighting: probes in front of surface (normal_dist >= 0) are in the same room.
-                // Probes behind the surface (normal_dist < 0) smoothly fade out over half a cell to prevent leaks from behind walls,
-                // without creating planar circular scalloping artifacts.
-                float backface_weight = clamp01(1.0 + normal_dist * (1.0 / (ddgi_probe_spacing * 0.5)));
+                // Probes behind the surface (normal_dist < 0) smoothly fade out over half a cell to prevent leaks from behind walls.
+                // Uses cubic smoothstep to ensure C1 continuity and eliminate planar slope creases.
+                float t = clamp01(1.0 + normal_dist * (1.0 / (ddgi_probe_spacing * 0.5)));
+                float backface_weight = t * t * (3.0 - 2.0 * t);
 
                 float weight = wx * wy * wz * backface_weight;
                 if (weight <= 1e-5) continue;
 
-                ivec3 probe_texel = get_ddgi_texel_coord(probe_c);
                 vec4 probe_irr_sample = texelFetch(ddgi_irradiance_sampler, probe_texel, 0);
-                vec4 probe_dir_sample = texelFetch(ddgi_direction_sampler, probe_texel, 0);
 
                 // Directional irradiance response based on dominant incident direction:
                 // Normalizes smoothly between [0.1, 2.0] for physical stability.
