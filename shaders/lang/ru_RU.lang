@@ -736,3 +736,63 @@ option.BOX_LINE_WIDTH           = Ширина линии
 option.DH_OVERDRAW_DISTANCE    = Дальность перерисовки
 option.DH_OVERDRAW_FADE_LENGTH = Длина затухания перерисовки
 option.NOISE_ON_DH_TERRAIN     = Шум на ландшафте DH
+
+# --------------------------------------------------------------------------------
+#   Ray Tracing & GI (RTGI) Settings
+# --------------------------------------------------------------------------------
+
+screen.raytracing                                                    = Настройки трассировки лучей и GI
+
+option.RAYTRACED_GI                                                  = Ray-Traced GI
+option.RAYTRACED_GI.comment                                          = Нативная трассировка лучей (RTGI) для реалистичного непрямого освещения от солнца, неба и источников света.
+
+option.RTGI_TRACER                                                   = Трассировщик RTGI
+option.RTGI_TRACER.comment                                           = Метод трассировки. Воксельный режим (RTGI_TRACER_VOXEL) полностью не зависит от положения и обзора камеры.
+value.RTGI_TRACER.RTGI_TRACER_VOXEL                                  = Воксельный
+value.RTGI_TRACER.RTGI_TRACER_HYBRID                                 = Гибридный
+
+option.RTGI_INTENSITY                                                = Физическая яркость RTGI
+option.RTGI_INTENSITY.comment                                        = Физический множитель интенсивности диффузного непрямого освещения.
+
+option.RTGI_BRIGHTNESS                                               = Яркость RTGI
+option.RTGI_BRIGHTNESS.comment                                        = Общая визуальная яркость непрямого освещения.
+
+option.RTGI_INTERIOR_RETENTION                                       = Удержание освещения интерьеров
+option.RTGI_INTERIOR_RETENTION.comment                               = Сохранение непрямого света неба внутри темных помещений. 1.00 сохраняет весь трассированный свет.
+
+option.RTGI_CONTACT_AO_STRENGTH                                      = Сила контактного AO
+option.RTGI_CONTACT_AO_STRENGTH.comment                              = Дополнительное экранное контактное затенение в щелях и углах.
+
+option.RTGI_VOXELIZE_ENTITIES                                        = Вокселизация сущностей
+option.RTGI_VOXELIZE_ENTITIES.comment                                = Экспериментально: вокселизирует мобов и сущностей в теневом проходе. Позволяет динамическим сущностям отбрасывать и принимать непрямые тени.
+value.RTGI_VOXELIZE_ENTITIES.0                                       = ВЫКЛ
+value.RTGI_VOXELIZE_ENTITIES.1                                       = ВКЛ
+
+option.RTGI_POINT_LIGHT_STRENGTH                                     = Яркость света блоков
+option.RTGI_POINT_LIGHT_STRENGTH.comment                             = Яркость воксельного светового поля вокруг светящихся блоков.
+
+option.RTGI_POINT_LIGHT_RADIUS                                       = Радиус света блоков
+option.RTGI_POINT_LIGHT_RADIUS.comment                               = Радиус распространения света блоков в вокселях.
+
+option.RTGI_SSGI_LOCAL_LIGHT_SCALE                                   = Масштаб света SSGI
+option.RTGI_SSGI_LOCAL_LIGHT_SCALE.comment                            = Масштаб локального экранного освещения.
+
+option.RTGI_CAVE_AMBIENT_SCALE                                       = Освещение пещер
+option.RTGI_CAVE_AMBIENT_SCALE.comment                               = Масштаб минимального фонового освещения в пещерах.
+
+option.RTGI_RAY_COUNT                                                = Количество лучей RTGI
+option.RTGI_RAY_COUNT.comment                                        = Количество трассируемых лучей на пиксель за кадр.
+
+option.RTGI_RESOLUTION                                               = Разрешение RTGI
+option.RTGI_RESOLUTION.comment                                        = Разрешение буфера трассировки лучей. Half (0.5x) обеспечивает отличный баланс качества и скорости.
+value.RTGI_RESOLUTION.0                                              = Четверть (0.25x)
+value.RTGI_RESOLUTION.1                                              = Половина (0.5x)
+value.RTGI_RESOLUTION.2                                              = Полное (1.0x)
+
+option.RT_REFLECTIONS                                                = Трассировка отражений
+option.RT_REFLECTIONS.comment                                        = Отражения с трассировкой лучей в экранном пространстве и вокселях.
+
+option.PHYSICAL_BSDF_ENERGY_COMP                                     = Сохранение энергии BSDF
+option.PHYSICAL_BSDF_ENERGY_COMP.comment                             = Физическая компенсация рассеяния для шероховатых поверхностей.
+
+value.GI_DEBUG.GI_DEBUG_VARIANCE                                     = Дисперсия (SVGF)

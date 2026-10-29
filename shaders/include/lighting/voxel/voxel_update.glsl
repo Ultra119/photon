@@ -21,7 +21,7 @@ bool is_voxel_terrain_stage() {
 #elif defined COLORWHEEL
     return true;
 #elif defined PROGRAM_SHADOW
-#if defined RTGI_VOXELIZE_ENTITIES
+#if defined RTGI_VOXELIZE_ENTITIES && RTGI_VOXELIZE_ENTITIES == 1
     if (renderStage == MC_RENDER_STAGE_ENTITIES || renderStage == MC_RENDER_STAGE_BLOCK_ENTITIES) return true;
 #endif
     return any(equal(

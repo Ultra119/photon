@@ -178,7 +178,7 @@ void main() {
         float depth_confidence = clamp01(1.0 - max(0.0, dist_diff - dist_tolerance) / dist_tolerance);
 
         // SVGF Disocclusion Test 2: Normal orientation consistency
-        vec3 prev_world_normal = decode_unit_vector(unpack_unorm_2x8(prev_aux.b));
+        vec3 prev_world_normal = decode_unit_vector(prev_aux.ba);
         float normal_dot = dot(current_world_normal, prev_world_normal);
         bool normal_valid = normal_dot > 0.85;
         float normal_confidence = smoothstep(0.70, 0.90, normal_dot);
@@ -188,9 +188,9 @@ void main() {
 
         if (history_valid) {
             // Unpack previous sample age and sky weight
-            vec2 prev_sky_age = unpack_unorm_2x8(prev_aux.a);
+            vec2 prev_sky_age = unpack_sky_age(prev_aux.g);
             float prev_sky = prev_sky_age.x;
-            float prev_age = prev_sky_age.y * 64.0;
+            float prev_age = prev_sky_age.y;
 
             n_samples = min(prev_age + 1.0, 64.0);
 
@@ -212,8 +212,7 @@ void main() {
             accumulated_sky = mix(prev_sky, current_sky_weight, alpha);
 
             // Moment tracking for local variance estimation
-            m1 = mix(prev_aux.r, current_lum, alpha);
-            m2 = mix(prev_aux.g, current_lum * current_lum, alpha);
+            m2 = mix(prev_aux.r, current_lum * current_lum, alpha);
 
 #if GI_DEBUG == GI_DEBUG_REJECT
             history_accepted = 1.0;
@@ -227,16 +226,16 @@ void main() {
 #endif
 
     // Auxiliary buffer:
-    // .r = mean luminance M1
-    // .g = mean squared luminance M2 (variance = max(0, M2 - M1*M1))
-    // .b = packed octahedral world normal
-    // .a = packed sky weight + sample age (n in [1, 64])
-    vec2 packed_sky_age = vec2(clamp01(accumulated_sky), clamp01(n_samples / 64.0));
+    // .r = mean squared luminance M2 (variance = max(0, M2 - M1*M1), M1 = dot(radiance, luminance_weights))
+    // .g = exact packed sky weight + sample age [0..2047]
+    // .b = octahedral world normal X
+    // .a = octahedral world normal Y
+    vec2 oct_norm = encode_unit_vector(current_world_normal);
     vec4 aux_data = vec4(
-        m1,
         m2,
-        pack_unorm_2x8(encode_unit_vector(current_world_normal)),
-        pack_unorm_2x8(packed_sky_age)
+        pack_sky_age(accumulated_sky, n_samples),
+        oct_norm.x,
+        oct_norm.y
     );
 
     vec4 accum_data = vec4(accumulated_radiance, current_dist);

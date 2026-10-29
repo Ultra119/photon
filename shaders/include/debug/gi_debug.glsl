@@ -207,8 +207,10 @@ vec3 gi_debug_view(ivec2 texel, vec2 uv, vec3 fallback) {
 #elif GI_DEBUG == GI_DEBUG_VARIANCE
     vec4 aux_sample = ping ? texture(rtgi_sky_accum_sampler, rtgi_uv)
                            : texture(rtgi_sky_history_sampler, rtgi_uv);
-    float m1 = aux_sample.r;
-    float m2 = aux_sample.g;
+    vec4 accum_sample = ping ? texture(rtgi_accum_sampler, rtgi_uv)
+                             : texture(rtgi_history_sampler, rtgi_uv);
+    float m1 = dot(accum_sample.rgb, vec3(0.2126, 0.7152, 0.0722));
+    float m2 = aux_sample.r;
     float variance = max(0.0, m2 - m1 * m1);
     float rel_std_dev = sqrt(variance) / (m1 + 0.05);
     // Cold-to-hot colormap: blue (converged / low variance) -> green -> yellow -> red (high variance)

@@ -45,6 +45,7 @@ uniform vec2 taa_offset;
 
 #include "/include/utility/encoding.glsl"
 #include "/include/utility/space_conversion.glsl"
+#include "/include/utility/color.glsl"
 
 vec4 sample_accum_data(ivec2 t, bool ping) {
     return ping ? texelFetch(rtgi_accum_sampler, t, 0)
@@ -104,14 +105,14 @@ void main() {
     vec3 center_radiance = center_sample.rgb;
 
     vec4 center_aux = sample_aux_data(texel, ping);
-    float center_m1 = center_aux.r;
-    float center_m2 = center_aux.g;
+    float center_m1 = dot(center_radiance, luminance_weights);
+    float center_m2 = center_aux.r;
     float center_var = max(0.0, center_m2 - center_m1 * center_m1);
     float center_std = sqrt(center_var);
 
-    vec3 center_world_normal = decode_unit_vector(unpack_unorm_2x8(center_aux.b));
+    vec3 center_world_normal = decode_unit_vector(center_aux.ba);
     vec3 center_view_normal = mat3(gbufferModelView) * center_world_normal;
-    float center_sky_weight = clamp01(unpack_unorm_2x8(center_aux.a).x);
+    float center_sky_weight = clamp01(unpack_sky_age(center_aux.g).x);
 
     // SVGF edge-stopping parameter scaling
     // Variance-guided normal exponent: tight (128) when converged, wide (8) when noisy
@@ -154,9 +155,9 @@ void main() {
             vec3 n_color = n_sample.rgb;
 
             vec4 n_aux = sample_aux_data(neighbor_texel, ping);
-            float n_m1 = n_aux.r;
-            vec3 n_world_normal = decode_unit_vector(unpack_unorm_2x8(n_aux.b));
-            float n_sky_weight = clamp01(unpack_unorm_2x8(n_aux.a).x);
+            float n_m1 = dot(n_color, luminance_weights);
+            vec3 n_world_normal = decode_unit_vector(n_aux.ba);
+            float n_sky_weight = clamp01(unpack_sky_age(n_aux.g).x);
 
             // 1. Tangent-plane depth weight: zero on flat surfaces regardless of view angle
             vec3 pos_diff = n_view_pos - center_view_pos;
