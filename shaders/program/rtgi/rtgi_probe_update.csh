@@ -17,8 +17,6 @@ const ivec3 workGroups = ivec3(2, 1, 1); // 512 probes updated per frame (full c
 layout(rgba16f) uniform image3D ddgi_irradiance_img;
 layout(rgba16f) uniform image3D ddgi_direction_img;
 
-uniform sampler3D ddgi_irradiance_sampler;
-uniform sampler3D ddgi_direction_sampler;
 uniform usampler3D voxel_sampler;
 uniform sampler2D shadowtex0;
 uniform sampler2D colortex4; // sky map & light colors
