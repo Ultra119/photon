@@ -58,6 +58,9 @@ vec3 gi_debug_voxel_id(uint packed) {
 // varies and not that the ray path is thinning out.
 vec3 gi_debug_voxel_light(uint packed) {
     VoxelSample voxel = unpack_voxel_data(packed);
+    if (voxel.is_emitter) {
+        return max(voxel.color, vec3(0.2)) * 2.0;
+    }
     return vec3(voxel.block_light, voxel.sky_light, 0.0);
 }
 
