@@ -123,8 +123,8 @@ void main() {
     const int step_size = 2;
     float sigma_z = max(center_dist * 0.05, 0.10) * float(step_size);
 
-    // Luminance tolerance: scaled by measured standard deviation
-    float sigma_l = 4.0 * center_std + 0.005;
+    // Luminance tolerance: scaled by measured standard deviation, clamped to avoid smearing outliers into dark regions
+    float sigma_l = clamp(4.0 * center_std + 0.005, 0.01, max(center_m1 * 1.0 + 0.05, 0.35));
 
     vec3 sum_radiance = vec3(0.0);
     float sum_sky_weight = 0.0;

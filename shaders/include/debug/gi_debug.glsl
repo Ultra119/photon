@@ -64,6 +64,9 @@ vec3 gi_debug_voxel_light(uint packed) {
     if (voxel.is_emitter) {
         return max(voxel.color, vec3(0.2)) * 2.0;
     }
+    if (voxel.is_solid) {
+        return max(vec3(voxel.block_light, voxel.sky_light, 0.0), vec3(0.05));
+    }
     return vec3(voxel.block_light, voxel.sky_light, 0.0);
 }
 

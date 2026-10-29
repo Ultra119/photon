@@ -19,7 +19,7 @@ vec3 trace_voxel_specular_fallback(
     vec3 l_dir,
     vec3 sky_reflection
 ) {
-    const float max_reflection_dist = 80.0;
+    float max_reflection_dist = voxel_distance;
 
     VoxelHit vx_hit = trace_voxel_dda(
         voxel_grid,

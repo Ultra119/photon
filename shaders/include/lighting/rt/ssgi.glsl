@@ -151,7 +151,9 @@ SSGIHit trace_screen_space_gi(
                 vec3 direct_sun = direct_sun_color * (sun_vis * NoL);
 
                 // 2. Direct Sky incident irradiance [W/m^2]
-                vec3 direct_sky = sky_ambient_color * sqr(hit_light_levels.y);
+                // Aligned with voxel_dda.glsl: solid surfaces do not inject ambient skylight from lightmap,
+                // as vertex skylight leaks through walls/ceilings into interiors. Skylight enters only when rays escape to sky.
+                vec3 direct_sky = vec3(0.0);
 
                 // 3. Direct Blocklight incident irradiance [W/m^2]
                 float blocklight_falloff = pow8(hit_light_levels.x) + 0.18 * sqr(hit_light_levels.x) + 0.5 * pow4(hit_light_levels.x);

@@ -11,7 +11,7 @@
 #include "/include/global.glsl"
 
 layout(local_size_x = 256) in;
-const ivec3 workGroups = ivec3(2, 1, 1); // 512 probes updated per frame (full cycle in 64 frames)
+const ivec3 workGroups = ivec3(8, 1, 1); // 2048 probes updated per frame (full cycle in 16 frames)
 
 #if RTGI_MULTIBOUNCE == RTGI_MULTIBOUNCE_PROBES
 layout(rgba16f) uniform image3D ddgi_irradiance_img;
@@ -49,13 +49,16 @@ void main() {
     uint probe_idx = (uint(frameCounter) * probes_per_frame + thread_id) % total_probes;
 
     // Decode 1D index to 3D grid coordinate (X, Y, Z in [0, 31])
-    ivec3 probe_coord;
-    probe_coord.z = int(probe_idx / uint(ddgi_probe_dim * ddgi_probe_dim));
-    probe_coord.y = int((probe_idx / uint(ddgi_probe_dim)) % uint(ddgi_probe_dim));
-    probe_coord.x = int(probe_idx % uint(ddgi_probe_dim));
+    ivec3 offset;
+    offset.z = int(probe_idx / uint(ddgi_probe_dim * ddgi_probe_dim));
+    offset.y = int((probe_idx / uint(ddgi_probe_dim)) % uint(ddgi_probe_dim));
+    offset.x = int(probe_idx % uint(ddgi_probe_dim));
 
-    vec3 origin = get_ddgi_grid_origin(cameraPosition);
-    vec3 probe_world_pos = get_ddgi_probe_world_pos(probe_coord, origin);
+    ivec3 min_cell = get_ddgi_min_cell(cameraPosition);
+    ivec3 probe_cell = min_cell + offset;
+    ivec3 probe_texel = get_ddgi_texel_coord(probe_cell);
+
+    vec3 probe_world_pos = get_ddgi_probe_world_pos(probe_cell);
     vec3 probe_scene_pos = probe_world_pos - cameraPosition;
 
     // Direct lighting & ambient colors from colortex4
@@ -91,8 +94,8 @@ void main() {
             }
             if (!found_air) {
                 // Completely surrounded by solid geometry (deep underground / bedrock)
-                imageStore(ddgi_irradiance_img, probe_coord, vec4(0.0));
-                imageStore(ddgi_direction_img, probe_coord, vec4(0.0));
+                imageStore(ddgi_irradiance_img, probe_texel, vec4(0.0));
+                imageStore(ddgi_direction_img, probe_texel, vec4(0.0));
                 return;
             }
         }
@@ -134,13 +137,13 @@ void main() {
             ray_sky = vx_hit.sky_weight;
 
             // Multi-bounce recursion: query the previous probe cache at the hit position
-            // Skip self-probe by passing probe_coord
+            // Skip self-probe by passing probe_cell
             vec3 hit_world_pos = vx_hit.hit_pos + cameraPosition;
             vec4 prev_cache = sample_ddgi_irradiance_skip(
                 hit_world_pos + vx_hit.hit_normal * 0.15,
                 vx_hit.hit_normal,
                 cameraPosition,
-                probe_coord
+                probe_cell
             );
             // Diffuse reflected bounce 2+ radiance: L2 = (albedo / pi) * E_cache
             ray_radiance += (vx_hit.albedo * voxel_bounce_rcp_pi) * prev_cache.rgb;
@@ -166,15 +169,15 @@ void main() {
     float new_sky = accum_sky * (1.0 / float(num_rays));
 
     // Temporal Hysteresis: Exponential Moving Average across frames
-    vec4 prev_irr = imageLoad(ddgi_irradiance_img, probe_coord);
-    vec4 prev_dir = imageLoad(ddgi_direction_img, probe_coord);
+    vec4 prev_irr = imageLoad(ddgi_irradiance_img, probe_texel);
+    vec4 prev_dir = imageLoad(ddgi_direction_img, probe_texel);
 
     const float hysteresis = RTGI_PROBE_HYSTERESIS;
     vec3 blended_E0 = clamp(mix(new_E0, prev_irr.rgb, hysteresis), vec3(0.0), vec3(16.0));
     vec3 blended_dir = mix(new_dir, prev_dir.xyz, hysteresis);
     float blended_sky = mix(new_sky, prev_irr.a, hysteresis);
 
-    imageStore(ddgi_irradiance_img, probe_coord, vec4(blended_E0, blended_sky));
-    imageStore(ddgi_direction_img, probe_coord, vec4(blended_dir, 1.0));
+    imageStore(ddgi_irradiance_img, probe_texel, vec4(blended_E0, blended_sky));
+    imageStore(ddgi_direction_img, probe_texel, vec4(blended_dir, 1.0));
 #endif
 }

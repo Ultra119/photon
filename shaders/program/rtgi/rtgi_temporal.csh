@@ -135,9 +135,10 @@ void main() {
     raw_m2 *= (1.0 / 9.0);
     vec3 raw_sigma = sqrt(max(vec3(0.0), raw_m2 - raw_m1 * raw_m1));
 
-    // Expand bounding box by 1.25 sigma to prevent color clipping on stationary gradients
+    // Expand bounding box by 1.25 sigma to prevent color clipping on stationary gradients,
+    // bounded by raw_max so variance never exceeds the local window maximum
     vec3 clamp_box_min = max(vec3(0.0), raw_m1 - raw_sigma * 1.25);
-    vec3 clamp_box_max = raw_m1 + raw_sigma * 1.25;
+    vec3 clamp_box_max = min(raw_max, raw_m1 + raw_sigma * 1.25);
 
     // Reconstruct position in view and scene space (handle_jitter = true because depth buffer is jittered)
     vec3 screen_pos = vec3(taau_projection_uv(uv), depth);
@@ -211,8 +212,9 @@ void main() {
             accumulated_radiance = mix(clamped_prev_radiance, current_radiance, alpha);
             accumulated_sky = mix(prev_sky, current_sky_weight, alpha);
 
-            // Moment tracking for local variance estimation
-            m2 = mix(prev_aux.r, current_lum * current_lum, alpha);
+            // Moment tracking for local variance estimation: track accumulated luminance to prevent firefly runaway
+            float accum_lum = dot(accumulated_radiance, luminance_weights);
+            m2 = mix(prev_aux.r, accum_lum * accum_lum, alpha);
 
 #if GI_DEBUG == GI_DEBUG_REJECT
             history_accepted = 1.0;

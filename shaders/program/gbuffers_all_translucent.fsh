@@ -366,7 +366,7 @@ void main() {
     // packed normal; stained glass uses glass_filter_data for its tint. Keeping
     // them separate avoids the alpha-channel collision in colortex3.
     refraction_data = vec4(0.0);
-    glass_filter_data = vec4(0.0);
+    glass_filter_data = vec4(1.0, 1.0, 1.0, 0.0);
 #endif
 
     vec2 coord = gl_FragCoord.xy * view_pixel_size * rcp(taau_render_scale);

@@ -110,8 +110,8 @@ RayHit trace_ray(
     r.transmittance = v.transmittance;
     r.radiance = v.radiance;
     r.sky_weight = v.sky_weight;
-    r.albedo = vec3(1.0);
-    r.emission = vec3(0.0);
+    r.albedo = v.albedo;
+    r.emission = v.accumulated_light;
     r.block_id = 0u;
     r.shape = 0u;
 
