@@ -45,12 +45,14 @@ flat out OverworldFogParameters fog_params;
 attribute vec4 at_tangent;
 attribute vec3 mc_Entity;
 attribute vec2 mc_midTexCoord;
+attribute vec3 at_midBlock;
 
 // ------------
 //   Uniforms
 // ------------
 
 uniform sampler2D noisetex;
+uniform sampler2D tex;
 
 uniform mat4 gbufferModelView;
 uniform mat4 gbufferModelViewInverse;
@@ -127,6 +129,11 @@ uniform int currentRenderedItemId;
 #include "/include/weather/fog.glsl"
 #endif
 
+#if (defined RAYTRACED_GI || defined RT_REFLECTIONS) && defined PROGRAM_GBUFFERS_WATER
+layout(r32ui) uniform uimage3D voxel_img;
+#include "/include/lighting/voxel/voxel_update.glsl"
+#endif
+
 void main() {
     uv = (gl_TextureMatrix[0] * gl_MultiTexCoord0)
              .xy; // Faster method breaks on Intel for some reason, thanks to
@@ -135,6 +142,10 @@ void main() {
     tint = gl_Color;
     material_mask = get_material_mask();
     tbn = get_tbn_matrix();
+
+#if (defined RAYTRACED_GI || defined RT_REFLECTIONS) && defined PROGRAM_GBUFFERS_WATER
+    update_rt_voxel_grid(material_mask, tint.rgb, at_midBlock, light_levels, mc_midTexCoord, uv);
+#endif
 
     bool is_top_vertex = uv.y < mc_midTexCoord.y;
 

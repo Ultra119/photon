@@ -5,7 +5,7 @@
 #include "voxel_storage.glsl"
 #include "/include/utility/color.glsl"
 
-#if defined PROGRAM_SHADOW || defined PROGRAM_GBUFFERS_TERRAIN
+#if defined PROGRAM_SHADOW || defined PROGRAM_GBUFFERS_TERRAIN || defined PROGRAM_GBUFFERS_WATER
 
 bool is_voxel_corner(vec3 pos, float tolerance) {
     bvec3 lower = lessThan(pos, vec3(tolerance));
@@ -14,10 +14,10 @@ bool is_voxel_corner(vec3 pos, float tolerance) {
 }
 
 // Only terrain draw calls contribute to the world voxel grid.
-// In PROGRAM_GBUFFERS_TERRAIN this is naturally terrain only.
+// In PROGRAM_GBUFFERS_TERRAIN and PROGRAM_GBUFFERS_WATER this is naturally terrain only.
 // In PROGRAM_SHADOW, renderStage ensures entities/particles do not overwrite world voxels.
 bool is_voxel_terrain_stage() {
-#if defined PROGRAM_GBUFFERS_TERRAIN
+#if defined PROGRAM_GBUFFERS_TERRAIN || defined PROGRAM_GBUFFERS_WATER
     return true;
 #elif defined COLORWHEEL
     return true;
@@ -109,9 +109,11 @@ void update_rt_voxel_grid(
     vec3 voxel_pos = scene_to_voxel_space(scene_pos);
 
     // Remap 0u (default unassigned terrain like stone, dirt, deepslate) to stone ID 4u
+#if !defined PROGRAM_GBUFFERS_WATER
     if (block_id == 0u) {
         block_id = 4u;
     }
+#endif
 
     // Nether stem emission mapping
     if (19u <= block_id && block_id < 23u) block_id = 46u;
@@ -160,7 +162,7 @@ void update_rt_voxel_grid(
     }
 }
 
-#endif // PROGRAM_SHADOW || PROGRAM_GBUFFERS_TERRAIN
+#endif // PROGRAM_SHADOW || PROGRAM_GBUFFERS_TERRAIN || PROGRAM_GBUFFERS_WATER
 
 #endif // INCLUDE_LIGHTING_VOXEL_UPDATE
 

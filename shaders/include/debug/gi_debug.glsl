@@ -249,7 +249,7 @@ vec3 gi_debug_view(ivec2 texel, vec2 uv, vec3 fallback) {
     // was not verified and it did not fix the flicker, so the codebase
     // convention wins.
     ivec2 depth_texel = ivec2(taau_framebuffer_uv(uv) * view_res);
-    float depth = texelFetch(depthtex1, depth_texel, 0).x;
+    float depth = texelFetch(depthtex0, depth_texel, 0).x;
     if (depth >= 1.0) {
         return vec3(0.0); // sky
     }

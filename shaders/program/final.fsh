@@ -76,6 +76,7 @@ uniform float far;
 
 uniform vec3 cameraPosition;
 uniform int frameCounter;
+uniform sampler2D depthtex0;
 uniform sampler2D depthtex1;
 
 #include "/include/utility/space_conversion.glsl"
