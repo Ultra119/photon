@@ -210,6 +210,7 @@ COMMON_UNIFORMS = {
  'colortex15':'uniform sampler2D colortex15;',
  'colortex16':'uniform sampler2D colortex16;',
  'colortex17':'uniform sampler2D colortex17;',
+ 'colortex18':'uniform sampler2D colortex18;',
  'voxel_sampler':'uniform usampler3D voxel_sampler;',
  'rtgi_raw_sampler':'uniform sampler2D rtgi_raw_sampler;',
  'rtgi_history_sampler':'uniform sampler2D rtgi_history_sampler;',

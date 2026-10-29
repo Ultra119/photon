@@ -18,6 +18,7 @@ const int colortex13Format = RGBA16F;        // full res    | rendered transluce
 const int colortex14Format = RG16F;          // quarter res | ambient occlusion history data (always)
 const int colortex15Format = R32F;           // full res    | LoD combined depth buffer (d1 -> c2)
 const int colortex17Format = RGBA8;          // full res    | stained glass optical filter data (translucent -> c1)
+const int colortex18Format = RGBA16F;        // full res    | direct-only radiance for SSGI (d4 -> ssgi)
 
 const bool colortex0Clear  = true;
 const bool colortex1Clear  = false;
@@ -36,6 +37,7 @@ const bool colortex13Clear = true;
 const bool colortex14Clear = false;
 const bool colortex15Clear = false;
 const bool colortex17Clear = true;
+const bool colortex18Clear = false;
 
 const vec4 colortex0ClearColor = vec4(0.0, 0.0, 0.0, 0.0);
 const vec4 colortex3ClearColor = vec4(0.0, 0.0, 0.0, 0.0);

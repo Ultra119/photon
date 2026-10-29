@@ -34,7 +34,13 @@ uniform sampler2D depthtex1;
 uniform sampler2D colortex1; // gbuffer0
 uniform sampler2D colortex2; // gbuffer1
 uniform sampler2D colortex4; // sky map & light colors
-uniform sampler2D colortex5; // previous frame scene color
+#if RTGI_GI_INPUT == RTGI_GI_INPUT_LEGACY
+uniform sampler2D colortex5; // previous frame scene color (legacy feedback loop)
+#define radiance_direct_sampler colortex5
+#else
+uniform sampler2D colortex18; // previous frame direct-only scene radiance
+#define radiance_direct_sampler colortex18
+#endif
 uniform sampler2D noisetex;
 
 uniform mat4 gbufferModelView;
@@ -172,7 +178,7 @@ void main() {
             shadowtex0,
             shadowModelView,
             shadowProjection,
-            colortex5,
+            radiance_direct_sampler,
             colortex1,
             direct_light_col,
             sky_amb_col,

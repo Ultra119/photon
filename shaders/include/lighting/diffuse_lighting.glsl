@@ -203,17 +203,20 @@ vec3 get_diffuse_lighting(
     float NoL,
     float NoV,
     float NoH,
-    float LoV
+    float LoV,
+    out vec3 direct_diffuse
 ) {
 #if defined PROGRAM_GBUFFERS_WATER
     // Small optimization, don't calculate diffuse lighting when albedo is 0 (eg
     // water)
     if (max_of(material.albedo) < eps) {
+        direct_diffuse = vec3(0.0);
         return vec3(0.0);
     }
 #endif
 
-    vec3 lighting = vec3(0.0);
+    vec3 direct_lighting = vec3(0.0);
+    vec3 indirect_lighting = vec3(0.0);
 
     // Arbitrary directional shading to make faces easier to distinguish
     float directional_lighting
@@ -265,10 +268,10 @@ vec3 get_diffuse_lighting(
 
 #ifdef SHADOW_VPS
     // Add SSS and diffuse
-    lighting += diffuse * shadows + bounced + sss;
+    direct_lighting += diffuse * shadows + bounced + sss;
 #else
     // Blend SSS and diffuse
-    lighting += mix(diffuse, sss, material.sss_amount) * shadows + bounced;
+    direct_lighting += mix(diffuse, sss, material.sss_amount) * shadows + bounced;
 #endif
 #else
     // Simple shading for when shadows are disabled
@@ -284,13 +287,13 @@ vec3 get_diffuse_lighting(
     diffuse *= 1.0 * (0.9 + 0.1 * normal.x) * (0.8 + 0.2 * abs(flat_normal.y));
     diffuse *= ao * pow4(light_levels.y) * (dampen(light_dir.y) * 0.5 + 0.5);
 
-    lighting += diffuse;
+    direct_lighting += diffuse;
 #endif
 
-    lighting *= light_color;
+    direct_lighting *= light_color;
 
 #ifdef CLOUD_SHADOWS
-    lighting *= cloud_shadows;
+    direct_lighting *= cloud_shadows;
 #endif
 #endif
 
@@ -303,7 +306,10 @@ vec3 get_diffuse_lighting(
     vec3 rtgi_indirect = rtgi_sample.rgb;
     float rtgi_sky_weight = clamp01(rtgi_sample.a);
 
-    vec3 rtgi_lighting = rtgi_indirect * (1.6 * RTGI_BRIGHTNESS);
+#ifndef RTGI_INTENSITY
+#define RTGI_INTENSITY 1.00
+#endif
+    vec3 rtgi_lighting = rtgi_indirect * (RTGI_INTENSITY * RTGI_BRIGHTNESS);
 
     // Split sky/sun-origin GI from emissive/block-light GI. Only the sky part
     // is suppressed on low-skylight receivers, so lava/lantern/emissive cave
@@ -321,7 +327,7 @@ vec3 get_diffuse_lighting(
         directional_lighting
     );
 
-    lighting += rtgi_local
+    indirect_lighting = rtgi_local
         + rtgi_sky * sky_retention
         + analytic_sky * (1.0 - sky_retention) * rtgi_sky_weight;
 
@@ -337,22 +343,20 @@ vec3 get_diffuse_lighting(
     // data: outside it, and in the band near its edge that the DDA cannot
     // reach. Inside the volume RTGI already supplies block light, so adding
     // mc_block unconditionally counts it twice.
-    //
-    // voxel_edge_fade was already being computed here for exactly this purpose
-    // and then discarded (plan item B6). It is 0 inside the volume and 1 beyond
-    // the fade band, which is the blend this term needs.
     float voxel_edge_dist = get_voxel_edge_distance(scene_pos);
     float voxel_edge_fade = smoothstep(
         voxel_edge_fade_start,
         voxel_edge_fade_end,
         voxel_edge_dist
     );
-    lighting += mc_block * voxel_edge_fade;
+#ifdef RTGI_DIRECT_BLOCK_FALLBACK
+    direct_lighting += mc_block * voxel_edge_fade;
+#endif
 #else
     // Analytic fallback for forward-lit translucent surfaces and for builds
     // with RAYTRACED_GI disabled. The RTGI buffer describes the opaque layer,
     // not the translucent fragment currently being shaded.
-    lighting += get_sky_lighting(
+    indirect_lighting = get_sky_lighting(
         material,
         bent_normal,
         light_levels,
@@ -361,7 +365,7 @@ vec3 get_diffuse_lighting(
         directional_lighting
     );
 
-    lighting += get_block_lighting(
+    direct_lighting += get_block_lighting(
         scene_pos,
         flat_normal,
         light_levels,
@@ -370,21 +374,70 @@ vec3 get_diffuse_lighting(
     );
 #endif
 
-    lighting += material.emission * emission_scale;
+    direct_lighting += material.emission * emission_scale;
 
 #if defined WORLD_OVERWORLD
     // Cave lighting
 
-    lighting += 0.15 * CAVE_LIGHTING_I * directional_lighting * ao
+    direct_lighting += 0.15 * CAVE_LIGHTING_I * directional_lighting * ao
         * (1.0 - light_levels.y * light_levels.y)
         * (1.0 - 0.7 * darknessFactor)
         * RTGI_CAVE_AMBIENT_SCALE;
-    lighting += nightVision * night_vision_scale * directional_lighting * ao;
+    direct_lighting += nightVision * night_vision_scale * directional_lighting * ao;
 #endif
 
-    vec3 final_diffuse = max0(lighting) * material.albedo * rcp_pi
+    direct_diffuse = max0(direct_lighting) * material.albedo * rcp_pi
+        * mix(1.0, metal_diffuse_amount, float(material.is_metal));
+    direct_diffuse = conserve_diffuse_energy(direct_diffuse, material.f0, NoV);
+
+    vec3 final_diffuse = max0(direct_lighting + indirect_lighting) * material.albedo * rcp_pi
         * mix(1.0, metal_diffuse_amount, float(material.is_metal));
     return conserve_diffuse_energy(final_diffuse, material.f0, NoV);
+}
+
+// 15-parameter overload for callers that do not require direct_diffuse
+vec3 get_diffuse_lighting(
+    Material material,
+    vec3 scene_pos,
+    vec3 normal,
+    vec3 flat_normal,
+    vec3 bent_normal,
+    vec3 shadows,
+    vec2 light_levels,
+    float ao,
+    float ambient_sss,
+    float sss_depth,
+#ifdef CLOUD_SHADOWS
+    float cloud_shadows,
+#endif
+    float shadow_distance_fade,
+    float NoL,
+    float NoV,
+    float NoH,
+    float LoV
+) {
+    vec3 direct_diffuse;
+    return get_diffuse_lighting(
+        material,
+        scene_pos,
+        normal,
+        flat_normal,
+        bent_normal,
+        shadows,
+        light_levels,
+        ao,
+        ambient_sss,
+        sss_depth,
+#ifdef CLOUD_SHADOWS
+        cloud_shadows,
+#endif
+        shadow_distance_fade,
+        NoL,
+        NoV,
+        NoH,
+        LoV,
+        direct_diffuse
+    );
 }
 
 #ifdef DIFFUSE_USE_RTGI

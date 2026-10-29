@@ -13,8 +13,9 @@
 
 layout(location = 0) out vec3 fragment_color;
 layout(location = 1) out vec4 colortex3_clear;
+layout(location = 2) out vec3 radiance_direct;
 
-/* RENDERTARGETS: 0,3 */
+/* RENDERTARGETS: 0,3,18 */
 
 in vec2 uv;
 
@@ -298,6 +299,7 @@ void main() {
 
         // Apply purkinje shift
         fragment_color = purkinje_shift(fragment_color, vec2(0.0, 1.0));
+        radiance_direct = fragment_color;
     } else { // Terrain
         // Sample ambient occlusion a while before using it (latency hiding)
 
@@ -538,6 +540,7 @@ void main() {
 
         // Diffuse lighting
 
+        vec3 direct_diffuse;
         fragment_color = get_diffuse_lighting(
             material,
             position_scene,
@@ -560,15 +563,18 @@ void main() {
             NoL,
             NoV,
             NoH,
-            LoV
+            LoV,
+            direct_diffuse
         );
+        radiance_direct = direct_diffuse;
 
         // Specular highlight
 
 #if defined WORLD_OVERWORLD || defined WORLD_END
-        fragment_color
-            += get_specular_highlight(material, NoL, NoV, NoH, LoV, LoH)
+        vec3 direct_specular = get_specular_highlight(material, NoL, NoV, NoH, LoV, LoH)
             * light_color * shadows * cloud_shadows * ao;
+        fragment_color += direct_specular;
+        radiance_direct += direct_specular;
 #endif
 
         // Specular reflections

@@ -63,13 +63,18 @@ const float wetnessHalflife         = 70.0;
   #define RTGI_RESOLUTION 1 // [0 1 2]
   #define RTGI_RAY_COUNT 2 // [2 4 8]
   #define RTGI_BRIGHTNESS 1.00 // [0.25 0.50 0.75 1.00 1.25 1.50 1.75 2.00 2.50 3.00]
+  #define RTGI_INTENSITY 1.00 // [0.25 0.50 0.75 1.00 1.25 1.50 1.75 2.00 2.50 3.00]
   #define RTGI_INTERIOR_RETENTION 1.00 // [0.00 0.25 0.50 0.75 1.00] // 1.00 keeps all traced GI; lower values suppress only sky-origin GI on low-skylight surfaces
   #define RTGI_CONTACT_AO_STRENGTH 0.00 // [0.00 0.25 0.50 0.75 1.00]
   #define RTGI_POINT_LIGHT_STRENGTH 0.00 // [0.00 0.25 0.50 0.75 1.00]
 //#define RTGI_VANILLA_LIGHTMAP_PROPAGATION
   #define RTGI_POINT_LIGHT_RADIUS 4 // [2 3 4]
-  #define RTGI_SSGI_LOCAL_LIGHT_SCALE 0.00 // [0.00 0.25 0.35 0.50 0.75 1.00] // 0.00 removes previous-frame color from cave/local-light SSGI
-  #define RTGI_CAVE_AMBIENT_SCALE 0.00 // [0.00 0.25 0.35 0.50 0.75 1.00]
+  #define RTGI_DIRECT_BLOCK_FALLBACK
+  #define RTGI_GI_INPUT_DIRECT 0
+  #define RTGI_GI_INPUT_LEGACY 1
+  #define RTGI_GI_INPUT RTGI_GI_INPUT_DIRECT // [RTGI_GI_INPUT_DIRECT RTGI_GI_INPUT_LEGACY]
+  #define RTGI_SSGI_LOCAL_LIGHT_SCALE 1.00 // [0.00 0.25 0.35 0.50 0.75 1.00]
+  #define RTGI_CAVE_AMBIENT_SCALE 1.00 // [0.00 0.25 0.35 0.50 0.75 1.00]
   #define RT_REFLECTIONS
   #define PHYSICAL_BSDF_ENERGY_COMP
   #define HANDHELD_LIGHTING

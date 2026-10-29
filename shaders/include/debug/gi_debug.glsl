@@ -235,6 +235,9 @@ vec3 gi_debug_view(ivec2 texel, vec2 uv, vec3 fallback) {
 
     vec3 screen_pos = vec3(taau_projection_uv(uv), depth);
     vec3 view_pos = screen_to_view_space(gbufferProjectionInverse, screen_pos, true);
+    // Push slightly into the surface along the view ray to prevent boundary precision
+    // and TAA jitter flipping between air and solid on surfaces facing the camera.
+    view_pos += normalize(view_pos) * 0.08;
     vec3 scene_pos = view_to_scene_space(view_pos);
 
     ivec3 voxel_coord = ivec3(floor(scene_to_voxel_space(scene_pos)));
