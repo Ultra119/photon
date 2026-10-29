@@ -98,6 +98,10 @@ uniform sampler2D rtgi_hit_sampler;
 #if GI_DEBUG == GI_DEBUG_REJECT
 uniform sampler2D rtgi_reject_sampler;
 #endif
+#if GI_DEBUG == GI_DEBUG_VARIANCE
+uniform sampler2D rtgi_sky_accum_sampler;
+uniform sampler2D rtgi_sky_history_sampler;
+#endif
 
 #include "/include/debug/gi_debug.glsl"
 #endif
