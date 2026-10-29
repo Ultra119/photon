@@ -2,6 +2,7 @@
 #define INCLUDE_GLOBAL
 
 // Extensions
+#extension GL_ARB_shader_image_load_store : enable
 
 /*
 #ifdef MC_GL_KHR_shader_subgroup

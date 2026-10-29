@@ -1,4 +1,5 @@
 #version 400 compatibility
+#extension GL_ARB_shader_image_load_store : enable
 #define WORLD_OVERWORLD
 #define PROGRAM_GBUFFERS_TERRAIN
 #define PROGRAM_GBUFFERS_TERRAIN_SOLID
