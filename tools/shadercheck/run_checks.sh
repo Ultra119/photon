@@ -21,6 +21,9 @@ python3 tools/shadercheck/matrix.py
 if [ -n "${GLSLANG:-}" ] && [ -x "${GLSLANG:-}" ]; then
   echo "== ao estimator dispatch =="
   python3 tools/shadercheck/ao_dispatch_test.py
+  echo "== gi debug view wiring =="
+  python3 tools/shadercheck/gi_debug_test.py
 else
   echo "== ao estimator dispatch: SKIPPED (set GLSLANG to enable) =="
+  echo "== gi debug view wiring: SKIPPED (set GLSLANG to enable) =="
 fi

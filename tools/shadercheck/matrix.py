@@ -34,6 +34,15 @@ VARIANTS={
 'ao_contact':['SHADER_AO=SHADER_AO_CONTACT'],
 'ao_gtao_rtgi_off':['SHADER_AO=SHADER_AO_GTAO','!RAYTRACED_GI'],
 'ao_contact_rtgi_off':['SHADER_AO=SHADER_AO_CONTACT','!RAYTRACED_GI'],
+# GI debug views. GI_DEBUG_OFF must be the cheapest config, so it is
+# covered alongside the views that allocate extra images.
+'gi_debug_off':['DEBUG_VIEW=DEBUG_VIEW_GI','GI_DEBUG=GI_DEBUG_OFF'],
+'gi_debug_raw':['DEBUG_VIEW=DEBUG_VIEW_GI','GI_DEBUG=GI_DEBUG_RAW'],
+'gi_debug_hit':['DEBUG_VIEW=DEBUG_VIEW_GI','GI_DEBUG=GI_DEBUG_HIT'],
+'gi_debug_reject':['DEBUG_VIEW=DEBUG_VIEW_GI','GI_DEBUG=GI_DEBUG_REJECT'],
+'gi_debug_voxel':['DEBUG_VIEW=DEBUG_VIEW_GI','GI_DEBUG=GI_DEBUG_VOXEL_ID'],
+'gi_debug_variance':['DEBUG_VIEW=DEBUG_VIEW_GI','GI_DEBUG=GI_DEBUG_VARIANCE'],
+'gi_debug_no_rtgi':['DEBUG_VIEW=DEBUG_VIEW_GI','GI_DEBUG=GI_DEBUG_HIT','!RAYTRACED_GI'],
 'voxel_64':['VOXEL_VOLUME_SIZE=64'],
 'voxel_256':['VOXEL_VOLUME_SIZE=256'],
 'voxel_512':['VOXEL_VOLUME_SIZE=512'],

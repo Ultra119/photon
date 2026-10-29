@@ -29,6 +29,11 @@ uniform sampler2D rtgi_history_sampler;
 uniform sampler2D rtgi_accum_sampler;
 uniform sampler2D rtgi_sky_history_sampler;
 uniform sampler2D rtgi_sky_accum_sampler;
+
+// Declared only when the diagnostic view is active (see rtgi_trace.csh).
+#if GI_DEBUG == GI_DEBUG_REJECT
+layout(rgba8) writeonly uniform image2D rtgi_reject_img;
+#endif
 uniform sampler2D depthtex1;
 uniform sampler2D colortex1; // gbuffer0
 
@@ -118,6 +123,16 @@ void main() {
     vec4 accumulated = vec4(current_radiance, current_dist);
     vec4 accumulated_sky = vec4(current_sky_weight, 0.0, 0.0, current_dist);
 
+#if GI_DEBUG == GI_DEBUG_REJECT
+    // 0 = rejected, 1 = accepted. Set at the decision points below so the view
+    // reports the actual outcome rather than a re-derivation of it.
+    float history_accepted = 0.0;
+    // Distinguish "no history to compare against" from "history rejected":
+    // the former is a thin band at the screen edge, the latter is a
+    // disocclusion. Rendering both as red would be misleading.
+    float history_available = inside_prev_screen ? 1.0 : 0.0;
+#endif
+
     if (inside_prev_screen) {
         // Read from alternate buffer written in previous frame
         vec4 prev_sample = ping ? textureLod(rtgi_history_sampler, prev_framebuffer_uv, 0.0)
@@ -148,10 +163,20 @@ void main() {
 
             accumulated.rgb = mix(prev_sample.rgb, current_radiance, alpha);
             accumulated_sky.r = mix(prev_sky_sample.r, current_sky_weight, alpha);
+
+#if GI_DEBUG == GI_DEBUG_REJECT
+            history_accepted = 1.0;
+#endif
         }
     }
 
     accumulated_sky.r = clamp01(accumulated_sky.r);
+
+#if GI_DEBUG == GI_DEBUG_REJECT
+    // Red: history rejected. Yellow: history accepted. Black: no history
+    // available at all (off-screen reprojection).
+    imageStore(rtgi_reject_img, texel, vec4(1.0 - history_accepted, history_available, 0.0, 1.0));
+#endif
 
     if (ping) {
         imageStore(rtgi_accum_img, texel, accumulated);

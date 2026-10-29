@@ -21,6 +21,12 @@ layout(local_size_x = 16, local_size_y = 16) in;
 
 layout(rgba16f) writeonly uniform image2D rtgi_raw_img;
 
+// Declared only when the diagnostic view is active, so the image is neither
+// allocated (see shaders.properties) nor written in normal play.
+#if GI_DEBUG == GI_DEBUG_HIT
+layout(rgba8) writeonly uniform image2D rtgi_hit_img;
+#endif
+
 uniform usampler3D voxel_sampler;
 uniform sampler2D shadowtex0;
 uniform sampler2D depthtex0;
@@ -84,6 +90,9 @@ void main() {
 
     if (taau_uv_outside_viewport(uv)) {
         imageStore(rtgi_raw_img, texel, vec4(0.0));
+#if GI_DEBUG == GI_DEBUG_HIT
+        imageStore(rtgi_hit_img, texel, vec4(0.0));
+#endif
         return;
     }
 
@@ -92,6 +101,9 @@ void main() {
     float depth = texelFetch(depthtex1, full_texel, 0).x;
     if (depth >= 1.0) {
         imageStore(rtgi_raw_img, texel, vec4(0.0));
+#if GI_DEBUG == GI_DEBUG_HIT
+        imageStore(rtgi_hit_img, texel, vec4(0.0));
+#endif
         return;
     }
 
@@ -132,6 +144,12 @@ void main() {
 
     vec4 accum_radiance = vec4(0.0);
 
+#if GI_DEBUG == GI_DEBUG_HIT
+    // Counts per estimator, normalised at the end so the view shows a
+    // proportion and RTGI_RAY_COUNT does not change the colour.
+    vec3 hit_counts = vec3(0.0);
+#endif
+
     for (int r = 0; r < RTGI_RAY_COUNT; ++r) {
         vec2 u = r2(r, dither);
         vec3 ray_dir = sample_cosine_hemisphere(mapped_normal, u);
@@ -141,6 +159,7 @@ void main() {
             ray_dir = reflect(ray_dir, world_normal);
         }
 
+        int hit_source = RTGI_HIT_NONE;
         vec4 radiance = evaluate_hybrid_rtgi_ray(
             screen_pos,
             view_pos,
@@ -159,8 +178,19 @@ void main() {
             sky_amb_col,
             light_dir,
             surface_skylight,
-            depthtex0
+            depthtex0,
+            hit_source
         );
+
+#if GI_DEBUG == GI_DEBUG_HIT
+        if (hit_source == RTGI_HIT_SSGI) {
+            hit_counts.r += 1.0;
+        } else if (hit_source == RTGI_HIT_VOXEL) {
+            hit_counts.g += 1.0;
+        } else if (hit_source == RTGI_HIT_SKY) {
+            hit_counts.b += 1.0;
+        }
+#endif
 
         // Firefly suppression: limit extreme single-ray radiance spikes
         float lum = dot(radiance.rgb, luminance_weights);
@@ -176,4 +206,8 @@ void main() {
     final_radiance.a = clamp01(final_radiance.a);
 
     imageStore(rtgi_raw_img, texel, final_radiance);
+
+#if GI_DEBUG == GI_DEBUG_HIT
+    imageStore(rtgi_hit_img, texel, vec4(hit_counts / float(RTGI_RAY_COUNT), 1.0));
+#endif
 }

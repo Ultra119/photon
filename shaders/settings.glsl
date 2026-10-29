@@ -554,8 +554,38 @@ const float wetnessHalflife         = 70.0;
   #define DEBUG_VIEW_SAMPLER   1
   #define DEBUG_VIEW_HISTOGRAM 2
   #define DEBUG_VIEW_WEATHER   3
+  #define DEBUG_VIEW_GI        4
 
-  #define DEBUG_VIEW DEBUG_VIEW_NONE // [DEBUG_VIEW_NONE DEBUG_VIEW_SAMPLER DEBUG_VIEW_HISTOGRAM DEBUG_VIEW_WEATHER]
+  #define DEBUG_VIEW DEBUG_VIEW_NONE // [DEBUG_VIEW_NONE DEBUG_VIEW_SAMPLER DEBUG_VIEW_HISTOGRAM DEBUG_VIEW_WEATHER DEBUG_VIEW_GI]
+
+// GI diagnostics
+//
+// Selects which GI buffer DEBUG_VIEW_GI displays. GI_DEBUG_OFF costs nothing:
+// shaders.properties only declares the debug images when this is not OFF, so
+// they are neither allocated nor written.
+//
+// These values are defined here rather than in an include because
+// shaders.properties is preprocessed with the settings defines, and the image
+// declarations need to see them.
+
+  #define GI_DEBUG_OFF       0
+  #define GI_DEBUG_RAW       1  // raw per-pixel traced radiance (before temporal)
+  #define GI_DEBUG_HISTORY   2  // temporally accumulated radiance
+  #define GI_DEBUG_FILTERED  3  // what deferred4 actually consumes
+  #define GI_DEBUG_HIT       4  // which estimator produced each ray's result
+  #define GI_DEBUG_REJECT    5  // temporal history accepted vs rejected
+  #define GI_DEBUG_VOXEL_ID  6
+  #define GI_DEBUG_VOXEL_LIGHT 7  // R = block light, G = sky light
+  #define GI_DEBUG_VOXEL_ALBEDO 8
+  #define GI_DEBUG_VARIANCE  9  // convergence: raw vs accumulated disagreement
+
+  #define GI_DEBUG GI_DEBUG_OFF // [GI_DEBUG_OFF GI_DEBUG_RAW GI_DEBUG_HISTORY GI_DEBUG_FILTERED GI_DEBUG_HIT GI_DEBUG_REJECT GI_DEBUG_VOXEL_ID GI_DEBUG_VOXEL_LIGHT GI_DEBUG_VOXEL_ALBEDO GI_DEBUG_VARIANCE]
+
+// On GI_DEBUG_VARIANCE: this pack has no variance estimate, so this view cannot
+// show one. It shows temporal spread instead -- the disagreement between this
+// frame's raw estimate and the accumulated history -- which answers the same
+// practical question ("is the estimator converging, or is it view-dependent?")
+// for a static camera. It is not a variance and is not labelled as one.
   #define DEBUG_SAMPLER colortex1 // [colortex1 colortex2 colortex3 colortex4 colortex5 colortex6 colortex7 colortex8 colortex9 colortex10 colortex11 colortex12 colortex13 colortex14 colortex15 depthtex0 depthtex1 depthtex2 shadowtex0 shadowtex1 shadowcolor0 shadowcolor1]
 //#define WHITE_WORLD
 //#define TONEMAP_COMPARISON

@@ -455,7 +455,7 @@ Every stage ends in a shaderpack that loads in all three dimensions and passes `
 |---|---|---|---|---|
 | **0** | Baseline truth and regression gate | Pack compiles on a strict compiler in all dimensions/options; documented in-game baseline protocol; `run_checks.sh` wired into CI/pre-push; baseline frame-time table | — | All static matrices 0 failures; the 6 known on-GPU symptoms reproduced and recorded |
 | **1** | Restore removed capability | `SHADER_AO` works again (SSAO/GTAO restored as fallback); Photonics stub + `ph_lights.json` restored; LPV-fog option either restored or explicitly removed with a documented decision | 0 | RTGI off ⇒ upstream-equivalent AO; Photonics mod loads without error |
-| **2** | Diagnostics | `DEBUG_SAMPLER` views for raw/accum/filtered GI, voxel occupancy/ID/light, ray hit-miss, history rejection, variance; per-pass GPU timing readout | 0 | Each view renders and is documented with a screenshot; zero cost when disabled |
+| **2** | Diagnostics | `DEBUG_VIEW_GI` + `GI_DEBUG`: raw/accum/filtered GI, voxel ID/light/albedo, hit source, history rejection, convergence; **no** per-pass timing (see note) | 0 | Each view renders and is documented; zero cost when disabled. **DELIVERED except in-game screenshots** [MEASURED: 34 wiring assertions, 1,287 static cases] |
 | **3** | Break the GI feedback loop | `radiance_direct` buffer; SSGI samples current-frame direct light instead of `colortex5`; block-light double count removed; brightness constant replaced by a measured, documented normalisation | 1, 2 | Rotating the camera ±90° with a stationary light changes GI by < 5 % (measured by image diff); no light appears only from certain angles |
 | **4** | Scene core v2 | 4-level clipmap (4 MiB, 512 blocks); additive coloured light image; dedicated voxelization from shadow + camera passes; entity/optional DH/Voxy coverage | 2, 3 | Voxel memory ≤ 8 MiB at any setting; GI occluders exist out to 512 blocks; two coloured emitters blend additively |
 | **5** | Ray queries v2 | Clipmap DDA with level transitions; block-shape classes; any-hit shadow query; deterministic seam handling; Python mirror test | 4 | Python DDA trace matches GPU output on a synthetic volume; no seam light leaks in the sand-wall test |
@@ -646,7 +646,9 @@ Stage 0 complete. `shaders.properties:119` lists `DEBUG_SAMPLER`; no consumer ex
 
 **D. Runnable deliverable**
 
-`DEBUG_SAMPLER` cycles through 9 GI views plus OFF. `run_checks.sh` unchanged and green (add `GI_DEBUG=…` matrix variants for at least 3 values).
+`DEBUG_VIEW = GI Buffers` plus `GI_DEBUG` selects 9 GI views plus OFF — see `docs/testing/debug_views.md`. `run_checks.sh` green with `gi_debug_test.py` added and 7 `GI_DEBUG` matrix variants [MEASURED: 1,287/1,287].
+
+*Deviation from the sketch above:* `DEBUG_SAMPLER` is **not** repurposed. It already functions as a generic texel viewer through `DEBUG_VIEW_SAMPLER` (`final.fsh:141`); reusing it would have removed a working feature. A new `DEBUG_VIEW_GI` value was added instead, and the enum lives in `settings.glsl` so `shaders.properties` can gate image allocation on it.
 
 **E. Acceptance criteria**
 
@@ -1459,6 +1461,7 @@ All scenes specify: seed, coordinates, `/time set`, `/weather clear`, render dis
 | `matrix_compute.py` | 308+ compile cases | every push |
 | `matrix.py` | 1,014+ compile cases | every push |
 | `ao_dispatch_test.py` (added Stage 1) | only the selected AO estimator is emitted, all 4 modes × 3 dimensions × RTGI on/off | every push (needs `GLSLANG`) |
+| `gi_debug_test.py` (added Stage 2) | each GI debug view reads exactly its documented buffers; nothing read or allocated when off | every push (needs `GLSLANG`, `cpp`) |
 | `pt_reference_test.py` (new, Stage 9) | CPU path tracer vs GPU capture agreement | manual, per release |
 | `quality_metrics.py` (new, Stage 7) | numeric scene metrics from captures | manual, per stage gate |
 
@@ -1513,6 +1516,17 @@ Measured after the Stage 1 AO restore:
 that the *right* branch is selected requires `glslang -E`. This is what
 `ao_dispatch_test.py` does, and it is the only way the AO dispatch claim in §B.7
 is actually verified rather than assumed.
+
+Measured after Stage 2 (diagnostics):
+
+| Run | Result |
+|---|---|
+| `matrix_compute.py` | **308/308 pass** |
+| `matrix.py` (GI debug variants added) | **1,287/1,287 pass** |
+| explicit GI debug sweep, 3 dimensions × 10 `GI_DEBUG` values × RTGI on/off | **60/60 pass** |
+| `gi_debug_test.py` | 34/34 — one source per view, nothing read or allocated when OFF |
+| `gi_debug_test.py`, `GI_DEBUG_FILTERED` deliberately pointed at the raw buffer | **fails** (`buffer reads ['rtgi_raw'], expected ['rtgi_filtered']`) |
+| `gi_debug_test.py`, hit-image store deliberately un-gated | **fails** on all 10 views (`writes rtgi_hit_img=True, expected False`) |
 
 ### 8.6 Performance evaluation
 
@@ -1633,17 +1647,21 @@ Ordered by dependency. Each item names the file(s) and, where the plan depends o
 
 7. **Restore AO** — `git checkout 6e67b36 -- shaders/include/lighting/ao/`; re-add `SHADER_AO_SSAO`/`SHADER_AO_GTAO` in `shaders/settings.glsl` (currently only `SHADER_AO_NONE` at lines 160-161); default to GTAO when `!RAYTRACED_GI`; remove `SHADER_AO=SHADER_AO_NONE` from the five profile strings in `shaders/shaders.properties` lines 1-5.
 8. **Adapt `shaders/program/d3_ao.fsh`** — keep the 8-tap contact AO for the RTGI path; add a compile-time branch so SSAO/GTAO replace it when `SHADER_AO != SHADER_AO_NONE && !defined RAYTRACED_GI`.
-9. **Restore Photonics** — `git checkout 6e67b36 -- shaders/photonics/ shaders/ph_lights.json`; verify compile in the matrix; add the include back to `d4_deferred_shading.fsh` where upstream had it (check `git show 6e67b36:shaders/program/d4_deferred_shading.fsh` for the exact call site).
+9. **Restore Photonics files** — `git checkout 6e67b36 -- shaders/photonics/ shaders/ph_lights.json`; verify compile in the matrix. Do **not** re-add the include: the two programs the mod injects into were deleted by the fork, and `write_indirect()` has no caller upstream either. Documented in `shaders/photonics/README.md`. (This item originally said to restore the `d4` call site; that was based on a misreading of upstream and is corrected in the Stage 1 spec above.)
 10. **Resolve `AIR_FOG_COLORED_LIGHT_SHAFTS`** — either implement, or remove the option from `shaders.properties` and `en_US.lang` and document the loss.
 11. **Add the orphan-option check** to `tools/shadercheck/properties_lint.py`.
 
-### Tier C — Stage 2 (diagnostics)
+### Tier C — Stage 2 (diagnostics) — DONE
 
-12. **`shaders/include/debug/gi_debug.glsl`** — the `GI_DEBUG_*` enum and `debug_encode()`.
-13. **Wire `DEBUG_SAMPLER`** — `shaders/settings.glsl` (already in `sliders` at `shaders.properties:119`; no consumer exists today); add early-out blocks in `shaders/program/d4_deferred_shading.fsh` after lighting.
-14. **Add `rtgi_debug_img`** — `rgba8`, half res, in `shaders/shaders.properties` next to the other `image.rtgi_*` declarations (lines 419-439), written only when debugging.
-15. **Voxel debug views** in `d4_deferred_shading.fsh` via `scene_to_voxel_space()` — ID, light, albedo.
-16. **`docs/testing/debug_views.md`** with one screenshot per view.
+12. **`shaders/include/debug/gi_debug.glsl`** — the `GI_DEBUG_*` enum lives in `settings.glsl` (not here) so that `shaders.properties` can gate image allocation on the same values; this file holds the encoders and `gi_debug_view()`.
+13. ~~**Wire `DEBUG_SAMPLER`**~~ — **rejected.** `DEBUG_SAMPLER` already works as a generic texel viewer (`final.fsh:141`, reached via `DEBUG_VIEW_SAMPLER`). Repurposing it, as the original spec proposed, would have deleted a working feature to make room for a new one. A separate `DEBUG_VIEW_GI` value was added instead.
+14. **`rtgi_hit_img` / `rtgi_reject_img`** — `rgba8`, full RTGI resolution, declared in `shaders.properties` under `#if GI_DEBUG == …` so that `GI_DEBUG_OFF` allocates nothing. Two images rather than one packed `rtgi_debug_img`: they are written by different passes, and a pass should not have to write a channel it does not own.
+15. **Voxel debug views** — rendered in `final.fsh` rather than `d4_deferred_shading.fsh`. `final` is where every other debug view already lives, and doing it there means the debug code cannot perturb the lighting path it is meant to observe.
+16. **`docs/testing/debug_views.md`** — written, including what each view means and what a healthy image looks like. **Screenshots are not captured**: they require a GPU run, and inventing or omitting that requirement silently would have been worse than stating it.
+
+*Deviation — per-pass GPU timing.* The spec asked for a timing readout. It is **not implemented**: GL timer queries are not available to shader packs, and a `frameTimeCounter` delta measures frame time, not pass cost, which would be misread as the latter. `docs/testing/debug_views.md` points at Iris's profiler instead.
+
+*Deviation — variance.* The spec's `GI_DEBUG_VARIANCE` is implemented as **temporal spread**, not variance, and is named and documented accordingly. The pack stores no second moment, so a true variance view would have to fabricate one.
 
 ### Tier D — Stage 3 (the correctness fix)
 

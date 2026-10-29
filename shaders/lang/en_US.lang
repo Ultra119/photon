@@ -715,6 +715,20 @@ value.DEBUG_VIEW.DEBUG_VIEW_NONE       = OFF
 value.DEBUG_VIEW.DEBUG_VIEW_SAMPLER    = Sampler
 value.DEBUG_VIEW.DEBUG_VIEW_HISTOGRAM  = Histogram
 value.DEBUG_VIEW.DEBUG_VIEW_WEATHER    = Weather
+value.DEBUG_VIEW.DEBUG_VIEW_GI         = GI Buffers\n\nRequires Ray Traced GI to be enabled, otherwise the screen turns magenta.
+
+option.GI_DEBUG                        = GI Buffer
+option.GI_DEBUG.comment                = Which GI buffer the GI debug view displays.\n\nRaw - This frame's traced radiance, before temporal accumulation. Shows the per-frame noise directly.\nHistory - After temporal accumulation. Compare with Raw to see how much work the temporal filter is doing.\nFiltered - Exactly what surfaces are lit with.\nHit Source - Red: resolved on screen (SSGI). Green: resolved in the voxel volume. Blue: escaped to sky.\nHistory Rejected - Red: temporal history discarded (disocclusion). Yellow: history accepted. Black: no history available.\nVoxel ID / Light / Albedo - Reads the voxel volume at the surface the camera sees. Magenta: outside the volume.\nConvergence - Disagreement between this frame's estimate and the accumulated history. Grey means stable. This is temporal spread, not a variance estimate.
+value.GI_DEBUG.GI_DEBUG_OFF            = OFF
+value.GI_DEBUG.GI_DEBUG_RAW            = Raw
+value.GI_DEBUG.GI_DEBUG_HISTORY        = History
+value.GI_DEBUG.GI_DEBUG_FILTERED       = Filtered
+value.GI_DEBUG.GI_DEBUG_HIT            = Hit Source
+value.GI_DEBUG.GI_DEBUG_REJECT         = History Rejected
+value.GI_DEBUG.GI_DEBUG_VOXEL_ID       = Voxel ID
+value.GI_DEBUG.GI_DEBUG_VOXEL_LIGHT    = Voxel Light
+value.GI_DEBUG.GI_DEBUG_VOXEL_ALBEDO   = Voxel Albedo
+value.GI_DEBUG.GI_DEBUG_VARIANCE       = Convergence
 
 value.tonemap_left.tonemap_aces_fit       = ACES Fit
 value.tonemap_left.tonemap_aces_full      = ACES Full

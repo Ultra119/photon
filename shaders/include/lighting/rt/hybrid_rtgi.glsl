@@ -17,9 +17,21 @@ vec3 sample_cosine_hemisphere(vec3 normal, vec2 u) {
     return normalize(tbn_basis * local_dir);
 }
 
+// Which estimator answered a ray. Written to `hit_source` so that
+// DEBUG_VIEW_GI / GI_DEBUG_HIT can show the hybrid split without a second
+// code path that could disagree with the real dispatch below.
+#define RTGI_HIT_NONE  0
+#define RTGI_HIT_SSGI  1
+#define RTGI_HIT_VOXEL 2
+#define RTGI_HIT_SKY   3
+
 // Evaluate single hybrid RTGI sample. RGB is radiance; A is the estimated
 // fraction of that radiance that originated from sun/sky rather than from
 // emissive blocks or block light.
+//
+// `hit_source` is an out parameter rather than a separate diagnostic function:
+// duplicating the dispatch to report on it would let the diagnostic drift out
+// of sync with the thing it is supposed to describe.
 vec4 evaluate_hybrid_rtgi_ray(
     vec3 screen_pos,
     vec3 view_pos,
@@ -38,9 +50,11 @@ vec4 evaluate_hybrid_rtgi_ray(
     vec3 sky_ambient_color,
     vec3 l_dir,
     float surface_skylight,
-    sampler2D depth_translucent_sampler
+    sampler2D depth_translucent_sampler,
+    out int hit_source
 ) {
     vec3 ray_dir_view = mat3(gbufferModelView) * ray_dir_world;
+    hit_source = RTGI_HIT_NONE;
 
     // 1. Try Screen-Space GI first (highest detail, on-screen geometry & normal maps)
     SSGIHit ss_hit = trace_screen_space_gi(
@@ -56,6 +70,7 @@ vec4 evaluate_hybrid_rtgi_ray(
     );
 
     if (ss_hit.hit) {
+        hit_source = RTGI_HIT_SSGI;
         return vec4(ss_hit.radiance, ss_hit.sky_weight);
     }
 
@@ -77,6 +92,7 @@ vec4 evaluate_hybrid_rtgi_ray(
     );
 
     if (vx_hit.hit) {
+        hit_source = RTGI_HIT_VOXEL;
         return vec4(
             vx_hit.radiance + vx_hit.accumulated_light,
             vx_hit.sky_weight
@@ -95,6 +111,7 @@ vec4 evaluate_hybrid_rtgi_ray(
     float local_lum = dot(vx_hit.accumulated_light, luminance_weights);
     float sky_weight = clamp01(sky_lum / max(sky_lum + local_lum, eps));
 
+    hit_source = RTGI_HIT_SKY;
     return vec4(total_radiance, sky_weight);
 }
 
