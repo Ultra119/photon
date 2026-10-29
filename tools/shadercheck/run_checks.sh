@@ -15,3 +15,12 @@ python3 tools/shadercheck/matrix_compute.py
 
 echo "== wrapper/option static matrix =="
 python3 tools/shadercheck/matrix.py
+
+# Requires a glslang binary. Skipped (not silently passed) when absent, so a
+# missing tool never reads as a green run.
+if [ -n "${GLSLANG:-}" ] && [ -x "${GLSLANG:-}" ]; then
+  echo "== ao estimator dispatch =="
+  python3 tools/shadercheck/ao_dispatch_test.py
+else
+  echo "== ao estimator dispatch: SKIPPED (set GLSLANG to enable) =="
+fi

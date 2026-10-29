@@ -26,6 +26,14 @@ VARIANTS={
 'no_env_refl':['!ENVIRONMENT_REFLECTIONS','!SKY_REFLECTIONS'],
 'no_ssr_rough':['!SSR_ROUGHNESS_SUPPORT'],
 'no_ao':['!SHADER_AO'],
+# An undefined SHADER_AO reads as 0 in `#if`, which happens to equal
+# SHADER_AO_NONE. Cover each mode explicitly so the intent is on record.
+'ao_none':['SHADER_AO=SHADER_AO_NONE'],
+'ao_ssao':['SHADER_AO=SHADER_AO_SSAO'],
+'ao_gtao':['SHADER_AO=SHADER_AO_GTAO'],
+'ao_contact':['SHADER_AO=SHADER_AO_CONTACT'],
+'ao_gtao_rtgi_off':['SHADER_AO=SHADER_AO_GTAO','!RAYTRACED_GI'],
+'ao_contact_rtgi_off':['SHADER_AO=SHADER_AO_CONTACT','!RAYTRACED_GI'],
 'voxel_64':['VOXEL_VOLUME_SIZE=64'],
 'voxel_256':['VOXEL_VOLUME_SIZE=256'],
 'voxel_512':['VOXEL_VOLUME_SIZE=512'],

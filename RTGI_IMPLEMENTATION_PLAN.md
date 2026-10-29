@@ -89,7 +89,9 @@ Deleted: `include/lighting/lpv/{blocklight,floodfill,light_colors,voxelization}.
 
 The new voxel grid replaces LPV's voxelization. But upstream LPV also provided:
 - **multi-bounce propagation** via a floodfill compute pass (`program/lpv/floodfill.csh`) — the new system has *no* multi-bounce;
-- **coloured volumetric fog** (`lpv_fog.glsl`) — nothing replaces this; `AIR_FOG_COLORED_LIGHT_SHAFTS` still exists as an option string.
+- **coloured volumetric fog** (`lpv_fog.glsl`) — nothing replaces this.
+
+*Correction (verified during implementation):* `AIR_FOG_COLORED_LIGHT_SHAFTS` was **not** LPV-dependent. It reads `shadowcolor0` in `include/fog/overworld/raymarched.glsl:124` and is unchanged from upstream. It still works. Only the LPV-specific giant-light-shaft path (`LPV_VL_*` options) is gone, and those options were removed with the files, so nothing is orphaned.
 
 **(b) Screen-space AO — replaced, but the fallback path is now AO-less**
 
@@ -154,8 +156,8 @@ Status vocabulary: **working** (code present, plausible, statically compiles), *
 | B4 | Voxel volume memory scales as N³ (512³ = 512 MiB) | **High** — caps range | `shaders.properties:406-414` |
 | B5 | `imageAtomicMax` makes the light field non-additive | **High** — coloured emitters cannot blend | `voxel_storage.glsl:38-58`; `voxel_update.glsl:88` |
 | B6 | Direct block light double-counted (`RTGI local` + `mc_block`) | **Medium** — energy error | `diffuse_lighting.glsl:313-345` |
-| B7 | No AO in default config; `SHADER_AO` is a dead macro | **Medium** — visible quality regression | `settings.glsl:160-161`; deleted `ao/*.glsl` |
-| B8 | Photonics integration removed | **Medium** — compatibility regression | 8 deleted files |
+| B7 | No AO in default config; `SHADER_AO` is a dead macro | **Medium** — visible quality regression | Was `settings.glsl:160-161` + deleted `ao/*.glsl`. **FIXED Stage 1** [MEASURED: 1,014/1,014 matrix cases, 27/27 dispatch cases] |
+| B8 | Photonics integration removed | **Medium** — compatibility regression | 8 deleted files. **Files restored Stage 1; call sites cannot be** — both voxel programs the mod injects into were deleted, and `write_indirect()` has no caller upstream either. Documented in `shaders/photonics/README.md`; no menu entry advertises it |
 | B9 | No variance estimate → fixed-α temporal and fixed-radius filter must be hand-tuned per scene | **Medium** — the recurring noise/ghosting complaints | `rtgi_temporal.csh`, `rtgi_filter.csh` |
 | B10 | Vertex-stage voxelization races with occlusion tests | **Medium** — correctness | `voxel_update.glsl`, Step 13 notes |
 
@@ -164,7 +166,7 @@ Status vocabulary: **working** (code present, plausible, statically compiles), *
 - The **three-pass compute decomposition** (trace / temporal / filter) is the right shape and maps cleanly onto the SVGF-class design in Stage 7.
 - **Deterministic 32-bit voxel packing** with a pure-Python round-trip test is exactly the right way to make a bit layout safe. Keep the test, change the layout.
 - **TAAU coordinate centralisation** (`taau_framebuffer_uv` / `taau_projection_uv` / `taau_uv_outside_viewport`) is correct and should be used by every new pass.
-- **`tools/shadercheck/`** is the project's most valuable asset: a working static compile matrix (308 + 780 cases) plus a properties linter. It caught B10-class bugs and caught the P0 fix. It must become a gate, not an optional script.
+- **`tools/shadercheck/`** is the project's most valuable asset: a working static compile matrix plus a properties linter that now rejects orphaned menu options and a dispatch test that proves the selected estimator is the emitted one. It caught the P0 preprocessor bug and, in Stage 1, immediately explained why `!SHADER_AO` silently behaved as `NONE`. It must become a gate, not an optional script.
 - **Sky/emissive separation** (`sky_weight`) is the right *idea* even if implemented expensively; the probe cache will make it cheaper.
 - Upstream's material/BSDF layer (`bsdf.glsl`, `material.glsl`, labPBR support, `fresnel_lazanyi_2019`, Hammon diffuse, Kulla-Conty compensation) is high quality and needs no changes.
 
@@ -556,14 +558,19 @@ Stage 0 complete. Verified gaps: `settings.glsl:160-161` defines only `SHADER_AO
    #define SHADER_AO_NONE 0
    #define SHADER_AO_SSAO 1
    #define SHADER_AO_GTAO 2
-   #ifdef RAYTRACED_GI
-     #define SHADER_AO SHADER_AO_NONE
-   #else
-     #define SHADER_AO SHADER_AO_GTAO // [SHADER_AO_NONE SHADER_AO_SSAO SHADER_AO_GTAO]
-   #endif
+   #define SHADER_AO SHADER_AO_GTAO // [SHADER_AO_NONE SHADER_AO_SSAO SHADER_AO_GTAO SHADER_AO_CONTACT]
    ```
-   Then update the five profile strings in `shaders.properties` to drop the hardcoded `SHADER_AO=SHADER_AO_NONE`, and re-add `SHADER_AO` to `screen.raytracing` or `screen.shadows` as appropriate.
-2. Restore Photonics. `git checkout 6e67b36 -- shaders/photonics/ shaders/ph_lights.json`. Then verify `run_checks.sh` still passes with the restored includes, and add the `photonics` include point into the new GI chain so the mod's `write_indirect()` still receives GI (the upstream consumer is `deferred4`; keep that name so the mod's expectations hold).
+   Then update the five profile strings in `shaders.properties` to drop the hardcoded `SHADER_AO=SHADER_AO_NONE`, and add a `screen.ao` submenu with the AO tuning sliders.
+
+   *Correction (verified during implementation).* The `#ifdef RAYTRACED_GI` auto-switch sketched above was **abandoned**. It is untestable with the toolchain: `check.py` injects CLI macro overrides *after* the `// END shaders/settings.glsl` marker (`check.py:277-289`), so `#undef RAYTRACED_GI` cannot change a `#define` that `settings.glsl` already evaluated. An RTGI-keyed default therefore looks correct and silently ignores every override. One always-active `SHADER_AO` setting is used instead, and the interaction with RTGI is handled where the lighting is actually computed, not in the settings block: AO modulates the analytic direct/ambient terms and never multiplies traced indirect light, so it cannot double-darken GI. `SHADER_AO_CONTACT` is retained as the cheap option for RTGI setups that cannot afford GTAO.
+2. Restore Photonics **files only**. `git checkout 6e67b36 -- shaders/photonics/ shaders/ph_lights.json`, then verify `run_checks.sh` still passes with them in the tree.
+
+   *Correction (verified during implementation).* An earlier draft of this step said to re-add the include "so the mod's `write_indirect()` still receives GI, upstream consumer is `deferred4`". Both halves were wrong, and the evidence is in the source:
+   - `write_indirect()` is **defined** in `photonics/write_indirect.glsl:3` and **called by no shader anywhere** in `6e67b36`. It is an API the mod offers; the pack never invokes it.
+   - `deferred4` is the *consumer*, not the producer: `program/d4_deferred_shading.fsh:157` does `#ifdef PHOTONICS_IN_USE` → `#define PHOTONICS_DIFFUSE`, which only adds an `is_lod` argument to `get_diffuse_lighting(...)` at `:567`. That direction is mod→pack, not pack→mod.
+   - Upstream has exactly three `/photonics/` include sites: `diffuse_lighting.glsl:25` (`ph_samplers.glsl`, gated on `PHOTONICS_DIFFUSE`), `gbuffers_all_solid.fsh:126` and `shadow_voxels.fsh:26` (both `photonics.glsl`, the latter two gated on `PROGRAM_GBUFFERS_VOXELS`). **Both voxel programs were deleted by the fork**, and the replacement voxelizer runs in `program/shadow.vsh` — a program the mod does not inject into.
+
+   Therefore the mod's injection points no longer exist, and re-creating them is a design task (which system owns direct light, which owns indirect, who owns the light-ID table), not a file restore. Stage 1 delivers the files plus an explicit, written decision — see `shaders/photonics/README.md`. `photonics.glsl` and `ph_samplers.glsl` are one-line stubs by construction (the mod substitutes real code at load time), so restoring them cannot break a build; what is genuinely absent is the *call site*.
 3. LPV fog decision. Two options: (a) restore `lpv_fog.glsl` behind `AIR_FOG_COLORED_LIGHT_SHAFTS` fed by the new clipmap instead of LPV — more work, deferred to Stage 8; (b) remove the `AIR_FOG_COLORED_LIGHT_SHAFTS` option and document that coloured light shafts are unavailable in this fork. **Recommendation: (b) now, (a) revisited at Stage 8** — a dangling option that does nothing is worse than an honest absence. Use `properties_lint.py` to enforce that no option is orphaned.
 4. Extend `tools/shadercheck/properties_lint.py` with an "orphan option" check: every identifier in `screen.*` and `sliders` must appear in `settings.glsl` and be consumed by at least one shader (`grep` for the macro beyond its `#define`). This is the mechanical guard against repeating the pattern.
 5. Update `README.md` features list accordingly.
@@ -578,7 +585,8 @@ Pack with: RTGI on ⇒ hybrid GI as today, no AO; RTGI off ⇒ upstream-equivale
 - `SHADER_AO` no longer appears in any profile string.
 - `properties_lint.py` reports 0 orphan options.
 - In-game: toggling `RAYTRACED_GI` off restores a visibly AO-shaded image in corners (compare against an upstream `6e67b36` build of the same scene at the same camera).
-- Photonics: mod initialises, `latest.log` shows no missing-file errors. [ASSUMPTION — needs the mod installed]
+- Photonics: the pack compiles with `shaders/photonics/` present and no include of it on any live path (verified by the matrix). With the mod installed, the game boots and the pack loads with no missing-file errors. [ASSUMPTION — needs the mod installed; not verifiable in this environment]
+- Photonics lighting is **not** claimed to work. There is no menu entry, no settings define and no lang string for it, so nothing advertises a feature that is absent. Verified: `grep -c PHOTONICS` over `settings.glsl`, `shaders.properties` and `lang/en_US.lang` returns 0.
 
 **F. Regression and recovery**
 
@@ -1449,7 +1457,8 @@ All scenes specify: seed, coordinates, `/time set`, `/weather clear`, render dis
 | `dda_test.py` (new, Stage 5) | traversal correctness vs a synthetic volume | every push |
 | `properties_lint.py` | duplicate keys, orphan options, menu/lang coverage | every push |
 | `matrix_compute.py` | 308+ compile cases | every push |
-| `matrix.py` | 780+ compile cases | every push |
+| `matrix.py` | 1,014+ compile cases | every push |
+| `ao_dispatch_test.py` (added Stage 1) | only the selected AO estimator is emitted, all 4 modes × 3 dimensions × RTGI on/off | every push (needs `GLSLANG`) |
 | `pt_reference_test.py` (new, Stage 9) | CPU path tracer vs GPU capture agreement | manual, per release |
 | `quality_metrics.py` (new, Stage 7) | numeric scene metrics from captures | manual, per stage gate |
 
@@ -1486,6 +1495,24 @@ Measured during this audit with `glslang 15.0.0`:
 | `matrix.py` after `216b896` | **780/780 pass** |
 | `voxel_packing_test.py` | 1,000 randomized round trips OK |
 | `properties_lint.py` | 305 keys, 3 known upstream duplicates |
+
+Measured after the Stage 1 AO restore:
+
+| Run | Result |
+|---|---|
+| `matrix_compute.py` | **308/308 pass** |
+| `matrix.py` (AO variants added) | **1,014/1,014 pass** |
+| explicit AO sweep, `check.py` over 3 dimensions × 4 modes × 4 RTGI settings | **48/48 pass** |
+| `ao_dispatch_test.py` | 27/27 — preprocessor emits exactly one estimator per mode |
+| `ao_dispatch_test.py`, deliberately broken (CONTACT branch also calling `compute_gtao`) | **9/27 fail** — the test has teeth |
+| `properties_lint.py` | 306 keys, 3 known upstream duplicates, 0 orphan errors, 14 known-debt warnings |
+| `properties_lint.py`, with a bogus option injected into `screen.raytracing` | **fails** with `menu option defined but never read by any shader` |
+
+*Method note.* A successful `check.py` run only proves that every `#if` branch
+*parses*: the assembled `/tmp/check_*.frag` still contains all branches. Proving
+that the *right* branch is selected requires `glslang -E`. This is what
+`ao_dispatch_test.py` does, and it is the only way the AO dispatch claim in §B.7
+is actually verified rather than assumed.
 
 ### 8.6 Performance evaluation
 
@@ -1539,7 +1566,7 @@ Ranked by severity (S), with likelihood (L) and detectability (D).
 
 | ID | Risk | S | L | Mitigation |
 |---|---|---|---|---|
-| R13 | Removal of LPV fog is a user-visible regression | Medium | High (it is already removed) | Stage 1 decision: remove the option honestly, or restore fed by the clipmap |
+| R13 | Removal of LPV fog is a user-visible regression | Low | High (it is already removed) | Verified: `AIR_FOG_COLORED_LIGHT_SHAFTS` works independently of LPV, so only the LPV-specific `LPV_VL_*` shafts are lost and their options went with the files. No orphaned menu entry. |
 | R14 | Photonics API drift breaks the restored stub | Medium | Medium | Stub is inert; verify compile in the matrix; document the supported version |
 | R15 | DH/Voxy cannot be voxelized (no world position in their vertex shaders) | Medium | Medium | Investigate in Stage 4; if impossible, document and fade GI at L3 |
 | R16 | Resource-pack emission not reaching voxels | Medium | Low | T18 test; albedo debug view |

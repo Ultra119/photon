@@ -62,6 +62,27 @@ python3 tools/shadercheck/voxel_packing_test.py
 property keys, and verifies the RTGI menu/language/options wiring. It allows the
 three duplicate keys that already exist upstream.
 
+It also runs an **orphan-option** check: every identifier appearing in a
+`screen.*` group or in `sliders` must be defined in `settings.glsl` and must be
+read by at least one shader. A menu entry that changes nothing is worse than a
+missing feature, because it looks supported and silently is not. Options that
+were already dead upstream are reported as warnings so inherited debt does not
+mask new breakage; `KNOWN_DEAD_OPTIONS` and `KNOWN_MISSING_OPTIONS` at the top of
+the file list them and should shrink over time.
+
+`ao_dispatch_test.py` asserts that the AO setting selects exactly one estimator:
+
+```sh
+GLSLANG=/path/to/glslang python3 tools/shadercheck/ao_dispatch_test.py
+```
+
+A successful compile only proves every branch *parses*. This test runs the real
+preprocessor (`glslang -E`) over the assembled source and counts
+`compute_ssao` / `compute_gtao` / `compute_contact_ao` symbols, so a dispatch
+that compiles but emits the wrong estimator — or two of them — is caught. It
+covers all four modes in all three dimensions, with RTGI on and off. It is
+skipped, loudly, when `GLSLANG` is unset rather than being reported as passing.
+
 Run every static check with:
 
 ```sh
@@ -70,3 +91,7 @@ Run every static check with:
 
 `matrix_compute.py` is the compute/fragment-focused matrix; `matrix.py` is the
 wider wrapper/option matrix. Both are invoked by `run_checks.sh`.
+
+Note that `world*/deferred3.fsh` is the translation unit that contains the AO
+pass — it does `#include "/program/d3_ao.fsh"`. There is no `world*/d3_ao.fsh`,
+so target `deferred3` when testing AO, not `d3_ao`.

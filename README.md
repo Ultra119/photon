@@ -44,7 +44,8 @@
 * Screen-space reflections
 * Volumetric fog
 * Soft shadows with variable-size penumbras
-* RTGI-based indirect lighting (dedicated contact AO is not implemented yet)
+* RTGI-based indirect lighting
+* Selectable ambient occlusion: GTAO (default), SSAO, or a cheap contact-AO term for RTGI setups
 * Camera effects: bloom, depth of field, motion blur
 * Much improved image quality with TAA, FXAA and CAS
 * Advanced temporal upscaling (disabled by default) for low end devices
@@ -64,6 +65,16 @@
 ### Special mod support
 * [Distant Horizons](https://www.curseforge.com/minecraft/mc-mods/distant-horizons)
 * [Voxy](https://modrinth.com/mod/voxy)
+
+### Known limitations
+* The [Photonics](https://modrinth.com/mod/photonics) mod's injection files are
+  present so the pack loads cleanly, but its lighting is **not** wired into this
+  fork's GI chain. Running Photonics alongside RTGI would mean two independent
+  indirect estimators on the same surfaces. There is no Photonics menu entry, so
+  nothing advertises it. See [`shaders/photonics/README.md`](shaders/photonics/README.md).
+* LPV-based volumetric light shafts were removed with the LPV system. Coloured
+  light shafts (`AIR_FOG_COLORED_LIGHT_SHAFTS`) are independent of LPV and still
+  work.
 
 ## Showcase videos
 
