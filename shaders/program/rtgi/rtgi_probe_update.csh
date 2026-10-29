@@ -32,10 +32,10 @@ uniform mat4 gbufferModelViewInverse;
 uniform vec3 cameraPosition;
 uniform int frameCounter;
 uniform vec3 light_dir;
+uniform float near;
+uniform float far;
 
 #include "/include/utility/color.glsl"
-#include "/include/utility/encoding.glsl"
-#include "/include/utility/space_conversion.glsl"
 #include "/include/utility/random.glsl"
 #include "/include/lighting/rt/voxel_dda.glsl"
 #include "/include/lighting/rt/ddgi.glsl"
