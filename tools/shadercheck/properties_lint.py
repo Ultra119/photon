@@ -122,6 +122,202 @@ IMPLICIT_OPTIONS = {
 }
 
 
+# --- Iris image directive validation ---------------------------------------
+#
+# Iris parses `image.<name> = ...` in ShaderProperties.java by splitting on a
+# single space and reading fixed positions:
+#
+#   parts[0] sampler    parts[4] clear (boolean)
+#   parts[1] PixelFormat          parts[5] relative (boolean)
+#   parts[2] InternalTextureFormat
+#   parts[3] PixelType            parts[6..] width/height[/depth]
+#
+# The field count is load-bearing: dropping the pixel type shifts every later
+# field left, so Iris reads the clear flag as the pixel type and then tries to
+# parse a float as an integer width, and the whole pack fails to load before a
+# single shader is compiled. These name lists are taken from the Iris 26.3
+# enums (PixelFormat, InternalTextureFormat, PixelType); fromString() is
+# case-insensitive and matches the enum constant names exactly.
+
+IMAGE_PIXEL_FORMATS = {
+    "RED", "RG", "RGB", "BGR", "RGBA", "BGRA",
+    "RED_INTEGER", "RG_INTEGER", "RGB_INTEGER", "BGR_INTEGER",
+    "RGBA_INTEGER", "BGRA_INTEGER",
+}
+
+IMAGE_INTERNAL_FORMATS = {
+    "RGBA", "R8", "RG8", "RGB8", "RGBA8",
+    "R8_SNORM", "RG8_SNORM", "RGB8_SNORM", "RGBA8_SNORM",
+    "R16", "RG16", "RGB16", "RGBA16",
+    "R16_SNORM", "RG16_SNORM", "RGB16_SNORM", "RGBA16_SNORM",
+    "R16F", "RG16F", "RGB16F", "RGBA16F",
+    "R32F", "RG32F", "RGB32F", "RGBA32F",
+    "R8I", "RG8I", "RGB8I", "RGBA8I",
+    "R8UI", "RG8UI", "RGB8UI", "RGBA8UI",
+    "R16I", "RG16I", "RGB16I", "RGBA16I",
+    "R16UI", "RG16UI", "RGB16UI", "RGBA16UI",
+    "R32I", "RG32I", "RGB32I", "RGBA32I",
+    "R32UI", "RG32UI", "RGB32UI", "RGBA32UI",
+    "RGBA2", "RGBA4", "R3_G3_B2", "RGB5_A1", "RGB565",
+    "RGB10_A2", "RGB10_A2UI", "R11F_G11F_B10F", "RGB9_E5",
+}
+
+IMAGE_PIXEL_TYPES = {
+    "BYTE", "SHORT", "INT", "HALF_FLOAT", "FLOAT",
+    "UNSIGNED_BYTE", "UNSIGNED_BYTE_3_3_2", "UNSIGNED_BYTE_2_3_3_REV",
+    "UNSIGNED_SHORT", "UNSIGNED_SHORT_5_6_5", "UNSIGNED_SHORT_5_6_5_REV",
+    "UNSIGNED_SHORT_4_4_4_4", "UNSIGNED_SHORT_4_4_4_4_REV",
+    "UNSIGNED_SHORT_5_5_5_1", "UNSIGNED_SHORT_1_5_5_5_REV",
+    "UNSIGNED_INT", "UNSIGNED_INT_8_8_8_8", "UNSIGNED_INT_8_8_8_8_REV",
+    "UNSIGNED_INT_10_10_10_2", "UNSIGNED_INT_2_10_10_10_REV",
+    "UNSIGNED_INT_10F_11F_11F_REV", "UNSIGNED_INT_5_9_9_9_REV",
+}
+
+# Iris refuses to add a 17th image ("Only up to 16 images are allowed").
+IRIS_MAX_IMAGES = 16
+
+
+def check_image_directives(
+    properties: str, preprocessed: str, settings: dict[str, str]
+) -> tuple[list[str], list[str]]:
+    """Validate every `image.*` line against Iris's parser.
+
+    Syntax is checked on the *raw* file so that inactive #if branches are
+    covered too -- a branch that does not load today still has to load for the
+    user who selects it. The 16-image limit, by contrast, applies to the active
+    set, so it is counted from the preprocessed output."""
+    errors: list[str] = []
+    warnings: list[str] = []
+    count = 0
+
+    for lineno, line in enumerate(properties.splitlines(), 1):
+        stripped = line.strip()
+        if not stripped.startswith("image.") or "=" not in stripped:
+            continue
+        count += 1
+        key, value = stripped.split("=", 1)
+        name = key.strip()[len("image."):]
+        value = value.strip()
+
+        # Iris splits on a single space, so a double space yields an empty
+        # token that is read as the pixel format and silently becomes null.
+        if "  " in value:
+            errors.append(
+                f"line {lineno}: image.{name} has a double space; Iris splits on "
+                "single spaces and will read an empty field"
+            )
+        parts = value.split(" ")
+
+        def bad(idx, label):
+            got = parts[idx] if idx < len(parts) else "<missing>"
+            errors.append(
+                f"line {lineno}: image.{name} {label} '{got}' is not a valid "
+                "Iris name"
+            )
+
+        if len(parts) < 6:
+            errors.append(
+                f"line {lineno}: image.{name} has {len(parts)} fields, "
+                "at least 6 are required "
+                "(sampler, format, internal format, pixel type, clear, relative)"
+            )
+            continue
+
+        if parts[1].upper() not in IMAGE_PIXEL_FORMATS:
+            bad(1, "pixel format")
+        if parts[2].upper() not in IMAGE_INTERNAL_FORMATS:
+            bad(2, "internal format")
+        if parts[3].upper() not in IMAGE_PIXEL_TYPES:
+            bad(3, "pixel type")
+
+        for idx, label in ((4, "clear"), (5, "relative")):
+            if parts[idx] not in ("true", "false"):
+                warnings.append(
+                    f"line {lineno}: image.{name} {label} flag is "
+                    f"'{parts[idx]}'; Boolean.parseBoolean coerces this to false"
+                )
+
+        relative = parts[5] == "true"
+        if relative:
+            if len(parts) < 8:
+                errors.append(
+                    f"line {lineno}: image.{name} is relative but has "
+                    f"{len(parts)} fields; width and height are required"
+                )
+                continue
+            for idx in (6, 7):
+                try:
+                    float(parts[idx])
+                except ValueError:
+                    errors.append(
+                        f"line {lineno}: image.{name} relative {idx - 5} "
+                        f"dimension '{parts[idx]}' is not a number"
+                    )
+        else:
+            if len(parts) not in (7, 8, 9):
+                errors.append(
+                    f"line {lineno}: image.{name} is absolute with "
+                    f"{len(parts)} fields; Iris expects 7 (1D), 8 (2D) or 9 (3D)"
+                )
+                continue
+            for idx in range(6, len(parts)):
+                try:
+                    int(parts[idx])
+                except ValueError:
+                    errors.append(
+                        f"line {lineno}: image.{name} absolute dimension "
+                        f"'{parts[idx]}' must be an integer"
+                    )
+
+    # An image written by an RTGI pass must be declared at the same relative
+    # size as that pass's resolution, because those passes only write texels
+    # below target_res. A larger image is sampled with most of it never
+    # initialised; that is silent, not an error at load time.
+    #
+    # The debug images only exist when their GI_DEBUG value is selected, so the
+    # default configuration would never show this. Re-evaluate the properties
+    # once per CI-relevant GI_DEBUG value instead of trusting the default.
+    rtgi_scale = {"0": "0.25", "1": "0.5", "2": "1.0"}
+    for gd in ("GI_DEBUG_OFF", "GI_DEBUG_HIT", "GI_DEBUG_REJECT"):
+        variant = preprocess_properties({"GI_DEBUG": gd})
+        errors.extend(_rtgi_size_errors(variant, settings))
+    active = sum(
+        1
+        for line in preprocessed.splitlines()
+        if line.strip().startswith("image.") and "=" in line
+    )
+    if active > IRIS_MAX_IMAGES:
+        errors.append(
+            f"{active} image directives active at once; Iris refuses more than "
+            f"{IRIS_MAX_IMAGES}"
+        )
+    return errors, warnings
+
+
+def _rtgi_size_errors(preprocessed: str, settings: dict[str, str]) -> list[str]:
+    errors: list[str] = []
+    rtgi_scale = {"0": "0.25", "1": "0.5", "2": "1.0"}
+    want = rtgi_scale.get(str(settings.get("RTGI_RESOLUTION", "1")), "0.5")
+    for line in preprocessed.splitlines():
+        text = line.strip()
+        if not text.startswith("image.") or "=" not in text:
+            continue
+        name = text.split("=", 1)[0].strip()[len("image."):]
+        if not name.startswith("rtgi_"):
+            continue
+        fields = text.split("=", 1)[1].split()
+        if len(fields) < 8 or fields[5] != "true":
+            continue
+        if fields[6] != want or fields[7] != want:
+            errors.append(
+                f"image.{name} is {fields[6]}x{fields[7]} relative but the RTGI "
+                f"pass writes at {want}x{want} "
+                f"(RTGI_RESOLUTION={settings.get('RTGI_RESOLUTION', '1')}); "
+                "the unwritten region would sample uninitialised memory"
+            )
+    return errors
+
+
 def _menu_option_tokens(properties: str) -> set[str]:
     """Every option identifier referenced from a menu group or from sliders."""
     tokens: set[str] = set()
@@ -232,9 +428,11 @@ def read_settings_defines() -> dict[str, str]:
     return defs
 
 
-def preprocess_properties() -> str:
+def preprocess_properties(overrides: dict[str, str] | None = None) -> str:
     raw = (SHADERS / "shaders.properties").read_text(encoding='utf-8', errors='replace')
     defs = read_settings_defines()
+    if overrides:
+        defs.update(overrides)
     lines = [f"#define {k} {v}" for k, v in defs.items()]
     for line in raw.splitlines():
         stripped = line.lstrip()
@@ -328,6 +526,12 @@ def main() -> int:
     orphan_errors, orphan_warnings = check_orphan_options(properties, settings)
     errors.extend(orphan_errors)
     warnings.extend(orphan_warnings)
+
+    image_errors, image_warnings = check_image_directives(
+        properties, preprocessed, read_settings_defines()
+    )
+    errors.extend(image_errors)
+    warnings.extend(image_warnings)
 
     for message in warnings:
         print("warning:", message)

@@ -455,7 +455,7 @@ Every stage ends in a shaderpack that loads in all three dimensions and passes `
 |---|---|---|---|---|
 | **0** | Baseline truth and regression gate | Pack compiles on a strict compiler in all dimensions/options; documented in-game baseline protocol; `run_checks.sh` wired into CI/pre-push; baseline frame-time table | — | All static matrices 0 failures; the 6 known on-GPU symptoms reproduced and recorded |
 | **1** | Restore removed capability | `SHADER_AO` works again (SSAO/GTAO restored as fallback); Photonics stub + `ph_lights.json` restored; LPV-fog option either restored or explicitly removed with a documented decision | 0 | RTGI off ⇒ upstream-equivalent AO; Photonics mod loads without error |
-| **2** | Diagnostics | `DEBUG_VIEW_GI` + `GI_DEBUG`: raw/accum/filtered GI, voxel ID/light/albedo, hit source, history rejection, convergence; **no** per-pass timing (see note) | 0 | Each view renders and is documented; zero cost when disabled. **DELIVERED except in-game screenshots** [MEASURED: 34 wiring assertions, 1,287 static cases] |
+| **2** | Diagnostics | `DEBUG_VIEW_GI` + `GI_DEBUG`: raw/accum/filtered GI, voxel ID/light/albedo, hit source, history rejection, convergence; **no** per-pass timing (see note) | 0 | Each view renders and is documented; zero cost when disabled. **DELIVERED except in-game screenshots** [MEASURED: 34 wiring assertions, 1,287 static cases]. First field test exposed a pack-load failure in `shaders.properties` that the harness could not see — see §8.5 |
 | **3** | Break the GI feedback loop | `radiance_direct` buffer; SSGI samples current-frame direct light instead of `colortex5`; block-light double count removed; brightness constant replaced by a measured, documented normalisation | 1, 2 | Rotating the camera ±90° with a stationary light changes GI by < 5 % (measured by image diff); no light appears only from certain angles |
 | **4** | Scene core v2 | 4-level clipmap (4 MiB, 512 blocks); additive coloured light image; dedicated voxelization from shadow + camera passes; entity/optional DH/Voxy coverage | 2, 3 | Voxel memory ≤ 8 MiB at any setting; GI occluders exist out to 512 blocks; two coloured emitters blend additively |
 | **5** | Ray queries v2 | Clipmap DDA with level transitions; block-shape classes; any-hit shadow query; deterministic seam handling; Python mirror test | 4 | Python DDA trace matches GPU output on a synthetic volume; no seam light leaks in the sand-wall test |
@@ -1457,7 +1457,7 @@ All scenes specify: seed, coordinates, `/time set`, `/weather clear`, render dis
 |---|---|---|
 | `voxel_packing_test.py` | bit-layout round trip + atomic priority | every push |
 | `dda_test.py` (new, Stage 5) | traversal correctness vs a synthetic volume | every push |
-| `properties_lint.py` | duplicate keys, orphan options, menu/lang coverage | every push |
+| `properties_lint.py` | duplicate keys, orphan options, menu/lang coverage, **`image.*` directives validated against Iris's parser** | every push |
 | `matrix_compute.py` | 308+ compile cases | every push |
 | `matrix.py` | 1,014+ compile cases | every push |
 | `ao_dispatch_test.py` (added Stage 1) | only the selected AO estimator is emitted, all 4 modes × 3 dimensions × RTGI on/off | every push (needs `GLSLANG`) |
@@ -1510,6 +1510,45 @@ Measured after the Stage 1 AO restore:
 | `ao_dispatch_test.py`, deliberately broken (CONTACT branch also calling `compute_gtao`) | **9/27 fail** — the test has teeth |
 | `properties_lint.py` | 306 keys, 3 known upstream duplicates, 0 orphan errors, 14 known-debt warnings |
 | `properties_lint.py`, with a bogus option injected into `screen.raytracing` | **fails** with `menu option defined but never read by any shader` |
+
+**Coverage gap found in the field (Stage 2).** `shaders.properties` is not GLSL:
+`check.py`, both matrices and every dispatch test validate *shader source*, and
+none of them parse the property file the way Iris does. A malformed `image.*`
+line therefore passed all 1,287 compile cases and then failed to load:
+
+```
+Failed to find pixel type FALSE
+Image rtgi_hit_img is invalid! ... Pixel type: null
+java.lang.NumberFormatException: For input string: "1.0"
+```
+
+Iris reads `image.<name>` by splitting on single spaces and taking fixed
+positions (`ShaderProperties.java:514-558` at `671a5c87`):
+
+| Position | Field |
+|---|---|
+| 0 | sampler name |
+| 1 | `PixelFormat` |
+| 2 | `InternalTextureFormat` |
+| 3 | `PixelType` |
+| 4 | `clear` (boolean) |
+| 5 | `relative` (boolean) |
+| 6+ | width / height / depth |
+
+The line written was `... rgba rgba8 false true 1.0 1.0` — seven fields, missing
+the pixel type. Every later field shifted left by one: the clear flag was read
+as the pixel type, `relative` became `1.0` (which `Boolean.parseBoolean`
+coerces to `false`), and the width was then `Integer.parseInt("1.0")`, which
+throws and aborts the whole pack load before a single shader is compiled.
+
+`properties_lint.py` now validates every `image.*` directive against the real
+Iris grammar: field count, `PixelFormat`/`InternalTextureFormat`/`PixelType` name
+lists taken from the Iris 26.3 enums, boolean flags, and integer-vs-float
+dimensions depending on `relative`. Syntax is checked on the raw file so
+inactive `#if` branches are covered as well; the 16-image cap is counted from
+the preprocessed output because it applies to the active set only. Re-running
+the validator against the shipped line reproduces the failure and names the
+cause.
 
 *Method note.* A successful `check.py` run only proves that every `#if` branch
 *parses*: the assembled `/tmp/check_*.frag` still contains all branches. Proving

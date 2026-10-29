@@ -29,6 +29,35 @@ not exist, so there is nothing to display.
 | Statically verified | `tools/shadercheck/gi_debug_test.py` — 34 assertions: each view reads exactly its documented buffers, `GI_DEBUG_OFF` reads none, each debug image is written only by its owning pass, and neither image is allocated when off |
 | **Not verified** | **that the images look right on a GPU.** No screenshots exist for these views. They must be captured in-game (see "Capturing reference images" below) before the stage can be called visually complete. |
 
+### First field run: the pack failed to load
+
+The first attempt to load this in game did not reach the shaders at all. The
+`image.rtgi_hit_img` / `image.rtgi_reject_img` declarations were missing their
+pixel-type field, so Iris read the following fields one position to the left,
+tried to parse `1.0` as an integer width, and aborted the whole pack:
+
+```
+Failed to find pixel type FALSE
+java.lang.NumberFormatException: For input string: "1.0"
+```
+
+Fixed. `properties_lint.py` now validates every `image.*` directive against
+Iris's real grammar, so this class of error fails the checks instead of failing
+at load.
+
+A second, quieter bug was found in the same review and fixed before re-testing:
+the debug images were declared at full resolution while the trace pass only
+writes the lower `RTGI_RESOLUTION` fraction of them (`workGroupsRender` is
+0.25 / 0.5 / 1.0). Nothing would have failed to load -- the unwritten region
+would simply have displayed uninitialised memory. The declarations now sit
+inside each `RTGI_RESOLUTION` branch, and the lint re-preprocesses the property
+file once per `GI_DEBUG` value specifically so that a size declared only in a
+non-default branch is still checked. Worth stating plainly because of how it was missed: **1,287 compiling
+cases said nothing about it** — none of them look at `shaders.properties`.
+
+If you hit a load error again, run `python3 tools/shadercheck/properties_lint.py`
+first; it reports the offending line number and which field is wrong.
+
 This matters: a view that compiles, reads the correct buffer, and still renders
 something unreadable would pass every automated check in this repository.
 
