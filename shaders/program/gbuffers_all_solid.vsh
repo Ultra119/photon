@@ -49,6 +49,7 @@ out vec2 uv_local;
 attribute vec4 at_tangent;
 attribute vec3 mc_Entity;
 attribute vec2 mc_midTexCoord;
+attribute vec3 at_midBlock;
 
 // ------------
 //   Uniforms
@@ -100,12 +101,21 @@ uniform int currentRenderedItemId;
 #include "/include/vertex/displacement.glsl"
 #include "/include/vertex/utility.glsl"
 
+#if (defined RAYTRACED_GI || defined RT_REFLECTIONS) && defined PROGRAM_GBUFFERS_TERRAIN
+layout(r32ui) uniform uimage3D voxel_img;
+#include "/include/lighting/voxel/voxel_update.glsl"
+#endif
+
 void main() {
     uv = (gl_TextureMatrix[0] * gl_MultiTexCoord0).xy;
     light_levels = clamp01(gl_MultiTexCoord1.xy * rcp(240.0));
     tint = gl_Color;
     material_mask = get_material_mask();
     tbn = get_tbn_matrix();
+
+#if (defined RAYTRACED_GI || defined RT_REFLECTIONS) && defined PROGRAM_GBUFFERS_TERRAIN
+    update_rt_voxel_grid(material_mask, tint.rgb, at_midBlock, light_levels);
+#endif
 
 
 #if defined PROGRAM_GBUFFERS_TERRAIN

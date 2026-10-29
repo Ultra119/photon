@@ -16,6 +16,16 @@ const vec3 rcp_voxel_volume = 1.0 / voxel_volume_size_f;
 // Distance in blocks from player camera that voxels span
 const float voxel_distance = float(VOXEL_VOLUME_SIZE) * 0.5;
 
+// Voxel shape classification (Stage 4 data model, consumed by Stage 5 ray queries)
+const uint VOXEL_SHAPE_CUBE          = 0u; // Full 1x1x1 solid block
+const uint VOXEL_SHAPE_SLAB_BOTTOM   = 1u; // Bottom half-slab (y in 0.0 .. 0.5)
+const uint VOXEL_SHAPE_SLAB_TOP      = 2u; // Top half-slab (y in 0.5 .. 1.0)
+const uint VOXEL_SHAPE_STAIRS        = 3u; // Stairs
+const uint VOXEL_SHAPE_PANE_OR_FENCE = 4u; // Thin fence, iron bars, or glass pane
+const uint VOXEL_SHAPE_PLANT         = 5u; // Non-solid plant / flower / crop
+const uint VOXEL_SHAPE_GLASS         = 6u; // Transparent full cube
+const uint VOXEL_SHAPE_OTHER         = 7u; // Non-standard shape
+
 // Fade the vanilla blocklight fallback in near the edge of the axis-aligned
 // voxel cube. A 45-degree ray crosses ~sqrt(3) * distance voxel boundaries,
 // so 7/8 * VOXEL_VOLUME_SIZE + 8 is a safe DDA step budget.

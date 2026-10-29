@@ -4,7 +4,7 @@
 #include "voxel_constants.glsl"
 #include "voxel_storage.glsl"
 
-#ifdef PROGRAM_SHADOW
+#if defined PROGRAM_SHADOW || defined PROGRAM_GBUFFERS_TERRAIN
 
 bool is_voxel_corner(vec3 pos, float tolerance) {
     bvec3 lower = lessThan(pos, vec3(tolerance));
@@ -12,14 +12,18 @@ bool is_voxel_corner(vec3 pos, float tolerance) {
     return all(bvec3(lower.x || upper.x, lower.y || upper.y, lower.z || upper.z));
 }
 
-// Only terrain shadow draw calls should contribute to the world voxel grid.
-// Otherwise entities, block entities, particles, outlines, etc. can overwrite
-// world voxels with local geometry. COLORWHEEL wrappers do not provide a
-// reliable renderStage in the same way, so they keep the upstream fallback.
+// Only terrain draw calls contribute to the world voxel grid.
+// In PROGRAM_GBUFFERS_TERRAIN this is naturally terrain only.
+// In PROGRAM_SHADOW, renderStage ensures entities/particles do not overwrite world voxels.
 bool is_voxel_terrain_stage() {
-#if defined COLORWHEEL
+#if defined PROGRAM_GBUFFERS_TERRAIN
     return true;
-#else
+#elif defined COLORWHEEL
+    return true;
+#elif defined PROGRAM_SHADOW
+#if defined RTGI_VOXELIZE_ENTITIES
+    if (renderStage == MC_RENDER_STAGE_ENTITIES || renderStage == MC_RENDER_STAGE_BLOCK_ENTITIES) return true;
+#endif
     return any(equal(
         ivec4(renderStage),
         ivec4(
@@ -29,7 +33,19 @@ bool is_voxel_terrain_stage() {
             MC_RENDER_STAGE_TERRAIN_TRANSLUCENT
         )
     ));
+#else
+    return false;
 #endif
+}
+
+uint get_voxel_shape_class(uint block_id) {
+    if (block_id == 2u || block_id == 3u || block_id == 14u || block_id == 15u) {
+        return VOXEL_SHAPE_PLANT;
+    }
+    if (block_id == 80u || (block_id >= 81u && block_id <= 96u)) {
+        return VOXEL_SHAPE_GLASS;
+    }
+    return VOXEL_SHAPE_CUBE;
 }
 
 bool should_voxelize(uint block_id) {
@@ -51,7 +67,11 @@ void update_rt_voxel_grid(
 ) {
     vec3 model_pos = gl_Vertex.xyz + mid_block_attr * (1.0 / 64.0);
     vec3 view_pos = (gl_ModelViewMatrix * vec4(model_pos, 1.0)).xyz;
+#ifdef PROGRAM_SHADOW
     vec3 scene_pos = (shadowModelViewInverse * vec4(view_pos, 1.0)).xyz;
+#else
+    vec3 scene_pos = (gbufferModelViewInverse * vec4(view_pos, 1.0)).xyz;
+#endif
     vec3 voxel_pos = scene_to_voxel_space(scene_pos);
 
     // Remap 0u (default unassigned terrain like stone, dirt, deepslate) to stone ID 4u
@@ -80,100 +100,24 @@ void update_rt_voxel_grid(
         // must NEVER store vanilla lightmap: because voxel cells lack face orientation,
         // any light on an exterior face (roof, outer wall) bleeds through to the interior.
         float voxel_block_light = is_emitter ? 1.0 : 0.0;
-        float voxel_sky_light = 0.0;
+        uint shape_class = get_voxel_shape_class(block_id);
 
         uint packed_data = pack_voxel_data(
             block_id,
             voxel_block_light,
-            voxel_sky_light,
+            shape_class,
             voxel_albedo,
             is_translucent,
             is_emitter
         );
         // Atomic max makes the final voxel independent of vertex write order.
-        // The packed layout puts block ID and light levels in the high bits,
-        // so a solid / brighter / higher-ID voxel always wins over air.
+        // The packed layout puts block ID in the high bits,
+        // so a solid / higher-ID voxel always wins over air.
         imageAtomicMax(voxel_img, coord, packed_data);
-
-        // Inject a camera-independent radial light field around emitters.
-        // Light-only voxels have block_id = 0, so they never overwrite solid
-        // geometry under imageAtomicMax(); DDA accumulates them volumetrically.
-        // Line-of-sight is verified against solid blocks so light cannot
-        // penetrate through solid walls, floors, or ceilings.
-        // gl_VertexID gating reduces duplicate writes from multi-vertex models.
-        // NB: RTGI_POINT_LIGHT_STRENGTH is a float slider; use a runtime if
-        // (constant-folded by the driver) rather than #if, since float literals
-        // are illegal in GLSL preprocessor expressions.
-        if (RTGI_POINT_LIGHT_STRENGTH > 0.0 && is_emitter && is_voxel_light_source(block_id) && (gl_VertexID & 3) == 0) {
-            vec3 point_light_color = get_voxel_light_color(block_id);
-            const int radius = RTGI_POINT_LIGHT_RADIUS;
-            const float radius_f = float(radius);
-
-            for (int z = -radius; z <= radius; ++z) {
-                for (int y = -radius; y <= radius; ++y) {
-                    for (int x = -radius; x <= radius; ++x) {
-                        ivec3 offset = ivec3(x, y, z);
-                        if (offset == ivec3(0)) {
-                            continue;
-                        }
-
-                        float dist = length(vec3(offset));
-                        if (dist > radius_f) {
-                            continue;
-                        }
-
-                        float attenuation = exp(-0.55 * dist)
-                            * (1.0 - smoothstep(radius_f - 1.0, radius_f, dist))
-                            * RTGI_POINT_LIGHT_STRENGTH;
-
-                        if (attenuation < 0.02) {
-                            continue;
-                        }
-
-                        ivec3 light_coord = coord + offset;
-                        if (!is_inside_voxel_grid(light_coord)) {
-                            continue;
-                        }
-
-                        // Test occlusion along the path from coord to light_coord
-                        bool occluded = false;
-                        int max_step = max(abs(offset.x), max(abs(offset.y), abs(offset.z)));
-                        for (int s = 1; s <= max_step; ++s) {
-                            ivec3 check_coord = coord + ivec3(round(vec3(offset) * (float(s) / float(max_step))));
-                            if (!is_inside_voxel_grid(check_coord)) {
-                                occluded = true;
-                                break;
-                            }
-                            uint occ_packed = imageLoad(voxel_img, check_coord).r;
-                            uint occ_id = (occ_packed >> 25u) & 0x7Fu;
-                            // Any solid block (stone, wood, dirt, quartz, etc.) blocks light
-                            if (occ_id >= 4u && occ_id < 80u) {
-                                occluded = true;
-                                break;
-                            }
-                        }
-
-                        if (occluded) {
-                            continue;
-                        }
-
-                        uint light_payload = pack_voxel_data(
-                            0u,
-                            attenuation,
-                            0.0,
-                            point_light_color,
-                            false,
-                            false
-                        );
-                        imageAtomicMax(voxel_img, light_coord, light_payload);
-                    }
-                }
-            }
-        }
     }
 }
 
-#endif // PROGRAM_SHADOW
+#endif // PROGRAM_SHADOW || PROGRAM_GBUFFERS_TERRAIN
 
 #endif // INCLUDE_LIGHTING_VOXEL_UPDATE
 

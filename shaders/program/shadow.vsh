@@ -88,7 +88,7 @@ void main() {
     material_mask = uint(max0(mc_Entity.x - 10000.0));
     tint = gl_Color.rgb;
 
-#if (defined RAYTRACED_GI || defined RT_REFLECTIONS) && !defined PROGRAM_SHADOW_ENTITIES
+#if (defined RAYTRACED_GI || defined RT_REFLECTIONS) && (!defined PROGRAM_SHADOW_ENTITIES || defined RTGI_VOXELIZE_ENTITIES)
     update_rt_voxel_grid(material_mask, tint, at_midBlock, clamp01(gl_MultiTexCoord1.xy * (1.0 / 240.0)));
 #endif
 

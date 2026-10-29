@@ -9,6 +9,7 @@ struct VoxelSample {
     vec3 color;
     float block_light;
     float sky_light;
+    uint shape_class;
     bool is_solid;
     bool is_translucent;
     bool is_emitter;
@@ -19,10 +20,10 @@ struct VoxelSample {
 // payload. imageAtomicMax() is used by the voxelization pass; the most
 // significant fields therefore win in a write race:
 //
-//   bits  0..14 : albedo RGB555
-//   bits 15..18 : block light (4 bits)
-//   bits 19..22 : sky light (4 bits)
-//   bits 23..24 : translucent / emitter flags
+//   bits  0..14 : albedo RGB555 (15 bits)
+//   bits 15..18 : block light (4 bits, 0..15)
+//   bits 19..21 : shape class (3 bits, 0..7)
+//   bits 22..24 : flags (3 bits: translucent, emitter, unused)
 //   bits 25..31 : block ID (7 bits; block.properties currently stops at 96)
 //
 // Air is all-zero and always loses to any solid voxel. A voxel with
@@ -43,17 +44,24 @@ vec3 unpack_unorm_rgb555(uint packed) {
 }
 
 // Pack block information into one deterministic 32-bit voxel texel.
-uint pack_voxel_data(uint block_id, float block_light, float sky_light, vec3 albedo, bool is_translucent, bool is_emitter) {
+uint pack_voxel_data(
+    uint block_id,
+    float block_light,
+    uint shape_class,
+    vec3 albedo,
+    bool is_translucent,
+    bool is_emitter
+) {
     uint color = pack_unorm_rgb555(albedo);
     uint block_id7 = block_id & 0x7Fu;
     uint b_light = uint(clamp(block_light * 15.0 + 0.5, 0.0, 15.0));
-    uint s_light = uint(clamp(sky_light * 15.0 + 0.5, 0.0, 15.0));
+    uint shape3 = shape_class & 0x7u;
     uint flags = (is_translucent ? 1u : 0u) | (is_emitter ? 2u : 0u);
 
     return color
         | (b_light << 15u)
-        | (s_light << 19u)
-        | (flags << 23u)
+        | (shape3 << 19u)
+        | (flags << 22u)
         | (block_id7 << 25u);
 }
 
@@ -63,9 +71,10 @@ VoxelSample unpack_voxel_data(uint packed) {
     sample_data.block_id = (packed >> 25u) & 0x7Fu;
     sample_data.is_solid = sample_data.block_id != 0u;
     sample_data.block_light = float((packed >> 15u) & 0xFu) * (1.0 / 15.0);
-    sample_data.sky_light = float((packed >> 19u) & 0xFu) * (1.0 / 15.0);
+    sample_data.sky_light = 0.0;
+    sample_data.shape_class = (packed >> 19u) & 0x7u;
 
-    uint flags = (packed >> 23u) & 0x03u;
+    uint flags = (packed >> 22u) & 0x07u;
     sample_data.is_translucent = (flags & 1u) != 0u;
     sample_data.is_emitter = (flags & 2u) != 0u || (sample_data.block_id >= 32u && sample_data.block_id < 80u && sample_data.block_id != 58u && sample_data.block_id != 63u);
 
