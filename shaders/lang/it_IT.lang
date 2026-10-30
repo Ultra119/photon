@@ -110,14 +110,10 @@ option.HANDHELD_LIGHTING               = Illuminazione in mano
 option.HANDHELD_LIGHTING.comment       = Illuminazione dell'ambiente con oggetti luminosi in mano. Se Luci Colorate è attivo l'Illuminazione in mano sarà colorata in base all'oggetto
 option.HANDHELD_LIGHTING_INTENSITY     = Intensità Illuminazione in mano
 option.HANDHELD_LIGHTING_INTENSITY.comment = Modifica la luminosità degli oggetti con Illuminazione in mano attivata
-option.AO_IN_SUNLIGHT                  = AO nella Luce Solare
-option.AO_IN_SUNLIGHT.comment          = Applicazione dell'occlusione ambientale sotto luce solare o lunare
 option.CLOUD_SHADOWS                   = Ombre Nuvole
 option.CLOUD_SHADOWS.comment           = Ombre create dalle nuvole nel terreno
 option.CLOUD_SHADOWS_INTENSITY         = Intensità Ombre Nuvole
 option.CLOUD_SHADOWS_INTENSITY.comment = Modifica dell'intensità delle ombre delle nuvole
-option.SH_SKYLIGHT                     = SH Luce Cielo
-option.SH_SKYLIGHT.comment             = Usa una codifica armonica sferica per la luce dal cielo direzionale nell'Overworld, ottenendo un risultato naturale.\nFunziona bene con GTAO
 option.SSS_SHEEN                       = SSS Lucentezza
 option.SSS_SHEEN.comment               = Effetto "Lucentezza" speculare in piante e foglie, aiuta l'erba alta a fondersi con l'erba bassa
 option.SSS_INTENSITY                   = SSS Intensità
@@ -145,8 +141,6 @@ option.PIXELATED_SHADOWS_RESOLUTION    = Risoluzione Ombre Pixellate
 option.SSS_STEPS                       = Passaggi SSS 
 option.SSS_STEPS.comment               = Aumenta per ridurre il rumore nel fogliame o materiali con SSS, al costo delle performance.
 
-option.VANILLA_AO                      = AO Vanilla
-option.VANILLA_AO.comment              = Occlusione ambientale di Minecraft
 
 option.SUN_NR                          = Rosso
 option.SUN_NG                          = Verde
@@ -185,14 +179,7 @@ option.BLOCKLIGHT_G                    = Verde
 option.BLOCKLIGHT_B                    = Blu
 option.BLOCKLIGHT_I                    = Intensità Luce Blocchi
 
-option.VOXEL_VOLUME_SIZE               = Dimensioni volume Voxel
-option.VOXEL_VOLUME_SIZE.comment       = Grosso impatto performance, anche affetto dalla Distanza Ombre
-suffix.VOXEL_VOLUME_SIZE               = m
-option.VOXEL_VOLUME_CENTER             = Centro Volume Voxel
-option.VOXEL_VOLUME_CENTER.comment     = Davanti: volume voxel è centrato davanti il giocatore, rendendolo più visibile.
 
-value.VOXEL_VOLUME_CENTER.VOXEL_VOLUME_CENTER_AHEAD  = Davanti
-value.VOXEL_VOLUME_CENTER.VOXEL_VOLUME_CENTER_PLAYER = Giocatore
 
 suffix.shadowMapResolution             = ²
 suffix.sunPathRotation                 = °
@@ -470,10 +457,6 @@ option.HARDCODED_SSS.comment           = Hardcoded dispersione di superfice per 
 option.RAIN_PUDDLES                    = Pozzanghere
 option.EMISSION_STRENGTH               = Scala Emissione
 option.EMISSION_STRENGTH.comment       = Modifica la luminosità di oggetti luminosi come le torce. non influisce sulla luminosità della luce propagata, solo la luminosità della fonte di luce. Influisce anche sui Hardcoded emissivi
-option.DIRECTIONAL_LIGHTMAPS           = Luci Mappature Direzionali
-option.DIRECTIONAL_LIGHTMAPS.comment   = Le luci dei blocchi e del cielo sono affette dalla mappatura normale. Può creare problemi visivi per la tecnologia limitata
-option.DIRECTIONAL_LIGHTMAPS_INTENSITY = Scala Luci Mappature Direzionali
-option.DIRECTIONAL_LIGHTMAPS_INTENSITY.comment = Modifica l'intensità delle Luci Mappature Direzionali
 option.POM_DEPTH                       = Profondità di Paralasse dei pixel (POM)
 option.POM_DEPTH.comment               = Quanto POM può rientrare in un blocco - si consiglia di usarlo con texturepack a bassa risoluzione, tipo Vanilla o x32.
 option.POM_SAMPLES                     = Campionatura del parallasse

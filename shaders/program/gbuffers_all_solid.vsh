@@ -31,10 +31,8 @@ flat out vec2 atlas_tile_offset;
 flat out vec2 atlas_tile_scale;
 #endif
 
-#if defined PROGRAM_GBUFFERS_TERRAIN
-out float vanilla_ao;
-#elif defined COLORWHEEL
-float vanilla_ao;
+#if defined COLORWHEEL
+float colorwheel_ao_unused;
 #endif
 
 #if defined PROGRAM_GBUFFERS_ENTITIES || defined PROGRAM_GBUFFERS_HAND
@@ -102,8 +100,7 @@ uniform int currentRenderedItemId;
 #include "/include/vertex/displacement.glsl"
 #include "/include/vertex/utility.glsl"
 
-#if (defined RAYTRACED_GI || defined RT_REFLECTIONS) && defined PROGRAM_GBUFFERS_TERRAIN
-layout(r32ui) uniform uimage3D voxel_img;
+#if (LIGHTING_MODE == LIGHTING_MODE_RT) && defined PROGRAM_GBUFFERS_TERRAIN
 #include "/include/lighting/voxel/voxel_update.glsl"
 #endif
 
@@ -114,17 +111,14 @@ void main() {
     material_mask = get_material_mask();
     tbn = get_tbn_matrix();
 
-#if (defined RAYTRACED_GI || defined RT_REFLECTIONS) && defined PROGRAM_GBUFFERS_TERRAIN
+#if (LIGHTING_MODE == LIGHTING_MODE_RT) && defined PROGRAM_GBUFFERS_TERRAIN
     update_rt_voxel_grid(material_mask, tint.rgb, at_midBlock, light_levels, mc_midTexCoord, uv);
 #endif
 
 
 #if defined PROGRAM_GBUFFERS_TERRAIN
-    vanilla_ao = gl_Color.a < 0.1
-        ? 1.0
-        : gl_Color.a; // fixes models where vanilla ao breaks (eg lecterns)
-    vanilla_ao
-        = material_mask == 5 ? 1.0 : vanilla_ao; // no vanilla ao on leaves
+    // Do not bake Minecraft's vertex AO into albedo or transport it to the
+    // deferred pass. Vertex color remains a tint; its alpha is not lighting.
     tint.a = 1.0;
 
 #ifdef POM

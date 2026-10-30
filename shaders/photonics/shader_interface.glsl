@@ -18,10 +18,6 @@ uniform vec2 view_pixel_size;
 #include "/include/utility/space_conversion.glsl"
 #include "/include/utility/encoding.glsl"
 
-#if defined OVERWORLD && defined SH_SKYLIGHT
-#include "/include/utility/spherical_harmonics.glsl"
-#endif
-
 vec3 indirect_light_color = vec3(0.0f);
 #define sun_direction light_dir
 
@@ -52,11 +48,9 @@ void load_fragment_variables(out vec3 albedo, out vec3 world_pos, out vec3 world
 
 // Avoids calculating skylight irradiance when its not used
 #if defined PH_LIGHTING_PASS && defined OVERWORLD
-#ifdef SH_SKYLIGHT
-    indirect_light_color = texelFetch(colortex4, ivec2(191, 11), 0).rgb;
-#else
+    // Compatibility interface: environment appearance for the external
+    // Photonics pass, not an RT surface-irradiance fallback.
     indirect_light_color = texelFetch(colortex4, ivec2(191, 1), 0).rgb;
-#endif
 #else
     indirect_light_color = mix(texelFetch(colortex4, ivec2(191, 1), 0).rgb, vec3(1.0f), 0.5);
 #endif

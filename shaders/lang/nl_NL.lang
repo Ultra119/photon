@@ -112,14 +112,10 @@ option.HANDHELD_LIGHTING               = Vastgehouden Belichting
 option.HANDHELD_LIGHTING.comment       = Voorwerpen die je vasthoud werpen licht op de omgeving. Dit heeft kleur als Gekleurde Lichtbronnen aanstaat.
 option.HANDHELD_LIGHTING_INTENSITY     = Vastgehouden Belichting Felheid
 option.HANDHELD_LIGHTING_INTENSITY.comment = Wijzigt de felheid van vastgehouden belichting.
-option.AO_IN_SUNLIGHT                  = AO In Zonlicht
-option.AO_IN_SUNLIGHT.comment          = Of omgevingsocclusie wel of niet in direct zonlicht mag verschijnen.
 option.CLOUD_SHADOWS                   = Wolkschaduwen
 option.CLOUD_SHADOWS.comment           = Schaduwen die door wolken worden geworpen.
 option.CLOUD_SHADOWS_INTENSITY         = Wolkschaduw Intensiteit
 option.CLOUD_SHADOWS_INTENSITY.comment = Wijzigt de intensiteit van wolkschaduwen.
-option.SH_SKYLIGHT                     = SH Luchtlicht
-option.SH_SKYLIGHT.comment             = Gebruikt een 'Spherical Harmonics'-codering voor directioneel licht van de lucht, wat een heel natuurlijk resultaat creëert.\nDit werkt goed samen met GTAO.
 option.SSS_SHEEN                       = SSS Glans
 option.SSS_SHEEN.comment               = Creëert een glans-effect op planten en bladeren. Dit helpt planten om minder ruw tegen het glimmende gras op te laten vallen.
 option.SSS_INTENSITY.comment           = Wijzigt de felheid van 'Subsurface Scattering (SSS)'.
@@ -151,8 +147,6 @@ option.PIXELATED_SHADOWS_RESOLUTION.comment = De grootte van het Gepixelde Schad
 option.SSS_STEPS                       = SSS Stappen
 option.SSS_STEPS.comment               = Hogere waarden verminderen ruis maar verslechteren de prestaties.
 
-option.VANILLA_AO                      = Vanilla AO
-option.VANILLA_AO.comment              = Minecraft's ingebouwde omgevingsocclusie.
 
 option.SUN_NR                          = §c▍ §fRood
 option.SUN_NG                          = §a▍ §fGroen
@@ -191,14 +185,7 @@ option.BLOCKLIGHT_G                    = §a▍ Groen
 option.BLOCKLIGHT_B                    = §9▍ Blauw
 option.BLOCKLIGHT_I                    = Bloklicht Intensiteit
 
-option.VOXEL_VOLUME_SIZE               = Voxel Volume Grootte
-option.VOXEL_VOLUME_SIZE.comment       = Wijzigt hoe ver weg gekleurde lichtbronnen zichtbaar zijn.\nHogere waarden verminderen sterk prestaties.. Ook beïnvloed door shaduwafstand.
-suffix.VOXEL_VOLUME_SIZE               = m³
-option.VOXEL_VOLUME_CENTER             = Voxel Volume Midden
-option.VOXEL_VOLUME_CENTER.comment     = Wijzigt waar het midden van het voxel volume is.\n'Voor de speler' zorgt ervoor dat er meer zichtbaar is zonder prestatiekosten door het volume voor de speler te zetten.
 
-value.VOXEL_VOLUME_CENTER.VOXEL_VOLUME_CENTER_AHEAD  = Voor de speler
-value.VOXEL_VOLUME_CENTER.VOXEL_VOLUME_CENTER_PLAYER = In de speler
 
 suffix.shadowMapResolution             = ²
 suffix.sunPathRotation                 = °
@@ -475,10 +462,6 @@ option.HARDCODED_SSS.comment           = Ingebouwde 'subsurface scattering' voor
 option.RAIN_PUDDLES                    = Regenplassen
 option.EMISSION_STRENGTH               = Emissie Intensiteit
 option.EMISSION_STRENGTH.comment       = verandert de intensiteit van de emissie. Dit verandert alleen de felheid van het blok zelf. Het geworpen licht blijft even fel.
-option.DIRECTIONAL_LIGHTMAPS           = Directionele Lichtmappen
-option.DIRECTIONAL_LIGHTMAPS.comment   = Zorgt ervoor dat licht reageert op de 'normal maps' van blokken. Dit creëert een nep-effect dat licht op randen in bloktexturen schijnt.
-option.DIRECTIONAL_LIGHTMAPS_INTENSITY = Directionele Lichtmappen Intensiteit
-option.DIRECTIONAL_LIGHTMAPS_INTENSITY.comment = Wijzigt de intensiteit van Directionele Lichtmappen
 option.POM_DEPTH                       = Parallax Diepte
 option.POM_DEPTH.comment               = Wijzigt hoe ver de Parralax Occlusie-Mapping in een blok kan gaan.
 option.POM_SAMPLES                     = Parallax Kwaliteit

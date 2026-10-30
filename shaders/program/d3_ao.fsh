@@ -1,10 +1,10 @@
 /*
 --------------------------------------------------------------------------------
 
-  Photon Shader by SixthSurge
+  Photon Shader: RT Mode
 
   program/d3_ao:
-  Calculate ambient occlusion
+  Short voxel-ray contact occlusion for direct lighting
 
 --------------------------------------------------------------------------------
 */
@@ -13,7 +13,7 @@
 
 layout(
     location = 0
-) out vec4 ambient; // ao, ambient SSS, octahedrally encoded bent normal
+) out vec4 ambient; // R: contact visibility, G: reserved zero, BA: reserved neutral
 layout(location = 1) out vec2 ambient_history_data; // depth, pixel age
 
 /* RENDERTARGETS: 6,14 */
@@ -27,11 +27,11 @@ in vec2 uv;
 uniform sampler2D noisetex;
 
 uniform sampler2D colortex1; // gbuffer 0
-uniform sampler2D colortex2; // gbuffer 1
 uniform sampler2D colortex6; // ambient lighting data
 uniform sampler2D colortex14; // ambient lighting history data
 
 uniform sampler2D depthtex1;
+uniform usampler3D voxel_sampler;
 
 uniform mat4 gbufferModelView;
 uniform mat4 gbufferModelViewInverse;
@@ -70,83 +70,11 @@ uniform bool world_age_changed;
 #include "/include/utility/encoding.glsl"
 #include "/include/utility/fast_math.glsl"
 #include "/include/utility/random.glsl"
-#include "/include/utility/slerp.glsl"
 #include "/include/utility/space_conversion.glsl"
 
-#if SHADER_AO == SHADER_AO_SSAO
-#include "/include/lighting/ao/ssao.glsl"
-#endif
-
-#if SHADER_AO == SHADER_AO_GTAO
-#include "/include/lighting/ao/gtao.glsl"
-#endif
+#include "/include/lighting/rt/rt_ao.glsl"
 
 const float ao_render_scale = 0.5;
-
-#if SHADER_AO == SHADER_AO_CONTACT
-// Mild 8-tap horizon/contact AO used when RTGI is enabled. RTGI already
-// supplies large-scale indirect occlusion, so this only adds crevice
-// darkening and leaves the bent normal at the geometric normal.
-vec3 reconstruct_view_pos(ivec2 texel, float depth) {
-    vec2 framebuffer_uv = (vec2(texel) + 0.5) / view_res;
-    vec2 projection_uv = taau_projection_uv(framebuffer_uv);
-    vec2 ndc = projection_uv * 2.0 - 1.0;
-
-#ifdef TAA
-#ifdef TAAU
-    ndc -= taa_offset * rcp(taau_render_scale);
-#else
-    ndc -= taa_offset * 0.66;
-#endif
-#endif
-
-    return project_and_divide(
-        gbufferProjectionInverse,
-        vec3(ndc, depth * 2.0 - 1.0)
-    );
-}
-
-float compute_contact_ao(ivec2 texel, float depth, vec3 view_normal) {
-    if (RTGI_CONTACT_AO_STRENGTH <= 0.0) {
-        return 1.0;
-    }
-
-    vec3 center_pos = reconstruct_view_pos(texel, depth);
-    ivec2 active_res = max(ivec2(1), ivec2(view_res * taau_render_scale));
-
-    const ivec2 offsets[8] = ivec2[8](
-        ivec2( 1,  0), ivec2(-1,  0),
-        ivec2( 0,  1), ivec2( 0, -1),
-        ivec2( 2,  0), ivec2(-2,  0),
-        ivec2( 0,  2), ivec2( 0, -2)
-    );
-
-    float occlusion = 0.0;
-
-    for (int i = 0; i < 8; ++i) {
-        ivec2 sample_texel = clamp(
-            texel + offsets[i] * 2,
-            ivec2(0),
-            active_res - 1
-        );
-
-        float sample_depth = texelFetch(combined_depth_tex, sample_texel, 0).x;
-        if (sample_depth >= 1.0) {
-            continue;
-        }
-
-        vec3 sample_pos = reconstruct_view_pos(sample_texel, sample_depth);
-        vec3 delta = sample_pos - center_pos;
-        float dist = length(delta);
-        float NoD = dot(view_normal, delta / max(dist, eps));
-
-        // Ignore nearly coplanar samples and distant geometry.
-        occlusion += max(0.0, NoD - 0.10) * exp(-dist * 0.35);
-    }
-
-    return clamp01(1.0 - RTGI_CONTACT_AO_STRENGTH * occlusion * 0.125);
-}
-#endif // SHADER_AO_CONTACT
 
 void main() {
     ivec2 texel = ivec2(gl_FragCoord.xy);
@@ -159,11 +87,7 @@ void main() {
 
     float depth = texelFetch(combined_depth_tex, view_texel, 0).x;
 
-#ifndef NORMAL_MAPPING
     vec4 gbuffer_data = texelFetch(colortex1, view_texel, 0);
-#else
-    vec4 gbuffer_data = texelFetch(colortex2, view_texel, 0);
-#endif
     vec2 dither = vec2(
         texelFetch(noisetex, texel & 511, 0).b,
         texelFetch(noisetex, (texel + 249) & 511, 0).b
@@ -173,11 +97,8 @@ void main() {
 
 #ifdef LOD_MOD_ACTIVE
     float depth_mc = texelFetch(depthtex1, view_texel, 0).x;
-    float depth_lod = texelFetch(lod_depth_tex_shading, view_texel, 0).x;
-    bool is_lod = is_lod_terrain(depth_mc, depth_lod);
 #else
 #define depth_mc depth
-    const bool is_lod = false;
 #endif
 
     bool is_hand;
@@ -199,50 +120,25 @@ void main() {
         return;
     }
 
-#ifdef NORMAL_MAPPING
-    vec3 world_normal = decode_unit_vector(gbuffer_data.xy);
-
-#ifdef LOD_MOD_ACTIVE
-    if (is_lod) {
-        vec4 gbuffer_data_0 = texelFetch(colortex1, view_texel, 0);
-        world_normal = decode_unit_vector(unpack_unorm_2x8(gbuffer_data_0.z));
-    }
-#endif
-#else
+    // Contact rays use geometric visibility. Normal-map detail must not
+    // redirect rays below the raster surface or into its own voxel cell.
     vec3 world_normal = decode_unit_vector(unpack_unorm_2x8(gbuffer_data.z));
-#endif
-
     vec3 view_normal = mat3(gbufferModelView) * world_normal;
 
     dither = r2(frameCounter, dither);
 
-    // Calculate AO
+    // The hand is not in world-space voxel coordinates. Uncovered/LOD
+    // surfaces likewise remain neutral when their rays leave the volume.
+    if (is_hand || RT_AO_STRENGTH <= 0.0) {
+        ambient = vec4(1.0, 0.0, 0.5, 0.5);
+        ambient_history_data = vec2(1.0 - depth, 0.0);
+        return;
+    }
 
-    vec2 ao;
-    vec3 bent_normal;
-
-#if SHADER_AO == SHADER_AO_NONE
-    ao = vec2(1.0, 0.0);
-    bent_normal = view_normal;
-#elif SHADER_AO == SHADER_AO_SSAO
-    ao.x = compute_ssao(screen_pos, view_pos, view_normal, dither);
-    ao.y = 0.0;
-    bent_normal = view_normal;
-#elif SHADER_AO == SHADER_AO_GTAO
-    ao = compute_gtao(
-        screen_pos,
-        view_pos,
-        view_normal,
-        dither,
-        is_lod,
-        bent_normal
-    );
-#elif SHADER_AO == SHADER_AO_CONTACT
-    // RTGI mode: RTGI carries indirect occlusion, so only add crevice
-    // darkening. No bent normal deflection is generated here.
-    ao = vec2(compute_contact_ao(view_texel, depth, view_normal), 0.0);
-    bent_normal = view_normal;
-#endif
+    float ao = compute_rt_ao(scene_pos, world_normal, dither, voxel_sampler);
+    // G is reserved for ambient SSS compatibility; RT AO does not invent an
+    // analytic ambient-SSS term or a bent-normal lighting substitute.
+    vec2 ao_sample = vec2(ao, 0.0);
 
     // Temporal accumulation
 
@@ -259,17 +155,6 @@ void main() {
         // Unpack history data
         float history_depth = 1.0 - history_data.x;
         float pixel_age = min(history_data.y, max_accumulated_frames);
-
-        vec3 history_bent_normal;
-        history_bent_normal.xy = history.zw * 2.0 - 1.0;
-        history_bent_normal.z = sqrt(
-            clamp01(1.0 - dot(history_bent_normal.xy, history_bent_normal.xy))
-        );
-
-        // Reproject bent normal
-        history_bent_normal
-            = history_bent_normal * mat3(gbufferPreviousModelView);
-        history_bent_normal = mat3(gbufferModelView) * history_bent_normal;
 
         // Depth rejection
         float view_norm = rcp_length(view_pos);
@@ -304,17 +189,12 @@ void main() {
         // Blend with history
         float history_weight = pixel_age / (pixel_age + 1.0);
 
-        ao = mix(ao, history.xy, history_weight);
-        bent_normal = slerp(bent_normal, history_bent_normal, history_weight);
-
-        ambient = vec4(ao, bent_normal.xy * 0.5 + 0.5);
+        ao_sample = mix(ao_sample, history.xy, history_weight);
+        ambient = vec4(ao_sample, 0.5, 0.5);
         ambient_history_data = vec2(1.0 - depth, pixel_age + 1.0);
     } else {
-        ambient = vec4(ao, bent_normal.xy * 0.5 + 0.5);
+        ambient = vec4(ao_sample, 0.5, 0.5);
         ambient_history_data = vec2(0.0);
     }
 
-    if (is_hand) {
-        ambient_history_data.x = 1.0;
-    }
 }

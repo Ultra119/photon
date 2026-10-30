@@ -13,9 +13,8 @@
 
 layout(location = 0) out vec3 fragment_color;
 layout(location = 1) out vec4 colortex3_clear;
-layout(location = 2) out vec3 radiance_direct;
 
-/* RENDERTARGETS: 0,3,18 */
+/* RENDERTARGETS: 0,3 */
 
 in vec2 uv;
 
@@ -29,12 +28,6 @@ flat in vec3 moon_color;
 #include "/include/fog/overworld/parameters.glsl"
 flat in OverworldFogParameters fog_params;
 
-#if defined SH_SKYLIGHT
-flat in mat3 sky_sh_0;
-flat in mat3 sky_sh_1;
-flat in mat3 sky_sh_2;
-flat in vec3 skylight_up;
-#endif
 
 flat in float rainbow_amount;
 #endif
@@ -299,7 +292,6 @@ void main() {
 
         // Apply purkinje shift
         fragment_color = purkinje_shift(fragment_color, vec2(0.0, 1.0));
-        radiance_direct = fragment_color;
     } else { // Terrain
         // Sample ambient occlusion a while before using it (latency hiding)
 
@@ -433,23 +425,10 @@ void main() {
         }
 
         float ao = ambient_upscaled.x;
-        float ambient_sss = ambient_upscaled.y;
 
-        vec3 bent_normal;
-        bent_normal.xy = ambient_upscaled.zw * 2.0 - 1.0;
-        bent_normal.z
-            = sqrt(clamp01(1.0 - dot(bent_normal.xy, bent_normal.xy)));
-        bent_normal = mat3(gbufferModelViewInverse) * bent_normal;
-
-        // Sense check bent normal
-        if (dot(bent_normal, normal) < eps) {
-            bent_normal = normal;
-        }
-
-        // No AO/bent normal on hand
+        // The hand is outside the world-space voxel volume.
         if (is_hand) {
             ao = 1.0;
-            bent_normal = normal;
         }
 
         // Calculate lighting dot products
@@ -546,11 +525,10 @@ void main() {
             position_scene,
             normal,
             flat_normal,
-            bent_normal,
+            normal, // Deferred RTGI does not use a bent-normal probe offset.
             shadows,
             light_levels,
             ao,
-            ambient_sss,
             sss_depth,
 #ifdef CLOUD_SHADOWS
             cloud_shadows,
@@ -566,35 +544,32 @@ void main() {
             LoV,
             direct_diffuse
         );
-        radiance_direct = direct_diffuse;
 
         // Specular highlight
 
 #if defined WORLD_OVERWORLD || defined WORLD_END
         vec3 direct_specular = get_specular_highlight(material, NoL, NoV, NoH, LoV, LoH)
-            * light_color * shadows * cloud_shadows * ao;
+            * light_color * shadows * cloud_shadows;
+#ifdef RT_AO_IN_DIRECT
+        direct_specular *= ao;
+#endif
         fragment_color += direct_specular;
-        radiance_direct += direct_specular;
 #endif
 
         // Specular reflections
 
-#if defined ENVIRONMENT_REFLECTIONS || defined SKY_REFLECTIONS
+#if RT_REFLECTION_RAYS > 0
         if (material.ssr_multiplier > eps) {
             mat3 tbn = get_tbn_matrix(normal);
 
             fragment_color += get_specular_reflections(
                 material,
                 tbn,
-                vec3(uv, depth),
-                position_view,
                 position_world,
                 normal,
                 flat_normal,
                 direction_world,
-                direction_world * tbn,
-                light_levels.y,
-                false
+                direction_world * tbn
             );
         }
 #endif

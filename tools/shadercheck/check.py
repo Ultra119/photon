@@ -220,6 +220,7 @@ COMMON_UNIFORMS = {
  'rtgi_sky_history_sampler':'uniform sampler2D rtgi_sky_history_sampler;',
  'ddgi_irradiance_sampler':'uniform sampler3D ddgi_irradiance_sampler;',
  'ddgi_direction_sampler':'uniform sampler3D ddgi_direction_sampler;',
+ 'ddgi_cell_sampler':'uniform isampler3D ddgi_cell_sampler;',
 }
 
 INC_RE=re.compile(r'^\s*#include\s+"([^"]+)"\s*$')
@@ -316,3 +317,4 @@ if __name__=='__main__':
     p=subprocess.run([GLSLANG,'-S',stage,str(out)],capture_output=True,text=True)
     print(p.stdout+p.stderr)
     print('source:',out,'lines:',len(full.splitlines()),'rc:',p.returncode)
+    raise SystemExit(p.returncode)

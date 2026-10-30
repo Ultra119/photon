@@ -112,14 +112,10 @@ option.HANDHELD_LIGHTING               = 손에 든 조명
 option.HANDHELD_LIGHTING.comment       = 손에 든 아이템이 월드에 빛을 비춥니다. 유색 조명이 활성화되어 있으면 손에 든 조명도 해당 광원의 색상으로 표시됩니다
 option.HANDHELD_LIGHTING_INTENSITY     = 손에 든 조명 강도
 option.HANDHELD_LIGHTING_INTENSITY.comment = 손에 든 광원의 밝기를 조절합니다
-option.AO_IN_SUNLIGHT                  = 햇빛 아래 AO
-option.AO_IN_SUNLIGHT.comment          = 직사광선/달빛 아래에서 셰이더 주변광 차폐를 적용할지 여부
 option.CLOUD_SHADOWS                   = 구름 그림자
 option.CLOUD_SHADOWS.comment           = 구름이 지면에 드리우는 그림자
 option.CLOUD_SHADOWS_INTENSITY         = 구름 그림자 강도
 option.CLOUD_SHADOWS_INTENSITY.comment = 구름 그림자의 강도를 조절합니다
-option.SH_SKYLIGHT                     = SH 하늘빛
-option.SH_SKYLIGHT.comment             = 오버월드에서 방향성 하늘빛을 구면 조화 함수로 인코딩하여 매우 자연스러운 결과를 제공합니다.\nGTAO와 함께 사용하면 효과적입니다
 option.SSS_SHEEN                       = SSS 광택
 option.SSS_SHEEN.comment               = 식물과 나뭇잎의 반사 "광택" 효과. 키 큰 풀 등이 잔디의 반사와 더 잘 어우러지도록 돕습니다
 option.SSS_INTENSITY                   = SSS 강도
@@ -149,8 +145,6 @@ option.PIXELATED_SHADOWS_RESOLUTION    = 픽셀화된 그림자 해상도
 option.SSS_STEPS                       = SSS 단계
 option.SSS_STEPS.comment               = 값을 높이면 SSS가 적용된 식물이나 기타 재질의 노이즈가 줄어들지만 성능 비용이 발생합니다.
 
-option.VANILLA_AO                      = 바닐라 AO
-option.VANILLA_AO.comment              = 마인크래프트 내장 주변광 차폐
 
 option.SUN_NR                          = §c빨강
 option.SUN_NG                          = §a초록
@@ -189,14 +183,7 @@ option.BLOCKLIGHT_G                    = §a초록
 option.BLOCKLIGHT_B                    = §9파랑
 option.BLOCKLIGHT_I                    = 블록 조명 강도
 
-option.VOXEL_VOLUME_SIZE               = 복셀 볼륨 크기
-option.VOXEL_VOLUME_SIZE.comment       = 성능에 큰 영향을 미치며, 그림자 거리의 영향도 받습니다
-suffix.VOXEL_VOLUME_SIZE               = m³
-option.VOXEL_VOLUME_CENTER             = 복셀 볼륨 중심
-option.VOXEL_VOLUME_CENTER.comment     = 전방: 복셀 볼륨이 플레이어 앞쪽을 중심으로 배치되어 더 많은 영역이 보이게 됩니다
 
-value.VOXEL_VOLUME_CENTER.VOXEL_VOLUME_CENTER_AHEAD  = 전방
-value.VOXEL_VOLUME_CENTER.VOXEL_VOLUME_CENTER_PLAYER = 플레이어
 
 suffix.shadowMapResolution             = ²
 suffix.sunPathRotation                 = °
@@ -486,10 +473,6 @@ option.HARDCODED_SSS.comment           = 일부 블록(예: 나뭇잎)에 대한
 option.RAIN_PUDDLES                    = 빗물 웅덩이
 option.EMISSION_STRENGTH               = 발광 강도
 option.EMISSION_STRENGTH.comment       = 횃불 등 발광 물체의 밝기를 조절합니다. 이 옵션은 방출되는 빛의 밝기에는 영향을 주지 않으며, 오직 광원 자체의 밝기에만 영향을 줍니다. 하드코딩된 발광에도 적용됩니다
-option.DIRECTIONAL_LIGHTMAPS           = 방향성 라이트맵
-option.DIRECTIONAL_LIGHTMAPS.comment   = 블록 조명과 하늘빛이 노멀 맵의 영향을 받게 합니다. 방식의 한계로 인해 일부 시각적 문제가 발생할 수 있습니다
-option.DIRECTIONAL_LIGHTMAPS_INTENSITY = 방향성 라이트맵 강도
-option.DIRECTIONAL_LIGHTMAPS_INTENSITY.comment = 방향성 라이트맵의 강도를 조절합니다
 option.POM_DEPTH                       = 시차 깊이
 option.POM_DEPTH.comment               = POM이 블록 안쪽으로 얼마나 깊이 들어갈 수 있는지
 option.POM_SAMPLES                     = 시차 샘플

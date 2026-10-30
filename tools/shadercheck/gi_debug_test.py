@@ -46,12 +46,13 @@ EXPECTED = {
     "GI_DEBUG_RAW":          ({"tonemap"}, {"rtgi_raw"}),
     "GI_DEBUG_HISTORY":      ({"tonemap"}, {"rtgi_accum", "rtgi_history"}),
     "GI_DEBUG_FILTERED":     ({"tonemap"}, {"rtgi_filtered"}),
-    "GI_DEBUG_VARIANCE":     ({"spread"}, {"rtgi_accum", "rtgi_history", "rtgi_raw"}),
+    "GI_DEBUG_VARIANCE":     (set(), {"rtgi_accum", "rtgi_history", "rtgi_sky_accum", "rtgi_sky_history"}),
     "GI_DEBUG_HIT":          ({"hit_mask"}, {"rtgi_hit"}),
     "GI_DEBUG_REJECT":       ({"reject_mask"}, {"rtgi_reject"}),
     "GI_DEBUG_VOXEL_ID":     ({"voxel_id"}, set()),
     "GI_DEBUG_VOXEL_LIGHT":  ({"voxel_light"}, set()),
     "GI_DEBUG_VOXEL_ALBEDO": ({"voxel_albedo"}, set()),
+    "GI_DEBUG_COVERAGE":    ({"coverage"}, set()),
 }
 
 # (world wrapper, stage, image name, the value of GI_DEBUG that writes it)
@@ -116,7 +117,7 @@ def main() -> int:
         for line in text.splitlines():
             if re.match(r"\s*uniform\s+\w+\s+rtgi_\w+_sampler\s*;", line):
                 continue
-            reads.update(re.findall(r"\b(rtgi_[a-z]+)_sampler\b", line))
+            reads.update(re.findall(r"\b(rtgi_[a-z_]+)_sampler\b", line))
 
         if encoders != want_encoders:
             failures.append(
@@ -128,6 +129,23 @@ def main() -> int:
                 f"final.fsh {view}: buffer reads {sorted(reads)}, "
                 f"expected {sorted(want_reads)}"
             )
+
+        if view == "GI_DEBUG_COVERAGE":
+            # Regression: coverage must be dispatched before the fine-only
+            # voxel bounds guard, or medium/coarse rings become false magenta.
+            body_start = text.find("vec3 gi_debug_view(")
+            body = text[body_start:] if body_start >= 0 else ""
+            cov = body.find("return gi_debug_coverage(")
+            fine_guard = body.find("if (!is_inside_voxel_grid(voxel_coord))")
+            if cov < 0:
+                failures.append("coverage view does not dispatch gi_debug_coverage")
+            if fine_guard >= 0 and cov > fine_guard:
+                failures.append("coverage dispatch is after the fine-only bounds guard")
+            for sampler in ("voxel_mid_sampler", "voxel_coarse_sampler"):
+                if f"texelFetch({sampler}" not in text.replace(" ", ""):
+                    failures.append(f"coverage view does not sample {sampler}")
+            if not re.search(r"block_id\s*!=\s*0u", text):
+                failures.append("coverage view does not distinguish populated voxel records")
 
     # --- 2b: every view's corner swatch must be a different colour ----------
     # The swatch exists so a screenshot identifies itself. Two views sharing a

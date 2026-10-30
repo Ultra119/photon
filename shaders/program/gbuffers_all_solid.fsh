@@ -44,11 +44,11 @@ flat in vec2 atlas_tile_scale;
 
 #ifdef COLORWHEEL
 vec2 light_levels;
-float vanilla_ao;
+float colorwheel_ao_unused;
 #else
 in vec2 light_levels;
 #if defined PROGRAM_GBUFFERS_TERRAIN
-in float vanilla_ao;
+in float colorwheel_ao_unused;
 #endif
 #endif
 
@@ -105,10 +105,6 @@ uniform vec4 entityColor;
 
 #if defined PROGRAM_GBUFFERS_TERRAIN && defined POM
 #include "/include/surface/parallax.glsl"
-#endif
-
-#ifdef DIRECTIONAL_LIGHTMAPS
-#include "/include/lighting/directional_lightmaps.glsl"
 #endif
 
 #include "/include/misc/material_fix.glsl"
@@ -300,7 +296,7 @@ void main() {
         base_color,
         base_color,
         light_levels,
-        vanilla_ao,
+        colorwheel_ao_unused, // Required API output; not used for RT lighting.
         overlayColor
     );
     light_levels = clamp((light_levels - 1.0 / 32.0) * 32.0 / 30.0, 0.0, 1.0);
@@ -356,19 +352,6 @@ void main() {
     base_color.rgb = vec3(1.0);
 #endif
 
-#if defined PROGRAM_GBUFFERS_TERRAIN && defined VANILLA_AO
-#if SHADER_AO != SHADER_AO_NONE
-    const float vanilla_ao_strength = 0.9 * VANILLA_AO_INTENSITY;
-    const float vanilla_ao_lift = 0.5 * (1-((1-VANILLA_AO_INTENSITY)*0.5));
-#else
-    const float vanilla_ao_strength = 1.0 * VANILLA_AO_INTENSITY;
-    const float vanilla_ao_lift = 0.0;
-#endif
-
-    base_color.rgb *= lift(vanilla_ao, vanilla_ao_lift) * vanilla_ao_strength
-        + (1.0 - vanilla_ao_strength);
-#endif
-
 #if defined PROGRAM_GBUFFERS_ENTITIES
     base_color.rgb = mix(base_color.rgb, entityColor.rgb, entityColor.a);
 #endif
@@ -400,11 +383,9 @@ void main() {
 
     normal = tbn * normal;
 
-    adjusted_light_levels *= mix(0.7, 1.0, material_ao);
-
-#ifdef DIRECTIONAL_LIGHTMAPS
-    adjusted_light_levels *= get_directional_lightmaps(scene_pos, normal);
-#endif
+    // Material AO and lightmap gradients are not indirect-light substitutes.
+    // RTGI/probes own surface irradiance; raw light levels below remain only
+    // shadow/SSS eligibility signals.
 #endif
 
 #if defined NO_NORMAL

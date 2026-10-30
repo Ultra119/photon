@@ -11,29 +11,22 @@ FILES=[
 ]
 VARIANTS={
 'default':[],
-'rtgi_off':['!RAYTRACED_GI'],
-'rtgi_refl_off':['!RAYTRACED_GI','!RT_REFLECTIONS'],
+'reflections_off':['RT_REFLECTION_RAYS=0'],
+'reflections_2ray':['RT_REFLECTION_RAYS=2'],
+'reflections_4ray':['RT_REFLECTION_RAYS=4'],
 'normal_map':['NORMAL_MAPPING'],
 'taau':['TAAU','TAAU_RENDER_SCALE=0.75'],
 'taau_50':['TAAU','TAAU_RENDER_SCALE=0.50'],
-'res0_8rays':['RTGI_RESOLUTION=0','RTGI_RAY_COUNT=8','VOXEL_VOLUME_SIZE=512'],
-'no_sh_skylight':['!SH_SKYLIGHT'],
+'res0_8rays':['RTGI_RESOLUTION=0','RTGI_RAY_COUNT=8','RT_CLIPMAP_SIZE=128','RT_COVERAGE_LEVELS=3'],
 'no_vl':['!VL'],
 'no_shadow':['!SHADOW','!SHADOW_SSRT'],
 'no_shadow_color':['!SHADOW_COLOR'],
 'no_refraction':['REFRACTION=REFRACTION_OFF'],
 'refraction_water':['REFRACTION=REFRACTION_WATER_ONLY'],
-'no_env_refl':['!ENVIRONMENT_REFLECTIONS','!SKY_REFLECTIONS'],
-'no_ssr_rough':['!SSR_ROUGHNESS_SUPPORT'],
-'no_ao':['!SHADER_AO'],
-# An undefined SHADER_AO reads as 0 in `#if`, which happens to equal
-# SHADER_AO_NONE. Cover each mode explicitly so the intent is on record.
-'ao_none':['SHADER_AO=SHADER_AO_NONE'],
-'ao_ssao':['SHADER_AO=SHADER_AO_SSAO'],
-'ao_gtao':['SHADER_AO=SHADER_AO_GTAO'],
-'ao_contact':['SHADER_AO=SHADER_AO_CONTACT'],
-'ao_gtao_rtgi_off':['SHADER_AO=SHADER_AO_GTAO','!RAYTRACED_GI'],
-'ao_contact_rtgi_off':['SHADER_AO=SHADER_AO_CONTACT','!RAYTRACED_GI'],
+'rt_ao_off':['RT_AO_STRENGTH=0.00'],
+'rt_ao_low':['RT_AO_STRENGTH=0.25','RT_AO_RAYS=2'],
+'rt_ao_high':['RT_AO_STRENGTH=1.00','RT_AO_RAYS=8','RT_AO_RADIUS=2.00'],
+'rt_ao_no_direct':['!RT_AO_IN_DIRECT'],
 # GI debug views. GI_DEBUG_OFF must be the cheapest config, so it is
 # covered alongside the views that allocate extra images.
 'gi_debug_off':['DEBUG_VIEW=DEBUG_VIEW_GI','GI_DEBUG=GI_DEBUG_OFF'],
@@ -42,11 +35,10 @@ VARIANTS={
 'gi_debug_reject':['DEBUG_VIEW=DEBUG_VIEW_GI','GI_DEBUG=GI_DEBUG_REJECT'],
 'gi_debug_voxel':['DEBUG_VIEW=DEBUG_VIEW_GI','GI_DEBUG=GI_DEBUG_VOXEL_ID'],
 'gi_debug_variance':['DEBUG_VIEW=DEBUG_VIEW_GI','GI_DEBUG=GI_DEBUG_VARIANCE'],
-'gi_debug_no_rtgi':['DEBUG_VIEW=DEBUG_VIEW_GI','GI_DEBUG=GI_DEBUG_HIT','!RAYTRACED_GI'],
-'voxel_64':['VOXEL_VOLUME_SIZE=64'],
-'voxel_256':['VOXEL_VOLUME_SIZE=256'],
-'voxel_512':['VOXEL_VOLUME_SIZE=512'],
-'voxel_ahead':['VOXEL_VOLUME_CENTER=VOXEL_VOLUME_CENTER_AHEAD'],
+'clipmap_64':['RT_CLIPMAP_SIZE=64'],
+'clipmap_96_levels2':['RT_CLIPMAP_SIZE=96','RT_COVERAGE_LEVELS=2'],
+'clipmap_levels1':['RT_COVERAGE_LEVELS=1'],
+'gi_debug_coverage':['DEBUG_VIEW=DEBUG_VIEW_GI','GI_DEBUG=GI_DEBUG_COVERAGE'],
 }
 fail=[];total=0
 for f,vn in itertools.product(FILES,VARIANTS):

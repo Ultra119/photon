@@ -113,14 +113,10 @@ option.HANDHELD_LIGHTING               = 手持光源
 option.HANDHELD_LIGHTING.comment       = 手持物品會投射光源;若啟用有色光線，手持光源也會染色
 option.HANDHELD_LIGHTING_INTENSITY     = 手持光源強度
 option.HANDHELD_LIGHTING_INTENSITY.comment = 調整手持光源亮度
-option.AO_IN_SUNLIGHT                  = 日光下 AO
-option.AO_IN_SUNLIGHT.comment          = 是否在直射太陽與月光下套用遮蔽效果
 option.CLOUD_SHADOWS                   = 雲層陰影
 option.CLOUD_SHADOWS.comment           = 雲朵在地面投下的陰影
 option.CLOUD_SHADOWS_INTENSITY         = 雲層陰影強度
 option.CLOUD_SHADOWS_INTENSITY.comment = 調整雲層陰影強度
-option.SH_SKYLIGHT                     = SH 天光
-option.SH_SKYLIGHT.comment             = 在主世界使用球面調和編碼天光，效果自然。適合搭配 GTAO
 option.SSS_SHEEN                       = 次表面散射高光
 option.SSS_SHEEN.comment               = 植被高光次表面散射，讓高草等更融入草地光澤
 option.SSS_INTENSITY                   = 次表面散射強度
@@ -148,8 +144,6 @@ option.PIXELATED_SHADOWS_RESOLUTION    = 像素化陰影解析度
 option.SSS_STEPS                       = 次表面散射取樣步數
 option.SSS_STEPS.comment               = 增加可減少雜訊，但會影響效能
 
-option.VANILLA_AO                      = 原版 AO
-option.VANILLA_AO.comment              = 遊戲內建遮蔽
 
 option.SUN_NR                          = 紅色陽光
 option.SUN_NG                          = 綠色陽光
@@ -188,14 +182,7 @@ option.BLOCKLIGHT_G                    = 方塊光綠色
 option.BLOCKLIGHT_B                    = 方塊光藍色
 option.BLOCKLIGHT_I                    = 方塊光強度
 
-option.VOXEL_VOLUME_SIZE               = 體素體積尺寸
-option.VOXEL_VOLUME_SIZE.comment       = 高度耗能，同時受陰影距離影響
-suffix.VOXEL_VOLUME_SIZE               = 公尺
-option.VOXEL_VOLUME_CENTER             = 體素體積中心
-option.VOXEL_VOLUME_CENTER.comment     = 「前方」:以玩家面前為中心，能看到更多
 
-value.VOXEL_VOLUME_CENTER.VOXEL_VOLUME_CENTER_AHEAD  = 前方
-value.VOXEL_VOLUME_CENTER.VOXEL_VOLUME_CENTER_PLAYER = 玩家
 
 suffix.shadowMapResolution             = ²
 suffix.sunPathRotation                 = °
@@ -469,10 +456,6 @@ option.HARDCODED_SSS.comment           = 部分方塊(如樹葉)的硬編碼次�
 option.RAIN_PUDDLES                    = 雨水水坑
 option.EMISSION_STRENGTH               = 自發光強度
 option.EMISSION_STRENGTH.comment       = 調整火把等發光物件的亮度，不影響光源投射亮度
-option.DIRECTIONAL_LIGHTMAPS           = 方向性光照貼圖
-option.DIRECTIONAL_LIGHTMAPS.comment   = 讓方塊光與天光受法線貼圖影響;可能有些視覺異常
-option.DIRECTIONAL_LIGHTMAPS_INTENSITY = 方向性光照貼圖強度
-option.DIRECTIONAL_LIGHTMAPS_INTENSITY.comment = 調整方向性光照貼圖強度
 option.POM_DEPTH                       = 視差深度
 option.POM_DEPTH.comment               = 視差遮蔽貼圖可凹陷的深度
 option.POM_SAMPLES                     = 視差取樣數

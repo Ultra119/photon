@@ -27,33 +27,76 @@ KNOWN_DUPLICATE_KEYS = {
 }
 
 RTGI_SCREEN_OPTIONS = [
-    "RAYTRACED_GI",
+    "LIGHTING_MODE",
+    "RTGI_PROBE_RAYS",
+    "RTGI_PROBE_HYSTERESIS",
     "RTGI_INTENSITY",
     "RTGI_BRIGHTNESS",
+    "RT_AO_STRENGTH",
+    "RTGI_VOXELIZE_ENTITIES",
+    "RTGI_RAY_COUNT",
+    "RTGI_RESOLUTION",
+    "RT_REFLECTION_RAYS",
+    "PHYSICAL_BSDF_ENERGY_COMP",
+    "RT_CLIPMAP_SIZE",
+    "RT_COVERAGE_LEVELS",
+]
+
+DEAD_OPTIONS = [
+    "PHOTOMETRIC_EXPOSURE",
+    "RT_AMBIENT_OCCLUSION",
+    "RAYTRACED_GI",
+    "RTGI_TRACER",
+    "RTGI_MULTIBOUNCE",
     "RTGI_INTERIOR_RETENTION",
-    "RTGI_CONTACT_AO_STRENGTH",
     "RTGI_POINT_LIGHT_STRENGTH",
     "RTGI_POINT_LIGHT_RADIUS",
     "RTGI_SSGI_LOCAL_LIGHT_SCALE",
     "RTGI_CAVE_AMBIENT_SCALE",
-    "RTGI_RAY_COUNT",
-    "RTGI_RESOLUTION",
+    "RTGI_DIRECT_BLOCK_FALLBACK",
+    "RTGI_GI_INPUT",
+    "BOUNCED_LIGHT_I",
+    "CAVE_LIGHTING_I",
+    "HANDHELD_LIGHTING",
+    "SH_SKYLIGHT",
+    "VANILLA_AO",
+    "VANILLA_AO_INTENSITY",
+    "SHADER_AO",
+    "SSAO_STEPS",
+    "SSAO_RADIUS",
+    "GTAO_SLICES",
+    "GTAO_HORIZON_STEPS",
+    "GTAO_RADIUS",
+    "DIRECTIONAL_LIGHTMAPS",
+    "DIRECTIONAL_LIGHTMAPS_INTENSITY",
+    "AO_IN_SUNLIGHT",
+    "RTGI_CONTACT_AO_STRENGTH",
     "RT_REFLECTIONS",
-    "PHYSICAL_BSDF_ENERGY_COMP",
+    "ENVIRONMENT_REFLECTIONS",
+    "SKY_REFLECTIONS",
+    "SSR_ROUGHNESS_SUPPORT",
+    "SSR_RAY_COUNT",
+    "SSR_INTERSECTION_STEPS_SMOOTH",
+    "SSR_INTERSECTION_STEPS_ROUGH",
+    "SSR_REFINEMENT_STEPS",
+    "SSR_ROUGHNESS_THRESHOLD",
     "VOXEL_VOLUME_SIZE",
     "VOXEL_VOLUME_CENTER",
 ]
 
-DEAD_OPTIONS = ["PHOTOMETRIC_EXPOSURE", "RT_AMBIENT_OCCLUSION"]
-
 EXPECTED_CUSTOM_IMAGES = [
     "voxel_img",
+    "voxel_mid_img",
+    "voxel_coarse_img",
     "rtgi_raw_img",
     "rtgi_history_img",
     "rtgi_accum_img",
     "rtgi_filtered_img",
     "rtgi_sky_accum_img",
     "rtgi_sky_history_img",
+    "ddgi_irradiance_img",
+    "ddgi_direction_img",
+    "ddgi_cell_img",
 ]
 
 DIRECTIVE_WORDS = {
@@ -86,6 +129,7 @@ PROPERTIES_ONLY_OPTIONS = {
     "tonemap_right",
     "DITHERED_TRANSLUCENCY_FALLBACK",
     "BOUNCE_GRID",
+    "LIGHTING_MODE",
     "ENTITY_SHADOWS",
     "BLOCK_ENTITY_SHADOWS",
     "INFO",
@@ -521,8 +565,8 @@ def main() -> int:
         if f"image.{name}" not in properties:
             errors.append(f"missing custom image declaration: {name}")
 
-    if "RAYTRACED_GI" not in screen_line:
-        errors.append("RAYTRACED_GI is not exposed in the raytracing menu")
+    if "LIGHTING_MODE" not in screen_line:
+        errors.append("LIGHTING_MODE is not exposed in the raytracing menu")
 
     orphan_errors, orphan_warnings = check_orphan_options(properties, settings)
     errors.extend(orphan_errors)

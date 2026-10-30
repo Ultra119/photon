@@ -113,14 +113,10 @@ option.HANDHELD_LIGHTING               = 手持光源
 option.HANDHELD_LIGHTING.comment       = 可在世界投射光线的手持光源物品. 如果启用了彩色光源, 则手持光源也会投射近似于它们照明颜色的光照.
 option.HANDHELD_LIGHTING_INTENSITY     = 手持光源强度
 option.HANDHELD_LIGHTING_INTENSITY.comment = 调节手持光源的亮度.
-option.AO_IN_SUNLIGHT                  = 应用环境光遮蔽于阳光照射处
-option.AO_IN_SUNLIGHT.comment          = 决定是否应用光影的环境光遮蔽在直接的阳光/月光照明区域下.
 option.CLOUD_SHADOWS                   = 云影
 option.CLOUD_SHADOWS.comment           = 由云层投射在地面的阴影.
 option.CLOUD_SHADOWS_INTENSITY         = 云影强度
 option.CLOUD_SHADOWS_INTENSITY.comment = 调节云影的强度.
-option.SH_SKYLIGHT                     = 球谐天空光
-option.SH_SKYLIGHT.comment             = 在主世界中使用球谐函数编码指向天空光, 可提供非常自然的效果. 与 GTAO 效果相得益彰.
 option.SSS_SHEEN                       = 次表面散射光泽
 option.SSS_SHEEN.comment               = 在植物和树叶上的高光光泽效果, 有助于高草丛和其他事物更好地和草地高光效果混合.
 option.SSS_INTENSITY                   = 次表面散射强度
@@ -150,8 +146,6 @@ option.PIXELATED_SHADOWS_RESOLUTION    = 像素阴影分辨率
 option.SSS_STEPS                       = 次表面散射步数
 option.SSS_STEPS.comment               = 增加以减少草丛和其他具有次表面散射(SSS)材质的噪点, 但会牺牲性能.
 
-option.VANILLA_AO                      = 原版环境光遮蔽
-option.VANILLA_AO.comment              = 我的世界内置的环境光遮蔽.
 
 option.SUN_NR                          = 阳光 - 正午 - 红色
 option.SUN_NG                          = 阳光 - 正午 - 绿色
@@ -190,14 +184,7 @@ option.BLOCKLIGHT_G                    = 方块光 - 绿色
 option.BLOCKLIGHT_B                    = 方块光 - 蓝色
 option.BLOCKLIGHT_I                    = 方块光强度
 
-option.VOXEL_VOLUME_SIZE               = 体素化大小
-option.VOXEL_VOLUME_SIZE.comment       = 高性能影响, 同时也受阴影距离影响.
-suffix.VOXEL_VOLUME_SIZE               = m
-option.VOXEL_VOLUME_CENTER             = 体素化中心位置
-option.VOXEL_VOLUME_CENTER.comment     = 前置: 使体素化中心位置设定在玩家的前方, 意味着更多位于前方的事物可被体素化追踪到数据. 以玩家为中心: 体素化中心位置即是玩家所在位置.
 
-value.VOXEL_VOLUME_CENTER.VOXEL_VOLUME_CENTER_AHEAD  = 前置
-value.VOXEL_VOLUME_CENTER.VOXEL_VOLUME_CENTER_PLAYER = 以玩家为中心
 
 suffix.shadowMapResolution             = ²
 suffix.sunPathRotation                 = °
@@ -471,10 +458,6 @@ option.HARDCODED_SSS.comment           = 为某些方块硬编码次表面散射
 option.RAIN_PUDDLES                    = 雨水坑
 option.EMISSION_STRENGTH               = 发光强度
 option.EMISSION_STRENGTH.comment       = 调节像火把这类事物的发光亮度. 这不会影响它们投射的光线亮度, 仅局限于光源本身的亮度. 本选项也对硬编码自发光也有效.
-option.DIRECTIONAL_LIGHTMAPS           = 指向性光图
-option.DIRECTIONAL_LIGHTMAPS.comment   = 使方块光和天空光可影响法线贴图. 由于算法限制, 可能会导致一些视觉问题.
-option.DIRECTIONAL_LIGHTMAPS_INTENSITY = 指向性光图强度
-option.DIRECTIONAL_LIGHTMAPS_INTENSITY.comment = 调节指向性光图的强度.
 option.POM_DEPTH                       = 视差深度
 option.POM_DEPTH.comment               = 视差效果陷入方块的深度.
 option.POM_SAMPLES                     = 视差采样值

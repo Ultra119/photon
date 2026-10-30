@@ -5,6 +5,12 @@
 #include "voxel_storage.glsl"
 #include "/include/utility/color.glsl"
 
+// R7 clipmap stack. Iris clears all three images at frame start; terrain writes
+// repopulate the active levels. Inactive levels stay cleared and are not traced.
+layout(r32ui) uniform uimage3D voxel_img;
+layout(r32ui) uniform uimage3D voxel_mid_img;
+layout(r32ui) uniform uimage3D voxel_coarse_img;
+
 #if defined PROGRAM_SHADOW || defined PROGRAM_GBUFFERS_TERRAIN || defined PROGRAM_GBUFFERS_WATER
 
 bool is_voxel_corner(vec3 pos, float tolerance) {
@@ -106,7 +112,7 @@ void update_rt_voxel_grid(
 #else
     vec3 scene_pos = (gbufferModelViewInverse * vec4(view_pos, 1.0)).xyz;
 #endif
-    vec3 voxel_pos = scene_to_voxel_space(scene_pos);
+    vec3 world_pos = scene_pos + cameraPosition;
 
     // Remap 0u (default unassigned terrain like stone, dirt, deepslate) to stone ID 4u
 #if !defined PROGRAM_GBUFFERS_WATER
@@ -128,9 +134,7 @@ void update_rt_voxel_grid(
     bool is_translucent = (block_id == 5u || block_id == 14u || block_id == 15u || (80u <= block_id && block_id <= 96u));
     bool is_emitter = (32u <= block_id && block_id < 80u && block_id != 58u && block_id != 63u);
 
-    if (should_voxelize(block_id) && is_inside_voxel_volume(voxel_pos)) {
-        ivec3 coord = clamp_to_voxel_grid(ivec3(voxel_pos));
-
+    if (should_voxelize(block_id)) {
         vec2 sample_uv = (mid_tex_coord != vec2(0.0)) ? mid_tex_coord : tex_coord;
         vec4 tex_sample = textureLod(tex, sample_uv, 0.0);
         if (tex_sample.a < 0.1 && sample_uv != tex_coord) {
@@ -156,9 +160,30 @@ void update_rt_voxel_grid(
             is_emitter
         );
         // Atomic max makes the final voxel independent of vertex write order.
-        // The packed layout puts block ID in the high bits,
-        // so a solid / higher-ID voxel always wins over air.
-        imageAtomicMax(voxel_img, coord, packed_data);
+        // The packed layout puts block ID in the high bits, so a solid /
+        // higher-ID voxel always wins over air. Coarse levels reuse the same
+        // representative payload as conservative occupancy cubes; they do not
+        // sum emitter power across the blocks folded into one coarse cell.
+        for (int level = 0; level < RT_COVERAGE_LEVELS; ++level) {
+            float scale = rt_clip_scale(level);
+            vec3 local = (world_pos - rt_clip_origin_world(level)) / scale;
+            if (any(lessThan(local, vec3(0.0)))
+                || any(greaterThanEqual(local, rt_clipmap_size_f))) {
+                continue;
+            }
+            ivec3 coord = rt_clip_texel(ivec3(floor(local)));
+            uint payload = (level == 0)
+                ? packed_data
+                : (packed_data & ~(0x7u << 19u)); // force VOXEL_SHAPE_CUBE
+
+            if (level == 0) {
+                imageAtomicMax(voxel_img, coord, payload);
+            } else if (level == 1) {
+                imageAtomicMax(voxel_mid_img, coord, payload);
+            } else {
+                imageAtomicMax(voxel_coarse_img, coord, payload);
+            }
+        }
     }
 }
 

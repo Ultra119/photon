@@ -46,6 +46,48 @@ vec3 gi_debug_tonemap(vec3 radiance) {
 
 // Air is black; solid voxels get a palette colour; light-only voxels (block_id
 // 0 but block_light > 0) get a dim white so they are not mistaken for air.
+#if GI_DEBUG == GI_DEBUG_COVERAGE
+// R7 coverage view. Hue selects the finest active clipmap level that owns the
+// surface (red/green/blue = fine/medium/coarse). Brightness distinguishes a
+// populated voxel record from an in-bounds cell with no record at the sampled
+// point (air, non-voxelized material, or terrain not submitted to the capture
+// passes). Yellow tint marks the owning level's boundary band; magenta means
+// outside every active clipmap. This view must not fall back to a coarser level
+// when the owning fine cell is empty: the tracer does not do that either.
+vec3 gi_debug_coverage(vec3 world_pos) {
+    int level = rt_clip_finest_containing_level(world_pos);
+    if (level < 0) return vec3(0.6, 0.0, 0.6);
+
+    float scale = rt_clip_scale(level);
+    vec3 local = (world_pos - rt_clip_origin_world(level)) / scale;
+    ivec3 coord = rt_clip_texel(ivec3(floor(local)));
+
+    uint packed = 0u;
+    if (level == 0) {
+        packed = texelFetch(voxel_sampler, coord, 0).r;
+    } else if (level == 1) {
+        packed = texelFetch(voxel_mid_sampler, coord, 0).r;
+    } else {
+        packed = texelFetch(voxel_coarse_sampler, coord, 0).r;
+    }
+    bool populated = unpack_voxel_data(packed).block_id != 0u;
+
+    vec3 color = level == 0 ? vec3(0.9, 0.2, 0.2)
+               : level == 1 ? vec3(0.2, 0.85, 0.25)
+                            : vec3(0.25, 0.45, 0.95);
+    // Dark hue = inside clipmap bounds but no voxel record at this point.
+    if (!populated) color *= 0.22;
+
+    vec3 edge = min(local, rt_clipmap_size_f - local);
+    float edge_dist = min(min(edge.x, edge.y), edge.z);
+    if (edge_dist < 2.0) {
+        color = mix(color, vec3(1.0, 0.9, 0.1), 0.45);
+    }
+    return color;
+}
+
+#endif // GI_DEBUG_COVERAGE
+
 vec3 gi_debug_voxel_id(uint packed) {
     VoxelSample voxel = unpack_voxel_data(packed);
     if (voxel.block_id == 0u) {
@@ -84,9 +126,8 @@ vec3 gi_debug_voxel_albedo(uint packed) {
 //   G = fraction resolved by the voxel DDA
 //   B = fraction that escaped to sky
 //
-// The hybrid split is only correct if SSGI dominates up close and the voxel
-// path takes over with distance; a scene where G is flat across depth usually
-// means SSGI is failing and everything is falling through to voxels.
+// RT Mode has no screen-space GI partition. R stays zero; G is voxel-surface
+// transport and B is an explicit directional sky-map miss.
 vec3 gi_debug_hit_mask(vec4 hit) {
     float total = hit.r + hit.g + hit.b;
     if (total <= 0.0) {
@@ -167,6 +208,8 @@ vec3 gi_debug_view_swatch() {
     return vec3(1.0, 0.35, 0.0);
 #elif GI_DEBUG == GI_DEBUG_PROBE
     return vec3(0.85, 0.20, 0.95);
+#elif GI_DEBUG == GI_DEBUG_COVERAGE
+    return vec3(0.50, 1.00, 0.50);
 #else
     return vec3(0.0);
 #endif
@@ -275,10 +318,16 @@ vec3 gi_debug_view(ivec2 texel, vec2 uv, vec3 fallback) {
     vec3 scene_normal = mat3(gbufferModelViewInverse) * view_normal;
 
     vec3 scene_pos = view_to_scene_space(view_pos) - scene_normal * 0.12;
+
+#if GI_DEBUG == GI_DEBUG_COVERAGE
+    // Coverage owns the full clipmap stack. Do this before the fine-only voxel
+    // bounds check below, otherwise medium/coarse rings are falsely magenta.
+    return gi_debug_coverage(scene_pos + cameraPosition);
+#endif
+
     ivec3 voxel_coord = ivec3(floor(scene_to_voxel_space(scene_pos)));
     if (!is_inside_voxel_grid(voxel_coord)) {
-        // Outside the volume there is no voxel data, which is different from
-        // "there is a hole". Flag it as magenta instead of black.
+        // Fine-only voxel views: outside the fine volume there is no fine data.
         return vec3(0.6, 0.0, 0.6);
     }
 

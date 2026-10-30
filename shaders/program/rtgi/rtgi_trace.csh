@@ -1,9 +1,9 @@
 /*
 --------------------------------------------------------------------------------
 
-  Photon Shader: Native Voxel RTGI + SSGI Hybrid
+  Photon Shader: Native Voxel RTGI
   program/rtgi/rtgi_trace.csh:
-  Trace diffuse indirect GI rays (Screen-Space + Voxel DDA)
+  Trace diffuse indirect GI rays (world-space voxel RT)
 
 --------------------------------------------------------------------------------
 */
@@ -28,19 +28,14 @@ layout(rgba8) writeonly uniform image2D rtgi_hit_img;
 #endif
 
 uniform usampler3D voxel_sampler;
+uniform usampler3D voxel_mid_sampler;
+uniform usampler3D voxel_coarse_sampler;
 uniform sampler2D shadowtex0;
 uniform sampler2D depthtex0;
 uniform sampler2D depthtex1;
 uniform sampler2D colortex1; // gbuffer0
 uniform sampler2D colortex2; // gbuffer1
 uniform sampler2D colortex4; // sky map & light colors
-#if RTGI_GI_INPUT == RTGI_GI_INPUT_LEGACY
-uniform sampler2D colortex5; // previous frame scene color (legacy feedback loop)
-#define radiance_direct_sampler colortex5
-#else
-uniform sampler2D colortex18; // previous frame direct-only scene radiance
-#define radiance_direct_sampler colortex18
-#endif
 uniform sampler2D noisetex;
 
 uniform mat4 gbufferModelView;
@@ -72,7 +67,7 @@ uniform vec2 taa_offset;
 #include "/include/utility/encoding.glsl"
 #include "/include/utility/space_conversion.glsl"
 #include "/include/utility/random.glsl"
-#include "/include/lighting/rt/hybrid_rtgi.glsl"
+#include "/include/lighting/rt/rt_gi.glsl"
 
 void main() {
 #if RTGI_RESOLUTION == 0
@@ -116,8 +111,6 @@ void main() {
     // Unpack surface data
     vec4 gbuf0 = texelFetch(colortex1, full_texel, 0);
     vec3 world_normal = decode_unit_vector(unpack_unorm_2x8(gbuf0.z));
-    vec2 light_levels = unpack_unorm_2x8(gbuf0.w);
-    float surface_skylight = light_levels.y;
 
 #if defined NORMAL_MAPPING
     vec4 gbuf1 = texelFetch(colortex2, full_texel, 0);
@@ -141,7 +134,6 @@ void main() {
 
     // Direct lighting & ambient colors encoded in colortex4 column 191
     vec3 direct_light_col = texelFetch(colortex4, ivec2(191, 0), 0).rgb;
-    vec3 sky_amb_col = texelFetch(colortex4, ivec2(191, 1), 0).rgb;
 
     // Ray budget (default 2 rays/pixel)
 #ifndef RTGI_RAY_COUNT
@@ -166,32 +158,25 @@ void main() {
         }
 
         int hit_source = RTGI_HIT_NONE;
-        vec4 radiance = evaluate_hybrid_rtgi_ray(
-            screen_pos,
-            view_pos,
-            mat3(gbufferModelView) * world_normal,
+        vec4 radiance = evaluate_rtgi_ray(
             scene_pos,
             world_normal,
             ray_dir,
             dither.x,
             voxel_sampler,
+            voxel_mid_sampler,
+            voxel_coarse_sampler,
             shadowtex0,
             shadowModelView,
             shadowProjection,
-            radiance_direct_sampler,
-            colortex1,
+            colortex4,
             direct_light_col,
-            sky_amb_col,
             light_dir,
-            surface_skylight,
-            depthtex0,
             hit_source
         );
 
 #if GI_DEBUG == GI_DEBUG_HIT
-        if (hit_source == RTGI_HIT_SSGI) {
-            hit_counts.r += 1.0;
-        } else if (hit_source == RTGI_HIT_VOXEL) {
+        if (hit_source == RTGI_HIT_VOXEL) {
             hit_counts.g += 1.0;
         } else if (hit_source == RTGI_HIT_SKY) {
             hit_counts.b += 1.0;

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compute/fragment-focused static shader matrix (294 cases by default)."""
+"""Compute/fragment-focused static shader matrix."""
 import itertools
 import os
 import subprocess
@@ -28,27 +28,26 @@ FILES = [
 
 VARIANTS = {
     "default": [],
-    "rtgi_off": ["!RAYTRACED_GI"],
-    "rtgi_refl_off": ["!RAYTRACED_GI", "!RT_REFLECTIONS"],
-    "all_rt_off_phys_off": ["!RAYTRACED_GI", "!RT_REFLECTIONS", "!PHYSICAL_BSDF_ENERGY_COMP"],
+    "reflections_off": ["RT_REFLECTION_RAYS=0"],
+    "reflections_2ray": ["RT_REFLECTION_RAYS=2"],
+    "reflections_off_phys_off": ["RT_REFLECTION_RAYS=0", "!PHYSICAL_BSDF_ENERGY_COMP"],
     "normal_map": ["NORMAL_MAPPING"],
     "taau": ["TAAU", "TAAU_RENDER_SCALE=0.75"],
     "taau_50": ["TAAU", "TAAU_RENDER_SCALE=0.50"],
     "normal_taau": ["NORMAL_MAPPING", "TAAU", "TAAU_RENDER_SCALE=0.75"],
-    "res0_8rays": ["RTGI_RESOLUTION=0", "RTGI_RAY_COUNT=8", "VOXEL_VOLUME_SIZE=512"],
-    "res2_8rays": ["RTGI_RESOLUTION=2", "RTGI_RAY_COUNT=8", "VOXEL_VOLUME_SIZE=512"],
-    "no_sh_skylight": ["!SH_SKYLIGHT"],
+    "res0_8rays": ["RTGI_RESOLUTION=0", "RTGI_RAY_COUNT=8", "RT_CLIPMAP_SIZE=128", "RT_COVERAGE_LEVELS=3"],
+    "res2_8rays": ["RTGI_RESOLUTION=2", "RTGI_RAY_COUNT=8", "RT_CLIPMAP_SIZE=128", "RT_COVERAGE_LEVELS=3"],
     "no_vl": ["!VL"],
     "no_shadow": ["!SHADOW", "!SHADOW_SSRT"],
     "colorwheel": ["+COLORWHEEL"],
     "dh": ["+DISTANT_HORIZONS"],
     "voxy": ["+VOXY"],
     "vulkan_intel": ["+IRIS_VULKAN", "+MC_GL_VENDOR_INTEL"],
-    "voxel_64": ["VOXEL_VOLUME_SIZE=64"],
-    "voxel_256": ["VOXEL_VOLUME_SIZE=256"],
-    "voxel_512": ["VOXEL_VOLUME_SIZE=512"],
-    "voxel_ahead": ["VOXEL_VOLUME_CENTER=VOXEL_VOLUME_CENTER_AHEAD"],
-    "contact_ao_off": ["RTGI_CONTACT_AO_STRENGTH=0.00"],
+    "clipmap_64": ["RT_CLIPMAP_SIZE=64"],
+    "clipmap_96_levels2": ["RT_CLIPMAP_SIZE=96", "RT_COVERAGE_LEVELS=2"],
+    "clipmap_levels1": ["RT_COVERAGE_LEVELS=1"],
+    "rt_ao_off": ["RT_AO_STRENGTH=0.00"],
+    "rt_ao_8rays": ["RT_AO_RAYS=8", "RT_AO_RADIUS=2.00"],
 }
 
 def main():

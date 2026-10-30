@@ -71,13 +71,46 @@ The spectrum of the bounced light must exactly match $\rho_{\text{red}} \odot \t
 
 ---
 
-## 4. Scene D: Vanilla Lightmap Non-Interference (No Double-Counting)
+## 4. Scene D: RT Direct/Indirect Boundary (No Double-Counting)
 
 ### Test Procedure
-1. Dark enclosed room with 1 wall-mounted torch.
-2. Toggle `RTGI_DIRECT_BLOCK_FALLBACK` between ON and OFF in `settings.glsl`.
+1. Dark enclosed room with one wall-mounted torch and a sunlit exterior wall.
+2. Compare `RT_AO_STRENGTH = 0.00` and `0.50`, with `RT_AO_IN_DIRECT` on/off.
+3. Inspect the torch-lit interior, the sunlit exterior, and a white wall beside a coloured wall.
 
 ### Acceptance Criteria
-- When `RTGI_DIRECT_BLOCK_FALLBACK` is ON, direct receiver lighting comes cleanly from vanilla `mc_block` without secondary double-scaling.
-- Solid non-emitter blocks in the voxel grid store zero lightmap bounce, guaranteeing that exterior roof torches do NOT leak light into interior spaces.
+- Interior indirect light comes from voxel emitters/probes, not vanilla blocklight or SH ambient.
+- Contact AO changes direct-light crevice detail only; it does not scale the traced indirect term.
+- Toggling `RT_AO_IN_DIRECT` changes direct diffuse/specular contact detail without removing shadow-map visibility.
+- Material emission is visible once; moving the emitter does not create a second analytic surface glow.
 
+---
+
+## 5. Scene E: RT Contact AO Coverage and Motion
+
+### Test Procedure
+1. Place slabs, stairs, fences, and a full cube against a wall; view corners at grazing angles.
+2. Move the camera past the objects and rotate in place; repeat near the voxel-volume edge and with DH/Voxy terrain.
+3. Test `RT_AO_RAYS = 2/4/8`, `RT_AO_RADIUS = 0.25/0.75/2.00`, and strength zero.
+
+### Acceptance Criteria
+- Strength zero and the hand are neutral; no stale AO history remains after disabling the effect.
+- Uncovered/LOD surfaces do not fall back to vanilla AO, SSAO/GTAO, or analytic ambient.
+- Contact darkening stays local, does not double-darken RTGI, and does not produce persistent edge trails during motion.
+- Higher ray counts reduce noise; radius changes affect only short-range contact detail.
+
+---
+
+## 6. Scene F: Clipmap Coverage and Seams
+
+### Test Procedure
+1. Stand in open terrain with `RT_COVERAGE_LEVELS=3`, `RT_CLIPMAP_SIZE=128`; enable `GI_DEBUG_COVERAGE`.
+2. Walk across fine→medium→coarse boundaries and rotate in place; repeat with `shadowDistance` 128/256.
+3. Place an emitter behind the camera and near a level seam; compare GI/reflection brightness across the seam.
+4. Repeat with `RT_COVERAGE_LEVELS=1/2` and with DH/Voxy enabled.
+
+### Acceptance Criteria
+- Coverage view shows bright red/green/blue for populated fine/medium/coarse voxels, dark hue for in-bounds cells with no voxel record, yellow boundary tint, and magenta only outside all active clipmaps. Medium/coarse rings must not be cut off by the fine-volume boundary.
+- No stale voxel trails after camera motion; boundaries do not produce duplicate bright emitter bands.
+- Emitter radiance and glass tint do not double at level transitions.
+- With DH/Voxy, uncovered LOD terrain does not fall back to original Photon lighting; it uses RT/probe/environment transport or remains explicitly uncovered.

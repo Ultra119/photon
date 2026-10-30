@@ -163,10 +163,6 @@ vec3 light_color, ambient_color;
 #define NO_NORMAL
 #endif
 
-#ifdef DIRECTIONAL_LIGHTMAPS
-#include "/include/lighting/directional_lightmaps.glsl"
-#endif
-
 #include "/include/fog/simple_fog.glsl"
 #include "/include/lighting/diffuse_lighting.glsl"
 #include "/include/lighting/voxel/light_colors.glsl"
@@ -382,11 +378,9 @@ void main() {
     // Get light colors
 
     light_color = texelFetch(colortex4, ivec2(191, 0), 0).rgb;
-#if defined WORLD_OVERWORLD && defined SH_SKYLIGHT
-    ambient_color = texelFetch(colortex4, ivec2(191, 11), 0).rgb;
-#else
+    // Environment appearance for fog/media only; RT surface irradiance comes
+    // from traced GI/probes, never from this sky color or an SH ambient term.
     ambient_color = texelFetch(colortex4, ivec2(191, 1), 0).rgb;
-#endif
 
     // Space conversions
 
@@ -582,12 +576,8 @@ void main() {
 
         normal = tbn * normal_tangent;
 
-        adjusted_light_levels *= mix(0.7, 1.0, material_ao);
-
-#ifdef DIRECTIONAL_LIGHTMAPS
-        adjusted_light_levels
-            *= get_directional_lightmaps(position_scene, normal);
-#endif
+        // Keep raw light levels for shadow/SSS eligibility. Normal-map AO
+        // and directional lightmap gradients do not replace traced GI.
 #endif
 
 #ifdef SPECULAR_MAPPING
@@ -644,7 +634,6 @@ void main() {
               shadows,
               adjusted_light_levels,
               1.0,
-              0.0,
               sss_depth,
 #ifdef CLOUD_SHADOWS
               cloud_shadows,
@@ -667,27 +656,18 @@ void main() {
 
     // Specular reflections
 
-#if defined ENVIRONMENT_REFLECTIONS || defined SKY_REFLECTIONS
+#if RT_REFLECTION_RAYS > 0
     if (material.ssr_multiplier > eps) {
-        vec3 position_screen = vec3(
-            gl_FragCoord.xy * rcp(taau_render_scale) * view_pixel_size,
-            gl_FragCoord.z
-        );
-
         mat3 new_tbn = get_tbn_matrix(normal);
 
         fragment_color.rgb += get_specular_reflections(
             material,
             new_tbn,
-            position_screen,
-            position_view,
             world_pos,
             normal,
             tbn[2],
             direction_world,
-            direction_world * new_tbn,
-            light_levels.y,
-            is_water
+            direction_world * new_tbn
         );
     }
 #endif

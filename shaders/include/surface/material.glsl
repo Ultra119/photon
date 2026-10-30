@@ -4,6 +4,11 @@
 #include "/include/post_processing/aces/matrices.glsl"
 #include "/include/utility/color.glsl"
 
+// Reflection eligibility cutoff (Kneemund's method). Formerly the user-facing
+// SSR_ROUGHNESS_THRESHOLD; now a fixed material constant since RT reflections
+// trace rough surfaces with GGX VNDF rather than gating them off.
+const float reflection_roughness_threshold = 2.0;
+
 const float air_n = 1.000293; // for 0°C and 1 atm
 const float water_n = 1.333; // for 20°C
 
@@ -97,7 +102,7 @@ void decode_specular_map(vec4 specular_map, inout Material material) {
     material.ssr_multiplier = step(
         0.01,
         (material.f0.x
-         - material.f0.x * material.roughness * SSR_ROUGHNESS_THRESHOLD)
+         - material.f0.x * material.roughness * reflection_roughness_threshold)
     ); // based on Kneemund's method
 }
 #elif TEXTURE_FORMAT == TEXTURE_FORMAT_OLD
@@ -111,7 +116,7 @@ void decode_specular_map(vec4 specular_map, inout Material material) {
     material.ssr_multiplier = step(
         0.01,
         (material.f0.x
-         - material.f0.x * material.roughness * SSR_ROUGHNESS_THRESHOLD)
+         - material.f0.x * material.roughness * reflection_roughness_threshold)
     ); // based on Kneemund's method
 }
 #endif

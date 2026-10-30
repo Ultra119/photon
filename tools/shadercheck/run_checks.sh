@@ -16,14 +16,21 @@ python3 tools/shadercheck/matrix_compute.py
 echo "== wrapper/option static matrix =="
 python3 tools/shadercheck/matrix.py
 
-# Requires a glslang binary. Skipped (not silently passed) when absent, so a
-# missing tool never reads as a green run.
-if [ -n "${GLSLANG:-}" ] && [ -x "${GLSLANG:-}" ]; then
-  echo "== ao estimator dispatch =="
-  python3 tools/shadercheck/ao_dispatch_test.py
-  echo "== gi debug view wiring =="
-  python3 tools/shadercheck/gi_debug_test.py
-else
-  echo "== ao estimator dispatch: SKIPPED (set GLSLANG to enable) =="
-  echo "== gi debug view wiring: SKIPPED (set GLSLANG to enable) =="
+# A missing validator is an error, never a skipped green run.
+if [ -z "${GLSLANG:-}" ] || [ ! -x "${GLSLANG:-}" ]; then
+  echo "error: set GLSLANG to an executable glslang binary" >&2
+  exit 2
 fi
+
+echo "== voxel DDA / energy reference =="
+python3 tools/shadercheck/dda_test.py
+
+echo "== R7 clipmap coverage =="
+python3 tools/shadercheck/clipmap_test.py
+
+echo "== RT lighting boundary =="
+python3 tools/shadercheck/rt_boundary_test.py
+echo "== RT AO estimator dispatch =="
+python3 tools/shadercheck/ao_dispatch_test.py
+echo "== gi debug view wiring =="
+python3 tools/shadercheck/gi_debug_test.py

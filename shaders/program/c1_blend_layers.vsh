@@ -66,11 +66,9 @@ void main() {
     uv = gl_MultiTexCoord0.xy;
 
     light_color = texelFetch(colortex4, ivec2(191, 0), 0).rgb;
-#if defined WORLD_OVERWORLD && defined SH_SKYLIGHT
-    ambient_color = texelFetch(colortex4, ivec2(191, 11), 0).rgb;
-#else
+    // Environment appearance for fog/media only; RT surface irradiance comes
+    // from traced GI/probes, never from this sky color or an SH ambient term.
     ambient_color = texelFetch(colortex4, ivec2(191, 1), 0).rgb;
-#endif
 
 #if defined WORLD_OVERWORLD
     fog_params = get_fog_parameters(get_weather());

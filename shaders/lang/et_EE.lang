@@ -113,14 +113,10 @@ option.HANDHELD_LIGHTING               = Käeshoitav valgustus
 option.HANDHELD_LIGHTING.comment       = Käeshoitavad esemed valgustavad maailma. Kui värviline valgustus on lubatud, on ka käeshoitav valgustus samade värvidega
 option.HANDHELD_LIGHTING_INTENSITY     = Käeshoitava valguse heledus
 option.HANDHELD_LIGHTING_INTENSITY.comment = Reguleerib käeshoitavate valgusallikate heledust
-option.AO_IN_SUNLIGHT                  = AO päikesevalguses
-option.AO_IN_SUNLIGHT.comment          = Kas rakendada varjutuse shaderit otsese päikese-/kuuvalguse korral
 option.CLOUD_SHADOWS                   = Pilvevarjud
 option.CLOUD_SHADOWS.comment           = Pilvede poolt maapinnale langevad varjud
 option.CLOUD_SHADOWS_INTENSITY         = Pilvevarjude intensiivsus
 option.CLOUD_SHADOWS_INTENSITY.comment = Reguleerib pilvevarjude tugevust
-option.SH_SKYLIGHT                     = SH taevalgus
-option.SH_SKYLIGHT.comment             = Kasutab sfääriliste harmoonikate kodeerimist suunatud taevalguse jaoks Overworldis, andes loomuliku tulemuse.\nTöötab hästi koos GTAO-ga
 option.SSS_SHEEN                       = SSS läige
 option.SSS_SHEEN.comment               = Peegeldav “läike” efekt taimedel ja lehtedel, aitab kõrgel rohul paremini sulanduda rohu peegeldusega
 option.SSS_INTENSITY                   = SSS heledus
@@ -148,8 +144,6 @@ option.PIXELATED_SHADOWS_RESOLUTION    = Pikselvarjude resolutsioon
 option.SSS_STEPS                       = SSS sammud
 option.SSS_STEPS.comment               = Suurenda väärtust, et vähendada müra lehestikul ja teistel SSS-iga materjalidel, jõudluse arvelt
 
-option.VANILLA_AO                      = Vanilla AO
-option.VANILLA_AO.comment              = Minecrafti sisseehitatud ümbritsev varjutus
 
 option.SUN_NR                          = Punane
 option.SUN_NG                          = Roheline
@@ -188,14 +182,7 @@ option.BLOCKLIGHT_G                    = Roheline
 option.BLOCKLIGHT_B                    = Sinine
 option.BLOCKLIGHT_I                    = Plokivalguse intensiivsus
 
-option.VOXEL_VOLUME_SIZE               = Vokslimaht
-option.VOXEL_VOLUME_SIZE.comment       = Kõrge jõudluse mõju, sõltub ka varjude kaugusest
-suffix.VOXEL_VOLUME_SIZE               = m
-option.VOXEL_VOLUME_CENTER             = Vokslimahu keskpunkt
-option.VOXEL_VOLUME_CENTER.comment     = Ees: vokslimaht on mängijast eespool, seega rohkem sellest on nähtav
 
-value.VOXEL_VOLUME_CENTER.VOXEL_VOLUME_CENTER_AHEAD  = Ees
-value.VOXEL_VOLUME_CENTER.VOXEL_VOLUME_CENTER_PLAYER = Mängija
 
 suffix.shadowMapResolution             = ²
 suffix.sunPathRotation                 = °
@@ -468,10 +455,6 @@ option.HARDCODED_SSS.comment           = Teatud plokkide (nt lehed) nahaalune ha
 option.RAIN_PUDDLES                    = Vihmavee lompide efekt
 option.EMISSION_STRENGTH               = Kiirguse tugevus
 option.EMISSION_STRENGTH.comment       = Reguleerib kiirgavate objektide nagu laternad heledust. See ei mõjuta valgust, mida nad projitseerivad, vaid ainult allika enda heledust. Mõjub ka eelnevalt kodeeritud emissioonidele
-option.DIRECTIONAL_LIGHTMAPS           = Suunatud valguskaardid
-option.DIRECTIONAL_LIGHTMAPS.comment   = Plokivalgus ja taevalgus on mõjutatud normaalkaartest. Võib põhjustada visuaalseid kõrvalekaldeid meetodi piirangute tõttu
-option.DIRECTIONAL_LIGHTMAPS_INTENSITY = Suunatud valguskaartide intensiivsus
-option.DIRECTIONAL_LIGHTMAPS_INTENSITY.comment = Reguleerib suunatud valguskaartide intensiivsust
 option.POM_DEPTH                       = Parallaksi sügavus
 option.POM_DEPTH.comment               = Kui sügavale POM võib plokki minna
 option.POM_SAMPLES                     = Parallaksi proovid

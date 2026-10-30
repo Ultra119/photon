@@ -28,7 +28,7 @@ uniform sampler2D DEBUG_SAMPLER;
 uniform float viewHeight;
 uniform float frameTimeCounter;
 
-#if defined RAYTRACED_GI && (defined WORLD_NETHER || !defined SHADOW)
+#if LIGHTING_MODE == LIGHTING_MODE_RT && (defined WORLD_NETHER || !defined SHADOW)
 uniform sampler2D shadowtex0;
 #endif
 
@@ -81,13 +81,16 @@ uniform sampler2D depthtex1;
 
 #include "/include/utility/space_conversion.glsl"
 
-// The RTGI images are only declared in shaders.properties under RAYTRACED_GI
-// (voxel_img is also declared for RT_REFLECTIONS, but every view here except
-// the voxel ones needs the radiance buffers), so the whole debug path is
-// gated on the same condition. Without it the view renders a flat magenta
-// rather than sampling an unbound sampler.
-#ifdef RAYTRACED_GI
+// The RTGI images and voxel scene are only declared in shaders.properties
+// under RT Mode (every view here except the voxel ones needs the radiance
+// buffers), so the whole debug path is gated on the same condition. Without it
+// the view renders a flat magenta rather than sampling an unbound sampler.
+#if LIGHTING_MODE == LIGHTING_MODE_RT
 uniform usampler3D voxel_sampler;
+#if GI_DEBUG == GI_DEBUG_COVERAGE
+uniform usampler3D voxel_mid_sampler;
+uniform usampler3D voxel_coarse_sampler;
+#endif
 
 uniform sampler2D rtgi_raw_sampler;
 uniform sampler2D rtgi_history_sampler;
@@ -198,7 +201,7 @@ void main() {
 #elif DEBUG_VIEW == DEBUG_VIEW_WEATHER
     debug_weather(fragment_color);
 #elif DEBUG_VIEW == DEBUG_VIEW_GI
-#ifdef RAYTRACED_GI
+#if LIGHTING_MODE == LIGHTING_MODE_RT
     fragment_color = gi_debug_view(texel, uv, fragment_color);
     fragment_color = gi_debug_stamp_swatch(fragment_color, texel);
 #else
@@ -244,7 +247,7 @@ void main() {
         : vec3(clamp01(dist * rcp(DISTANCE_VIEW_MAX_DISTANCE)));
 #endif
 
-#if defined RAYTRACED_GI && (defined WORLD_NETHER || !defined SHADOW)
+#if LIGHTING_MODE == LIGHTING_MODE_RT && (defined WORLD_NETHER || !defined SHADOW)
     // Must sample shadowtex0 so that the shadow map is rendered
     if (uv.x < 0.0) {
         fragment_color = texture(shadowtex0, uv).rgb;

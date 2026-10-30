@@ -111,14 +111,10 @@ option.HANDHELD_LIGHTING               = Свет предметов
 option.HANDHELD_LIGHTING.comment       = Предметы в руках будут освещать мир. Если цветное освещение включено, свет от предметов будет такого же цвета, как и свет от блоков
 option.HANDHELD_LIGHTING_INTENSITY     = Сила света предметов
 option.HANDHELD_LIGHTING_INTENSITY.comment = Регулирует яркость света от предметов
-option.AO_IN_SUNLIGHT                  = AO при солнце
-option.AO_IN_SUNLIGHT.comment          = Следует ли применять затеняющую окружающую окклюзию при прямом солнечном/лунном свете
 option.CLOUD_SHADOWS                   = Тени облаков
 option.CLOUD_SHADOWS.comment           = Тени, отбрасываемые облаками на землю
 option.CLOUD_SHADOWS_INTENSITY         = Интенсивность теней от облаков
 option.CLOUD_SHADOWS_INTENSITY.comment = Регулирует интенсивность теней от облаков
-option.SH_SKYLIGHT                     = SH Неба
-option.SH_SKYLIGHT.comment             = Использует кодировку сферических гармоник для направленного светового потока в окружающем мире, что обеспечивает очень естественный результат.\nЭто хорошо работает с GTAO
 option.SSS_SHEEN                       = Блеск SSS
 option.SSS_SHEEN.comment               = Зеркальный эффект "блеска" на растениях и листьях помогает высокой траве и другим растениям лучше сочетаться с отражениями травы
 option.SSS_INTENSITY                   = Сила SSS
@@ -148,8 +144,6 @@ option.PIXELATED_SHADOWS_RESOLUTION    = Разрешение пикселизи
 option.SSS_STEPS                       = Шагов SSS 
 option.SSS_STEPS.comment               = Увеличьте, чтобы уменьшить количество шума на листве и других материалов с подповерхностным рассеиванием (SSS), ценой производительности.
 
-option.VANILLA_AO                      = Ванильный AO
-option.VANILLA_AO.comment              = Встроенная в Майнкрафт окружающая окклюзия
 
 option.SUN_NR                          = §cКрасный
 option.SUN_NG                          = §aЗеленый
@@ -188,14 +182,7 @@ option.BLOCKLIGHT_G                    = §aЗеленый
 option.BLOCKLIGHT_B                    = §9Синий
 option.BLOCKLIGHT_I                    = Сила света от блоков
 
-option.VOXEL_VOLUME_SIZE               = Размер объёма вокселей
-option.VOXEL_VOLUME_SIZE.comment       = Значительное влияние на производительность, также зависит от дальности теней
-suffix.VOXEL_VOLUME_SIZE               = m³
-option.VOXEL_VOLUME_CENTER             = Центр объёма вокселей
-option.VOXEL_VOLUME_CENTER.comment     = Вперёд: объём вокселей смещён вперёд от игрока, благодаря чему большая его часть попадает в поле зрения
 
-value.VOXEL_VOLUME_CENTER.VOXEL_VOLUME_CENTER_AHEAD  = Вперёд
-value.VOXEL_VOLUME_CENTER.VOXEL_VOLUME_CENTER_PLAYER = Игрок
 
 suffix.shadowMapResolution             = ²
 suffix.sunPathRotation                 = °
@@ -485,10 +472,6 @@ option.HARDCODED_SSS.comment           = Жестко запрограммиро
 option.RAIN_PUDDLES                    = Дождевые лужи
 option.EMISSION_STRENGTH               = Сила свечения
 option.EMISSION_STRENGTH.comment       = Регулирует яркость светящихся объектов, таких как фонари. Это не влияет на яркость излучаемого света, а только на яркость самого источника света. Это также влияет на жестко запрограммированные источники излучения
-option.DIRECTIONAL_LIGHTMAPS           = Карты направленного света
-option.DIRECTIONAL_LIGHTMAPS.comment   = Свет от блоков и неба будет затронут картами нормалей. Может вызвать некоторые визуальные проблемы из-за ограничений метода
-option.DIRECTIONAL_LIGHTMAPS_INTENSITY = Сила направленных световых карт
-option.DIRECTIONAL_LIGHTMAPS_INTENSITY.comment = Регулирует силу направленных световых карт
 option.POM_DEPTH                       = Глубина параллакса
 option.POM_DEPTH.comment               = Регулирует глубину эффекта параллаксного окклюзионного отображения (POM)
 option.POM_SAMPLES                     = Образцов параллакса
@@ -770,8 +753,6 @@ option.RTGI_BRIGHTNESS.comment                                        = Обща
 option.RTGI_INTERIOR_RETENTION                                       = Удержание освещения интерьеров
 option.RTGI_INTERIOR_RETENTION.comment                               = Сохранение непрямого света неба внутри темных помещений. 1.00 сохраняет весь трассированный свет.
 
-option.RTGI_CONTACT_AO_STRENGTH                                      = Сила контактного AO
-option.RTGI_CONTACT_AO_STRENGTH.comment                              = Дополнительное экранное контактное затенение в щелях и углах.
 
 option.RTGI_VOXELIZE_ENTITIES                                        = Вокселизация сущностей
 option.RTGI_VOXELIZE_ENTITIES.comment                                = Экспериментально: вокселизирует мобов и сущностей в теневом проходе. Позволяет динамическим сущностям отбрасывать и принимать непрямые тени.
