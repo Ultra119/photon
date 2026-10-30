@@ -260,7 +260,16 @@ VoxelHit trace_voxel_level(
     vec3 step_dir = sign(dir_level);
     vec3 delta_t = abs(inv_dir_level);
     vec3 t_max = (step_dir * (vec3(current_voxel) - start_level) + step_dir * 0.5 + 0.5) * delta_t;
-    vec3 mask = vec3(0.0);
+    // Entry face of the first voxel: the axis whose cube-boundary crossing
+    // achieved tenter. A zero mask made first-iteration hits use
+    // -sign(dir) — an unnormalized diagonal — as the shading normal,
+    // producing over-bright garbage NoL exactly at corners. The mask is
+    // overwritten with the next step axis before the first t_max update, so
+    // this only feeds the entry-normal path.
+    vec3 mask;
+    if (tenter == tnear.x) mask = vec3(1.0, 0.0, 0.0);
+    else if (tenter == tnear.y) mask = vec3(0.0, 1.0, 0.0);
+    else mask = vec3(0.0, 0.0, 1.0);
     float t = seg_start;
     vec3 ray_transmittance = vec3(1.0);
 
@@ -275,6 +284,14 @@ VoxelHit trace_voxel_level(
             VoxelSample sample_data = unpack_voxel_data(packed);
             if (sample_data.block_id != 0u) {
                 VoxelMaterial mat = get_voxel_material(sample_data.block_id, sample_data.color);
+                if (level > 0) {
+                    // Coarse clipmap cells are occupancy only. imageAtomicMax
+                    // lets a single torch/lamp block ID win the whole 2^3/4^3
+                    // cell; shading that cell with the emitter's palette
+                    // radiance would turn one distant light into a giant
+                    // emissive cube (popping far-field fireflies).
+                    mat.emission = vec3(0.0);
+                }
                 if (sample_data.block_id >= 81u && sample_data.block_id <= 96u) {
                     ray_transmittance *= mat.albedo;
                 } else if (sample_data.block_id == 80u) {

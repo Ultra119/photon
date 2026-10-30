@@ -116,37 +116,33 @@ void main() {
     vec3 current_world_normal = decode_unit_vector(unpack_unorm_2x8(gbuf.z));
 
     // 3x3 neighbourhood statistics for variance clipping (variance-driven AABB)
-    vec3 raw_min = current_radiance;
     vec3 raw_max = current_radiance;
     vec3 raw_m1 = vec3(0.0);
     vec3 raw_m2 = vec3(0.0);
-    vec3 neighbor_max = vec3(0.0);
 
     for (int dy = -1; dy <= 1; ++dy) {
         for (int dx = -1; dx <= 1; ++dx) {
             ivec2 n_coord = clamp(texel + ivec2(dx, dy), ivec2(0), target_res - 1);
             vec3 n_val = texelFetch(rtgi_raw_sampler, n_coord, 0).rgb;
-            raw_min = min(raw_min, n_val);
             raw_max = max(raw_max, n_val);
             raw_m1 += n_val;
             raw_m2 += n_val * n_val;
-            if (dx != 0 || dy != 0) {
-                neighbor_max = max(neighbor_max, n_val);
-            }
         }
     }
     raw_m1 *= (1.0 / 9.0);
     raw_m2 *= (1.0 / 9.0);
     vec3 raw_sigma = sqrt(max(vec3(0.0), raw_m2 - raw_m1 * raw_m1));
 
-    // Pre-accumulation firefly suppression: clamp isolated raw sample spikes
-    // Diffuse GI cannot physically produce an isolated single-pixel spike vastly brighter than all 8 neighbours.
-    // Suppresses grazing-angle emitter fireflies before they contaminate temporal history.
-    float max_neighbor_lum = dot(neighbor_max, luminance_weights);
-    float firefly_ceiling = max_neighbor_lum * 2.0 + 0.15;
-    if (current_lum > firefly_ceiling) {
-        current_radiance *= firefly_ceiling / current_lum;
-        current_lum = firefly_ceiling;
+    // Extreme-outlier guard only. The trace pass already clamps per-ray
+    // luminance (RTGI_MAX_RADIANCE), and a neighbour-relative ceiling makes
+    // the clamp itself flicker with the 2-ray neighbourhood while starving
+    // legitimate emitter hits in dark scenes (brightness pumping). Real
+    // outlier control is the history variance clip below, which now runs on
+    // correctly tracked moments.
+    const float absolute_radiance_cap = 32.0;
+    if (current_lum > absolute_radiance_cap) {
+        current_radiance *= absolute_radiance_cap / current_lum;
+        current_lum = absolute_radiance_cap;
     }
 
     // Expand bounding box by 1.25 sigma to prevent color clipping on stationary gradients,
@@ -162,8 +158,11 @@ void main() {
 
     // Reproject to previous frame projection space
     vec3 prev_screen_pos = reproject_scene_space(scene_pos, false, false);
-    bool inside_prev_screen = clamp01(prev_screen_pos.xy) == prev_screen_pos.xy;
     vec2 prev_framebuffer_uv = taau_framebuffer_uv(prev_screen_pos.xy);
+    // The history images are zero outside the active TAAU viewport; sampling
+    // them there would resurrect stale/garbage data as "valid" history.
+    bool inside_prev_screen = clamp01(prev_screen_pos.xy) == prev_screen_pos.xy
+        && !taau_uv_outside_viewport(prev_framebuffer_uv);
 
 #if GI_DEBUG == GI_DEBUG_REJECT
     float history_accepted = 0.0;
@@ -174,15 +173,28 @@ void main() {
     float alpha = 1.0;
     vec3 accumulated_radiance = current_radiance;
     float accumulated_sky = current_sky_weight;
-    float m1 = current_lum;
-    float m2 = current_lum * current_lum;
+    // M2 moment seed: center luminance squared plus the local raw variance so
+    // freshly reset pixels expose a real noise level to the à-trous filter
+    // instead of a structurally-zero variance. (M1 needs no storage: the
+    // accumulated radiance's luminance already is the EMA of sample
+    // luminance.)
+    float m2 = current_lum * current_lum
+        + dot(raw_sigma * raw_sigma, luminance_weights);
 
     if (inside_prev_screen) {
-        // Read from alternate buffers written in previous frame
-        vec4 prev_sample = ping ? textureLod(rtgi_history_sampler, prev_framebuffer_uv, 0.0)
-                                : textureLod(rtgi_accum_sampler, prev_framebuffer_uv, 0.0);
-        vec4 prev_aux = ping ? textureLod(rtgi_sky_history_sampler, prev_framebuffer_uv, 0.0)
-                             : textureLod(rtgi_sky_accum_sampler, prev_framebuffer_uv, 0.0);
+        // Point-sample history at the reprojected integer texel. Bilinear
+        // filtering here would interpolate the packed sky/age bytes, the
+        // octahedral normal and the stored distance, corrupting every
+        // disocclusion test at depth/normal edges.
+        ivec2 prev_texel = clamp(
+            ivec2(prev_framebuffer_uv * vec2(target_res)),
+            ivec2(0),
+            target_res - 1
+        );
+        vec4 prev_sample = ping ? texelFetch(rtgi_history_sampler, prev_texel, 0)
+                                : texelFetch(rtgi_accum_sampler, prev_texel, 0);
+        vec4 prev_aux = ping ? texelFetch(rtgi_sky_history_sampler, prev_texel, 0)
+                             : texelFetch(rtgi_sky_accum_sampler, prev_texel, 0);
 
         float prev_dist = prev_sample.a;
         float dist_diff = abs(current_dist - prev_dist);
@@ -226,9 +238,13 @@ void main() {
             accumulated_radiance = mix(clamped_prev_radiance, current_radiance, alpha);
             accumulated_sky = mix(prev_sky, current_sky_weight, alpha);
 
-            // Moment tracking for local variance estimation: track accumulated luminance to prevent firefly runaway
-            float accum_lum = dot(accumulated_radiance, luminance_weights);
-            m2 = mix(prev_aux.r, accum_lum * accum_lum, alpha);
+            // Second-moment tracking for the à-trous variance: M2 must be an
+            // EMA of sample luminance SQUARED. Driving it toward
+            // (accumulated luminance)^2 instead would collapse
+            // variance = M2 - M1^2 to zero and disable all variance-guided
+            // filtering. M1 needs no storage: the accumulated radiance's
+            // luminance already is the matched EMA of sample luminance.
+            m2 = mix(prev_aux.r, current_lum * current_lum, alpha);
 
 #if GI_DEBUG == GI_DEBUG_REJECT
             history_accepted = 1.0;
