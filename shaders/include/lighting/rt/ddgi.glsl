@@ -129,9 +129,31 @@ vec4 sample_ddgi_irradiance(
                 float weight = wx * wy * wz * backface_weight;
                 if (weight <= 1e-5) continue;
 
+#ifdef DDGI_QUERY_OCCLUSION
+                // Reject probes whose segment to the receiver crosses a solid
+                // fine-level voxel. Without this, a probe on the other side of
+                // a 1-block wall still has positive normal-distance for floor
+                // and ceiling receivers, so trilinear blending drags its
+                // colour through the wall — the room-corner "backlight" leak.
+                // Only meaningfully weighted probes pay for the test.
+                if (weight > 0.02) {
+                    float seg_len = length(to_probe);
+                    if (seg_len > 1e-3
+                        && trace_any_hit(
+                            voxel_sampler, world_pos - cam_pos, normal,
+                            to_probe / seg_len, seg_len
+                        )) {
+                        continue;
+                    }
+                }
+#endif
+
                 vec4 probe_irr_sample = texelFetch(ddgi_irradiance_sampler, probe_texel, 0);
-                float dir_factor = clamp(1.0 + dot(normal, probe_dir_sample.xyz), 0.1, 2.0);
-                vec3 probe_irradiance = probe_irr_sample.rgb * dir_factor;
+                // Isotropic probe irradiance. A per-probe mean-direction
+                // fudge factor (1 + dot(n, dir)) created 20x brightness
+                // swings and axis-aligned seams on the probe grid; real
+                // directionality comes from the per-pixel path trace.
+                vec3 probe_irradiance = probe_irr_sample.rgb;
 
                 accum_irr += probe_irradiance * weight;
                 accum_sky += probe_irr_sample.a * weight;

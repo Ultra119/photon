@@ -111,6 +111,9 @@ void main() {
     // Unpack surface data
     vec4 gbuf0 = texelFetch(colortex1, full_texel, 0);
     vec3 world_normal = decode_unit_vector(unpack_unorm_2x8(gbuf0.z));
+    // Vanilla skylight of the receiver (packed with blocklight in gbuffer0.w).
+    // Used to gate sky-origin GI so sealed interiors stay dark.
+    float receiver_skylight = unpack_unorm_2x8(gbuf0.w).y;
 
 #if defined NORMAL_MAPPING
     vec4 gbuf1 = texelFetch(colortex2, full_texel, 0);
@@ -163,6 +166,7 @@ void main() {
             world_normal,
             ray_dir,
             dither.x,
+            receiver_skylight,
             voxel_sampler,
             voxel_mid_sampler,
             voxel_coarse_sampler,

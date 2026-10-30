@@ -1,7 +1,7 @@
 # RT Lighting Bug Audit — fork HEAD `6d49083` (`arena/ce39d2b2-photon`)
 
-**Date:** 2026-10-30 (Wave 1 fixes applied same day)
-**Status:** Wave 1 applied — see “Wave 1 status” below. Waves 2–4 pending.
+**Date:** 2026-10-30 (Wave 1 fixes applied same day; Wave 2 applied after Wave 1 playtest)
+**Status:** Waves 1–2 applied — see status sections below. Waves 3–4 pending.
 **Method:** full static re-read of the current RT pipeline (`rtgi_trace`, `rtgi_temporal`, `rtgi_filter`, `rtgi_probe_update`, `rt_gi.glsl`, `ddgi.glsl`, `voxel_dda.glsl`, `voxel_update/palette/storage`, `diffuse_lighting.glsl`) against the SEUS PTGI HRR Test 2.1 reference (extracted from the attached archive). Every finding below was re-verified from the current working tree; nothing is copied from prior audit docs, and prior "confirmed" claims were treated as untrusted. SEUS is used only as a behavioral reference — no code is taken from it.
 
 **Confidence labels:**
@@ -65,8 +65,85 @@ Runtime validation still needed (Wave 1 targets):
   (S1).
 - Distant village at night: no popping giant emissive cubes (D6).
 
-Remaining waves: Wave 2 (DDGI containment: D1/D2/D3/D5), Wave 3 (leak gates
-& energy: S2/S4/T4/L1), Wave 4 (cleanup: L2/L3/L4/S5).
+Remaining waves: Wave 3 (leak gates & energy: S2/S4/T4/L1), Wave 4 (cleanup:
+L2/L3/L4/S5).
+
+---
+
+## Wave 2 status — applied 2026-10-30
+
+Triggered by the Wave 1 playtest: the torch halo is stable (T3 confirmed),
+corner spikes are gone (S1 confirmed), but the DDGI field in an enclosed
+11×11×5 room still “shows up and fades out”, the probe debug view shows
+axis-aligned brightness seams, small seam/corner light spots remain, and a
+torchless sealed room still shows ambient glow.
+
+Changed files and behavior:
+
+- `shaders/include/lighting/rt/ddgi.glsl` — **D2:** the per-probe
+  `dir_factor = clamp(1 + dot(n, probe_dir), 0.1, 2.0)` hack is removed;
+  probe irradiance is applied isotropically. This was the source of the
+  straight-line brightness steps on the 4-block probe grid in the
+  `GI_DEBUG_PROBE` view. **D3:** `sample_ddgi_irradiance()` now occlusion-
+  tests the surface→probe segment against the fine voxel grid with
+  `trace_any_hit()` when `DDGI_QUERY_OCCLUSION` is defined (probes with
+  trilinear weight ≤ 0.02 skip the test). Probes behind 1-block walls can no
+  longer bleed their colour onto floors/ceilings near the wall — the
+  room-corner “backlight” leak.
+- `shaders/include/lighting/rt/rt_gi.glsl` — defines `DDGI_QUERY_OCCLUSION`
+  before including `ddgi.glsl` (its two parents, `rtgi_trace.csh` and
+  `rtgi_probe_update.csh`, declare the voxel samplers). **D5:** the probe
+  bounce at a per-pixel ray hit is now faded in with hit distance
+  (`smoothstep(1, 3, distance)`), so near hits — where the per-pixel ray is
+  strongest — no longer re-inject raw probe churn every frame. **S2
+  (minimal):** sky-origin GI is gated by the receiver’s vanilla skylight
+  (`saturate(sky × 10)`, Overworld only) for sky misses and the probe sky
+  fraction, so sealed interiors whose rays escape through voxel seams stop
+  accumulating leaked sky light. This is the SEUS `CAVE_GI_LEAK_FIX` model.
+- `shaders/program/rtgi/rtgi_trace.csh` — unpacks the receiver’s vanilla
+  skylight from `gbuffer0.w` and passes it to `evaluate_rtgi_ray()`.
+- `shaders/settings.glsl` — **D1:** defaults `RTGI_PROBE_RAYS` 16 → 32 and
+  `RTGI_PROBE_HYSTERESIS` 0.70 → 0.80 (per-update probe noise halved, only
+  20 % of a probe’s value replaced per refresh).
+- `shaders/shaders.properties` — profiles: `high` probe rays 16 → 32,
+  `ultra` 32 → 64 (`medium` stays 16 as the low-end option).
+
+Notes:
+
+- `gi_debug.glsl` still samples probes **without** query occlusion, so the
+  `GI_DEBUG_PROBE` view shows the raw stored field; shading applies the
+  occlusion on top. Expect the render to leak less than the debug view.
+- The forward-lit probe path (`diffuse_lighting.glsl` non-deferred4 branch,
+  translucents) still queries without occlusion because those programs do
+  not declare the voxel samplers. Known limitation, Wave 3+.
+- The sun-bounce component of voxel-hit radiance is not yet receiver-gated
+  (needs `shade_voxel_hit` to export sun/emission separately — full S2).
+- Seam light *pixels* (their item 3) are likely the remaining DDA face-slide
+  (S3); a dithered origin offset is the planned fix, not yet applied.
+
+Validation after Wave 2:
+
+- `./tools/shadercheck/run_checks.sh` green with glslang 16.6.0: packing OK,
+  properties lint OK (13 RTGI menu options), `294`-case compute/fragment
+  matrix **0 failures**, `1053`-case wrapper/option matrix **0 failures**,
+  DDA/energy 16/16, clipmap/boundary/AO/debug tests pass.
+- Direct checks: `deferred1_a` (trace) for all three worlds, `deferred_a`
+  (probe update), `deferred4`, `final` — all compile.
+- `git diff --check` passes.
+
+Runtime validation needed (Wave 2 targets):
+
+- Same sealed 11×11×5 room, torchless: ambient glow should drop sharply;
+  what remains is a real geometry gap (check for glass, slabs, stairs, or
+  unvoxelized blocks in the build).
+- With torch: probe field should stop appearing/fading; `GI_DEBUG_PROBE`
+  should lose the straight-line seams (may still show soft 4-block blotches
+  — that is probe resolution, not the dir hack).
+- Corner “backlight” from a lit room behind a wall should be gone or greatly
+  reduced.
+- Daylight interiors: verify they are not overly dark now (sky gate); if a
+  genuinely open room lost its sky bounce, the receiver skylight there is
+  low — report it and the curve `×10` can be tuned or restricted.
 
 ---
 

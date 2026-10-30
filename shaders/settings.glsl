@@ -66,8 +66,13 @@ const float wetnessHalflife         = 70.0;
   #define LIGHTING_MODE_PT 1
   #define LIGHTING_MODE LIGHTING_MODE_RT // [LIGHTING_MODE_RT]
 
-  #define RTGI_PROBE_RAYS 16 // [8 16 32 64]
-  #define RTGI_PROBE_HYSTERESIS 0.70 // [0.50 0.60 0.70 0.80 0.85 0.90 0.95]
+  // 32 rays + 0.80 hysteresis: each probe still refreshes every 16 frames,
+  // but the per-update Monte-Carlo noise is halved and only 20% of the value
+  // is replaced, which stops the visible "probe light shows up and fades
+  // out" churn in enclosed rooms. 16 rays / 0.70 stays available on the
+  // slider for low-end profiles.
+  #define RTGI_PROBE_RAYS 32 // [8 16 32 64]
+  #define RTGI_PROBE_HYSTERESIS 0.80 // [0.50 0.60 0.70 0.80 0.85 0.90 0.95]
   #define RTGI_RESOLUTION 1 // [0 1 2]
   #define RTGI_RAY_COUNT 2 // [2 4 8]
   #define RTGI_BRIGHTNESS 1.00 // [0.25 0.50 0.75 1.00 1.25 1.50 1.75 2.00 2.50 3.00]
