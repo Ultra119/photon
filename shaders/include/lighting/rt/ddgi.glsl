@@ -96,6 +96,14 @@ vec4 sample_ddgi_irradiance(
     vec3 accum_irr = vec3(0.0);
     float accum_sky = 0.0;
     float total_weight = 0.0;
+    // Validity coverage: the trilinear mass (wx*wy*wz, which sums to 1 over
+    // the full 2x2x2 neighbourhood) contributed by probes that passed the
+    // toroidal window check. The window edge sits ±64 blocks around the
+    // camera and its trailing slice stays stale-invalid for up to 16 frames
+    // after every 4-block camera move; without coverage tracking the
+    // surviving probes renormalize to full brightness and that boundary
+    // draws a bright camera-locked line across the floor.
+    float accum_coverage = 0.0;
 
     for (int dz = 0; dz <= 1; ++dz) {
         float wz = dz == 1 ? frac_coord.z : (1.0 - frac_coord.z);
@@ -115,6 +123,9 @@ vec4 sample_ddgi_irradiance(
                 if (cell_data.w <= 0 || any(notEqual(cell_data.xyz, probe_c))) {
                     continue;
                 }
+
+                float trilinear_w = wx * wy * wz;
+                accum_coverage += trilinear_w;
 
                 vec4 probe_dir_sample = texelFetch(ddgi_direction_sampler, probe_texel, 0);
                 vec3 probe_reloc = decode_ddgi_relocation(probe_dir_sample.w);
@@ -164,7 +175,15 @@ vec4 sample_ddgi_irradiance(
 
     if (total_weight > 1e-4) {
         float inv_w = 1.0 / total_weight;
-        return vec4(accum_irr * inv_w, clamp01(accum_sky * inv_w));
+        // Coverage fade: partial neighbourhoods (window edge, stale slices)
+        // dim toward zero instead of renormalizing the survivors to full
+        // brightness, turning the camera-locked boundary line into a wide
+        // gentle ramp. Full neighbourhoods are unaffected (coverage = 1).
+        float coverage_fade = smoothstep(0.20, 1.0, accum_coverage);
+        return vec4(
+            accum_irr * inv_w * coverage_fade,
+            clamp01(accum_sky * inv_w)
+        );
     }
 
     return vec4(0.0);

@@ -105,11 +105,19 @@ vec4 evaluate_rtgi_ray(
         vec3 probe_bounce_sky = probe_bounce * probe_irr.a * sky_gate;
         probe_bounce = (probe_bounce_local + probe_bounce_sky) * probe_gate;
 
-        vec3 radiance = (vx_hit.radiance + probe_bounce) * vx_hit.transmittance;
+        // Split the hit into its sun/sky-bounce and local/emission parts and
+        // gate ONLY the sky part. This is the full S2 leak gate: a bounce hit
+        // that should never have been lit (shadow-map bias at perpendicular
+        // sun angles, seam escapes) carries sky_weight = 1 and is zeroed on
+        // low-skylight receivers, while emissive transport passes untouched.
+        vec3 hit_sky = vx_hit.radiance * vx_hit.sky_weight;
+        vec3 hit_local = vx_hit.radiance - hit_sky;
+
+        vec3 radiance = (hit_local + hit_sky * sky_gate + probe_bounce)
+            * vx_hit.transmittance;
 
         float sky_lum = dot(
-            vx_hit.radiance * vx_hit.sky_weight * sky_gate
-                + probe_bounce * probe_irr.a,
+            hit_sky * sky_gate + probe_bounce * probe_irr.a,
             luminance_weights
         );
         float total_lum = dot(radiance, luminance_weights);

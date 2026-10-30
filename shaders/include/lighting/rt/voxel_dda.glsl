@@ -214,6 +214,7 @@ VoxelHit trace_voxel_level(
     vec3 dda_dir,
     float t_start_world,
     float max_dist_world,
+    float dither,
     vec3 direct_sun_color,
     vec3 l_dir,
     out float level_exit_world
@@ -226,8 +227,14 @@ VoxelHit trace_voxel_level(
     float max_dist_level = max(0.0, max_dist_world - t_start_world) / scale;
 
     // A small normal/directional bias clears the raster surface seam. Coarser
-    // levels start just outside the finer cube, so they only need a forward bias.
-    vec3 start_scene = base_scene + dda_dir * 0.02;
+    // levels start just outside the finer cube, so they only need a forward
+    // bias. The per-ray dither (threaded through from the caller — previously
+    // dead) nudges the origin along the ray so exactly-on-boundary starts and
+    // face/corner-aligned slides do not repeat the same leak every frame;
+    // DDA tie-breaks shift, turning persistent seam streaks into temporally
+    // averaged noise. Probe updates pass a per-ray-index (frame-stable) value
+    // so the probe field itself does not gain noise.
+    vec3 start_scene = base_scene + dda_dir * (0.02 + 0.008 * dither);
     if (level == 0) start_scene += surface_normal * 0.03;
     vec3 start_level = (start_scene - origin_scene) / scale;
 
@@ -369,19 +376,19 @@ VoxelHit trace_voxel_dda(
             hit = trace_voxel_level(
                 voxel_grid, level, shadow_tex, shadow_mv, shadow_proj,
                 ray_origin_scene, surface_normal, dda_dir, t_start, max_dist,
-                direct_sun_color, l_dir, level_exit
+                dither, direct_sun_color, l_dir, level_exit
             );
         } else if (level == 1) {
             hit = trace_voxel_level(
                 voxel_mid, level, shadow_tex, shadow_mv, shadow_proj,
                 ray_origin_scene, surface_normal, dda_dir, t_start, max_dist,
-                direct_sun_color, l_dir, level_exit
+                dither, direct_sun_color, l_dir, level_exit
             );
         } else {
             hit = trace_voxel_level(
                 voxel_coarse, level, shadow_tex, shadow_mv, shadow_proj,
                 ray_origin_scene, surface_normal, dda_dir, t_start, max_dist,
-                direct_sun_color, l_dir, level_exit
+                dither, direct_sun_color, l_dir, level_exit
             );
         }
 

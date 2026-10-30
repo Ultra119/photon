@@ -1,7 +1,7 @@
 # RT Lighting Bug Audit — fork HEAD `6d49083` (`arena/ce39d2b2-photon`)
 
-**Date:** 2026-10-30 (Wave 1 fixes applied same day; Wave 2 applied after Wave 1 playtest)
-**Status:** Waves 1–2 applied — see status sections below. Waves 3–4 pending.
+**Date:** 2026-10-30 (Waves 1–2 + Wave 3 part 1 applied same day)
+**Status:** Waves 1–2 and Wave 3-part-1 (S2-full, coverage fade, origin dither) applied — see status sections below. Rest of Wave 3 + Wave 4 pending.
 **Method:** full static re-read of the current RT pipeline (`rtgi_trace`, `rtgi_temporal`, `rtgi_filter`, `rtgi_probe_update`, `rt_gi.glsl`, `ddgi.glsl`, `voxel_dda.glsl`, `voxel_update/palette/storage`, `diffuse_lighting.glsl`) against the SEUS PTGI HRR Test 2.1 reference (extracted from the attached archive). Every finding below was re-verified from the current working tree; nothing is copied from prior audit docs, and prior "confirmed" claims were treated as untrusted. SEUS is used only as a behavioral reference — no code is taken from it.
 
 **Confidence labels:**
@@ -144,6 +144,65 @@ Runtime validation needed (Wave 2 targets):
 - Daylight interiors: verify they are not overly dark now (sky gate); if a
   genuinely open room lost its sky bounce, the receiver skylight there is
   low — report it and the curve `×10` can be tuned or restricted.
+
+---
+
+## Wave 3 part 1 status — applied 2026-10-30
+
+Triggered by the Wave 2 playtest: sealed room near pitch-black (sky gate
+works), no backlight (D3 works), but (a) small light streaks appear when the
+sun rises/sets/is overhead (light perpendicular to a face) and similarly from
+block lights, and (b) a line “fixed to the camera” appears on the ground near
+blocks.
+
+Changed files and behavior:
+
+- `shaders/include/lighting/rt/rt_gi.glsl` — **S2-full:** the receiver
+  skylight gate now multiplies the *actual* hit radiance, not just the dead
+  alpha channel. The hit is split by the tracer’s `sky_weight`
+  (sun/sky-bounce vs emission) and only the sky part is gated. Bounce hits
+  that leak through shadow-map bias at perpendicular sun angles or through
+  seam escapes are zeroed on low-skylight receivers; emissive transport and
+  torch-lit interiors are untouched. This closes the streak class reported
+  at sunrise/sunset/noon.
+- `shaders/include/lighting/rt/ddgi.glsl` — **coverage fade:**
+  `sample_ddgi_irradiance()` now tracks the trilinear mass of probes that
+  passed the toroidal window check and multiplies the result by
+  `smoothstep(0.20, 1.0, coverage)`. Previously the survivors were
+  renormalized to full brightness, so the probe-window edge — a ±64-block
+  square that follows the camera, with a slice stale-invalid for up to 16
+  frames after every 4-block move — drew a bright camera-locked line across
+  the floor. Full neighbourhoods are unaffected.
+- `shaders/include/lighting/rt/voxel_dda.glsl` — **S3 (start dither):** the
+  `dither` parameter that `trace_voxel_dda()` has accepted since Step 12 was
+  never actually used (the Step 12 claim about “threaded seam offsets” was
+  one of the untrue commit descriptions). It now nudges the per-level start
+  origin along the ray (`0.02 + 0.008·dither`): exactly-on-boundary starts
+  and face-aligned slides no longer repeat the same leak every frame —
+  persistent seam streaks dissolve into temporally averaged noise. Probe
+  updates pass a per-ray-index, frame-stable value, so probe fields gain no
+  noise; per-pixel traces pass their frame-varying r2 sample.
+
+Validation after Wave 3 part 1:
+
+- `./tools/shadercheck/run_checks.sh` green: properties lint OK, `294`
+  compute/fragment **0 failures**, `1053` wrapper/option **0 failures**,
+  DDA 16/16, clipmap/boundary/AO/debug OK.
+- Direct: trace (`deferred1_a`) Overworld + Nether + TAAU 0.50, probe update
+  (`deferred_a`), `deferred4` — all compile.
+- `git diff --check` passes.
+
+Open items from the playtest (need user input):
+
+- The camera-locked ground line: if it sits at **~64 blocks** distance it is
+  the probe-window/clipmap fine→coarse boundary (partially addressed by the
+  coverage fade; a level-transition crossfade would be the full fix). If it
+  hugs the camera closely, re-test with bloom off and `RT_AO_STRENGTH=0`
+  and report which kills it.
+- Block-light “streaks”: specify — torch behind a wall (leak), or torch in
+  the room creating directional streaks on the floor (emitter-hit noise)?
+- Daylight interiors: confirm the completed S2 gate did not over-darken any
+  genuinely open room.
 
 ---
 
