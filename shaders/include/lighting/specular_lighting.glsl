@@ -204,9 +204,6 @@ vec3 trace_specular_ray(
         voxel_sampler,
         voxel_mid_sampler,
         voxel_coarse_sampler,
-        shadowtex0,
-        shadowModelView,
-        shadowProjection,
         light_color,
         light_dir,
         colortex4

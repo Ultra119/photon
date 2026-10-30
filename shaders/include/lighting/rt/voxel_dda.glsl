@@ -109,32 +109,90 @@ struct VoxelHit {
     vec3 albedo;
 };
 
-// Check if voxel point is in sunlight shadow using shadow map
-float sample_voxel_sun_shadow(
-    sampler2D shadow_tex,
-    mat4 shadow_mv,
-    mat4 shadow_proj,
-    vec3 scene_pos,
-    vec3 normal,
-    vec3 l_dir
+// Camera-independent sun visibility: march the hit level's voxel grid toward
+// the light until an occluder or the distance budget. This replaces the raster
+// cascade lookup: Iris shadowModelView/shadowProjection describe CASCADE 0 — a
+// small camera-fitted box (shadowIntervalSize = 2.0) that returned
+// "shadowed" everywhere outside it. That box edge followed the camera frustum
+// (brightness steps and a ~5-block camera-locked line on walls/floor when the
+// view pitch changed), raster shadow seams leaked sun at grazing angles, and
+// every bounce beyond the box was silently killed. A voxel march is stable in
+// world space and occludes against the same geometry the GI ray sees.
+const float voxel_sun_shadow_dist = 48.0;
+const int voxel_sun_shadow_max_steps = 48;
+
+float trace_sun_visibility(
+    usampler3D voxel_grid,
+    int level,
+    vec3 start_scene,
+    vec3 l_dir_in
 ) {
-    float NoL = dot(normal, l_dir);
-    if (NoL <= 0.0) return 0.0;
+    // safe_ray_dir keeps axis-aligned light directions from producing
+    // infinite/NaN DDA inv_dir terms when the origin sits on a grid plane.
+    vec3 l_dir = safe_ray_dir(l_dir_in);
+    float scale = rt_clip_scale(level);
+    vec3 origin_scene = rt_clip_origin_scene(level);
 
-    // Use physically matched shadow bias matching main pass (Stage 6 C.3)
-    vec3 bias = get_shadow_bias(scene_pos, normal, NoL, 1.0);
-    vec3 shadow_view = mat3(shadow_mv) * (scene_pos + bias) + shadow_mv[3].xyz;
-    vec4 shadow_clip = shadow_proj * vec4(shadow_view, 1.0);
-    vec3 shadow_ndc = shadow_clip.xyz / shadow_clip.w;
-    shadow_ndc = distort_shadow_space(shadow_ndc);
-    vec3 shadow_screen = shadow_ndc * 0.5 + 0.5;
+    vec3 start_level = (start_scene - origin_scene) / scale;
+    vec3 dir_level = l_dir / scale;
+    vec3 inv_dir_level = 1.0 / dir_level;
 
-    if (clamp01(shadow_screen) != shadow_screen) {
-        return 0.0; // Outside shadow map: assume shadowed to avoid leaks
+    vec3 t0 = (vec3(0.0) - start_level) * inv_dir_level;
+    vec3 t1 = (rt_clipmap_size_f - start_level) * inv_dir_level;
+    vec3 tnear = min(t0, t1);
+    vec3 tfar = max(t0, t1);
+    float tenter = max(max(tnear.x, tnear.y), tnear.z);
+    float texit = min(min(tfar.x, tfar.y), tfar.z);
+    float max_dist_level = voxel_sun_shadow_dist / scale;
+    float seg_end = min(texit, max_dist_level);
+    if (seg_end < max(tenter, 0.0)) {
+        // The light direction leaves this level's grid immediately: no
+        // occluder within range at this resolution.
+        return 1.0;
     }
 
-    float shadow_depth = texture(shadow_tex, shadow_screen.xy).r;
-    return float(shadow_depth >= shadow_screen.z - 0.001);
+    float t = max(tenter, 0.0) + 1e-4;
+    ivec3 current_voxel = ivec3(floor(start_level + dir_level * t));
+
+    vec3 step_dir = sign(dir_level);
+    vec3 delta_t = abs(inv_dir_level);
+    vec3 t_max =
+        (step_dir * (vec3(current_voxel) - start_level) + step_dir * 0.5 + 0.5)
+        * delta_t;
+    vec3 mask;
+
+    for (int i = 0; i < voxel_sun_shadow_max_steps; ++i) {
+        if (!is_inside_voxel_grid(current_voxel) || t > seg_end) break;
+
+        // i == 0 is the (biased) origin cell on the hit face — never occlude
+        // against the surface the march started from.
+        if (i > 0) {
+            uint packed = texelFetch(voxel_grid, rt_clip_texel(current_voxel), 0).r;
+            VoxelSample sample_data = unpack_voxel_data(packed);
+            if (sample_data.block_id != 0u) {
+                VoxelMaterial mat =
+                    get_voxel_material(sample_data.block_id, sample_data.color);
+                // Glass/tinted materials are non-solid in the material table
+                // and are skipped, matching the main loop's transmission.
+                if (mat.is_solid || sample_data.is_emitter) {
+                    return 0.0;
+                }
+            }
+        }
+
+        float next_t = min(min(t_max.x, t_max.y), t_max.z);
+        if (next_t > seg_end) break;
+        if (t_max.x < t_max.y) {
+            mask = (t_max.x < t_max.z) ? vec3(1.0, 0.0, 0.0) : vec3(0.0, 0.0, 1.0);
+        } else {
+            mask = (t_max.y < t_max.z) ? vec3(0.0, 1.0, 0.0) : vec3(0.0, 0.0, 1.0);
+        }
+        t = next_t;
+        t_max += mask * delta_t;
+        current_voxel += ivec3(mask * step_dir);
+    }
+
+    return 1.0;
 }
 
 // ---------------------------------------------------------------------------
@@ -162,9 +220,8 @@ void shade_voxel_hit(
     vec3 hit_face_scene,
     vec3 hit_norm,
     vec3 ray_transmittance,
-    sampler2D shadow_tex,
-    mat4 shadow_mv,
-    mat4 shadow_proj,
+    usampler3D voxel_grid,
+    int level,
     vec3 direct_sun_color,
     vec3 l_dir
 ) {
@@ -173,10 +230,14 @@ void shade_voxel_hit(
     result.hit_pos = hit_face_scene;
     result.transmittance = ray_transmittance;
 
-    float sun_vis = sample_voxel_sun_shadow(
-        shadow_tex, shadow_mv, shadow_proj, hit_face_scene, hit_norm, l_dir
-    );
     float NoL = max(0.0, dot(hit_norm, l_dir));
+    float sun_vis = 0.0;
+    if (NoL > 0.0) {
+        // Voxel-space sun visibility (see trace_sun_visibility): world-stable,
+        // no dependence on the camera-fitted raster cascade box.
+        vec3 shadow_start = hit_face_scene + hit_norm * 0.05 + l_dir * 0.02;
+        sun_vis = trace_sun_visibility(voxel_grid, level, shadow_start, l_dir);
+    }
     vec3 sun_irradiance = direct_sun_color * (sun_vis * NoL);
 
     // Solid voxels never inject analytic sky/block ambient. Emission is
@@ -206,9 +267,6 @@ void shade_voxel_hit(
 VoxelHit trace_voxel_level(
     usampler3D voxel_grid,
     int level,
-    sampler2D shadow_tex,
-    mat4 shadow_mv,
-    mat4 shadow_proj,
     vec3 ray_origin_scene,
     vec3 surface_normal,
     vec3 dda_dir,
@@ -319,7 +377,7 @@ VoxelHit trace_voxel_level(
                         vec3 hit_face_scene = start_scene + dda_dir * (hit_t * scale);
                         shade_voxel_hit(
                             result, sample_data, mat, hit_face_scene, hit_norm,
-                            ray_transmittance, shadow_tex, shadow_mv, shadow_proj,
+                            ray_transmittance, voxel_grid, level,
                             direct_sun_color, l_dir
                         );
                         result.distance = t_start_world + hit_t * scale;
@@ -353,9 +411,6 @@ VoxelHit trace_voxel_dda(
     usampler3D voxel_grid,
     usampler3D voxel_mid,
     usampler3D voxel_coarse,
-    sampler2D shadow_tex,
-    mat4 shadow_mv,
-    mat4 shadow_proj,
     vec3 ray_origin_scene,
     vec3 surface_normal,
     vec3 ray_dir,
@@ -374,19 +429,19 @@ VoxelHit trace_voxel_dda(
         VoxelHit hit;
         if (level == 0) {
             hit = trace_voxel_level(
-                voxel_grid, level, shadow_tex, shadow_mv, shadow_proj,
+                voxel_grid, level,
                 ray_origin_scene, surface_normal, dda_dir, t_start, max_dist,
                 dither, direct_sun_color, l_dir, level_exit
             );
         } else if (level == 1) {
             hit = trace_voxel_level(
-                voxel_mid, level, shadow_tex, shadow_mv, shadow_proj,
+                voxel_mid, level,
                 ray_origin_scene, surface_normal, dda_dir, t_start, max_dist,
                 dither, direct_sun_color, l_dir, level_exit
             );
         } else {
             hit = trace_voxel_level(
-                voxel_coarse, level, shadow_tex, shadow_mv, shadow_proj,
+                voxel_coarse, level,
                 ray_origin_scene, surface_normal, dda_dir, t_start, max_dist,
                 dither, direct_sun_color, l_dir, level_exit
             );

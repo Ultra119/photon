@@ -206,6 +206,72 @@ Open items from the playtest (need user input):
 
 ---
 
+## Wave 3 part 2 status — applied 2026-10-31
+
+Triggered by the second playtest: camera-tilt brightness **steps** (up to a
+sharp jump at ~26° pitch), extra sun-labeled (blue) hits appearing inside a
+sealed room when tilting up, camera-locked bright/dark **lines ~5 blocks
+away** on floor and walls that rotate with pitch, and a brightness strip
+along the wall/ceiling junction of a torch-lit room.
+
+**Root cause — one mechanism produced all of them:** the voxel tracer's sun
+visibility came from `sample_voxel_sun_shadow()`, which sampled Iris's
+`shadowModelView`/`shadowProjection`. Those uniforms describe **CSM cascade
+0**, and with `shadowIntervalSize = 2.0` cascade 0 is a small box fitted to
+the *camera frustum* (a few blocks around the player). The function returned
+"shadowed" for everything outside that box. So:
+
+- the box edge followed the camera and re-fitted whenever the view pitch
+  changed → brightness steps and the ~5-block camera-locked lines on walls
+  and floor (their projection rotates with pitch exactly like a
+  camera-centered volume);
+- tilting up moved more of the room inside the box → more sun-labeled hits
+  (the blue dots in hit.source / GI_RAW) inside a *sealed* room, through the
+  same raster shadow seams that caused the original perpendicular-sun
+  leaks;
+- every sun bounce beyond the box was silently killed (`return 0.0`), which
+  is why distant GI in sunlight behaved so poorly;
+- the torch-room wall/ceiling strip sat where the cascade box edge crossed
+  the lit surfaces.
+
+**Fix:** `sample_voxel_sun_shadow()` is deleted. In its place
+`trace_sun_visibility()` marches the hit level's voxel grid toward the light
+(`voxel_sun_shadow_dist = 48` blocks, 48 DDA steps, origin cell skipped,
+glass non-occluding, `safe_ray_dir` for axis-aligned light directions). The
+result is world-stable — no dependence on camera position, pitch, or the
+raster cascade fit — and occludes against the same geometry the GI ray
+sees. This is the deferred S6 "expensive sun ray", pulled forward by
+evidence. The shadow-matrix plumbing (`shadowtex0`, `shadowModelView`,
+`shadowProjection` parameters) is stripped from `trace_voxel_dda`,
+`trace_voxel_level`, `shade_voxel_hit`, `evaluate_rtgi_ray`,
+`trace_rt_reflection` and the three RTGI call sites; the compute programs
+keep their uniform declarations (now unused there) to avoid wrapper churn.
+
+The S2 sky gate from part 1 remains as the second layer: a voxel-marched sun
+is correct for the traced geometry, but rays that still escape the voxel
+grid through seams must not carry sky into sealed receivers.
+
+Validation:
+
+- `./tools/shadercheck/run_checks.sh` green: properties lint OK, `294`
+  compute/fragment **0 failures**, `1053` wrapper/option **0 failures**,
+  DDA 16/16, clipmap/boundary/AO/debug OK.
+- Direct: trace (`deferred1_a`) Overworld + Nether, probe update
+  (`deferred_a`), `deferred4` Overworld + End (reflection path) — all
+  compile.
+
+Playtest checklist for part 2:
+
+1. Tilt the camera up/down slowly indoors and outdoors: no brightness steps,
+   no ~5-block lines on floor or walls, no blue-hit bursts in the sealed
+   room when looking up.
+2. Torch-lit room behind a wall: no strip at the wall/ceiling junction.
+3. Expect sun-lit GI outdoors to improve visibly — bounce beyond ~5 blocks
+   used to be killed outright; watch FPS (one ≤48-step DDA per GI ray hit).
+4. Reconfirm sealed room at night/noon and daylight interiors (S2 layer).
+
+---
+
 ## 0. Symptom → root-cause map
 
 | Reported symptom | Primary causes (finding IDs) |
