@@ -17,16 +17,13 @@ screen.post                            = Пост-обработка
 screen.misc                            = Разное
 
 screen.weather                         = Система ежедневной погоды
-screen.colored_lights                  = Настройки цветного освещения
 screen.rp_settings                     = Настройки ресурс-пака
 screen.reflections                     = Отражения
 screen.refraction                      = Преломления
 screen.light_sources                   = Источники света
 screen.shadows                         = Тени
-screen.ao                              = Окружающая окклюзия
 screen.color_grading                   = Цветовая гамма
 screen.exposure                        = Экспозиция
-screen.lpv_vl                          = Освещение тумана цветным светом
 screen.box                             = Контур блоков
 screen.distant_horizons                = Distant Horizons
 screen.developer                       = Настройки разработчика
@@ -110,21 +107,14 @@ option.WEATHER_WIND_VARIATION_SPEED        = Скорость изменения
 
 # Lighting settings
 
-option.COLORED_LIGHTS                  = Цветное освещение
-option.COLORED_LIGHTS.comment          = Варьирующиеся цвета освещения блоков, использующие алгоритм заливки. Необходим Iris 1.6 или новее
-option.COLORED_LIGHTS_VANILLA_LIGHTMAP_CONTRIBUTION = Вклад ванильной карты освещения
 option.HANDHELD_LIGHTING               = Свет предметов
 option.HANDHELD_LIGHTING.comment       = Предметы в руках будут освещать мир. Если цветное освещение включено, свет от предметов будет такого же цвета, как и свет от блоков
 option.HANDHELD_LIGHTING_INTENSITY     = Сила света предметов
 option.HANDHELD_LIGHTING_INTENSITY.comment = Регулирует яркость света от предметов
-option.AO_IN_SUNLIGHT                  = AO при солнце
-option.AO_IN_SUNLIGHT.comment          = Следует ли применять затеняющую окружающую окклюзию при прямом солнечном/лунном свете
 option.CLOUD_SHADOWS                   = Тени облаков
 option.CLOUD_SHADOWS.comment           = Тени, отбрасываемые облаками на землю
 option.CLOUD_SHADOWS_INTENSITY         = Интенсивность теней от облаков
 option.CLOUD_SHADOWS_INTENSITY.comment = Регулирует интенсивность теней от облаков
-option.SH_SKYLIGHT                     = SH Неба
-option.SH_SKYLIGHT.comment             = Использует кодировку сферических гармоник для направленного светового потока в окружающем мире, что обеспечивает очень естественный результат.\nЭто хорошо работает с GTAO
 option.SSS_SHEEN                       = Блеск SSS
 option.SSS_SHEEN.comment               = Зеркальный эффект "блеска" на растениях и листьях помогает высокой траве и другим растениям лучше сочетаться с отражениями травы
 option.SSS_INTENSITY                   = Сила SSS
@@ -154,23 +144,6 @@ option.PIXELATED_SHADOWS_RESOLUTION    = Разрешение пикселизи
 option.SSS_STEPS                       = Шагов SSS 
 option.SSS_STEPS.comment               = Увеличьте, чтобы уменьшить количество шума на листве и других материалов с подповерхностным рассеиванием (SSS), ценой производительности.
 
-option.SHADER_AO                       = Шейдер AО
-option.SHADER_AO.comment               = Используемый метод окружающей окклюзии (AO). Off — без шейдерного AO. SSAO — более низкое качество, но требует меньше сэмплов/фильтрации. GTAO — лучшее качество, но требует больше сэмплов/фильтрации.
-value.SHADER_AO.SHADER_AO_NONE         = Выкл
-value.SHADER_AO.SHADER_AO_SSAO         = SSAO
-value.SHADER_AO.SHADER_AO_GTAO         = GTAO
-option.VANILLA_AO                      = Ванильный AO
-option.VANILLA_AO.comment              = Встроенная в Майнкрафт окружающая окклюзия
-option.SSAO_RADIUS                     = Радиус SSAO
-comment.SSAO_RADIUS                    = Регулирует радиус SSAO – расстояние, на котором объекты могут затенять друг друга
-option.SSAO_STEPS                      = Шаги SSAO
-comment.SSAO_STEPS                     = Управляет уровнем шума SSAO
-option.GTAO_RADIUS                     = Радиус GTAO
-comment.GTAO_RADIUS                    = Регулирует радиус GTAO – расстояние, на котором объекты могут затенять друг друга
-option.GTAO_SLICES                     = Срезы GTAO
-comment.GTAO_SLICES                    = Управляет уровнем шума GTAO
-option.GTAO_HORIZON_STEPS              = Горизонтальные шаги GTAO
-comment.GTAO_HORIZON_STEPS             = Контролирует точность GTAO
 
 option.SUN_NR                          = §cКрасный
 option.SUN_NG                          = §aЗеленый
@@ -209,14 +182,7 @@ option.BLOCKLIGHT_G                    = §aЗеленый
 option.BLOCKLIGHT_B                    = §9Синий
 option.BLOCKLIGHT_I                    = Сила света от блоков
 
-option.VOXEL_VOLUME_SIZE               = Размер объёма вокселей
-option.VOXEL_VOLUME_SIZE.comment       = Значительное влияние на производительность, также зависит от дальности теней
-suffix.VOXEL_VOLUME_SIZE               = m³
-option.VOXEL_VOLUME_CENTER             = Центр объёма вокселей
-option.VOXEL_VOLUME_CENTER.comment     = Вперёд: объём вокселей смещён вперёд от игрока, благодаря чему большая его часть попадает в поле зрения
 
-value.VOXEL_VOLUME_CENTER.VOXEL_VOLUME_CENTER_AHEAD  = Вперёд
-value.VOXEL_VOLUME_CENTER.VOXEL_VOLUME_CENTER_PLAYER = Игрок
 
 suffix.shadowMapResolution             = ²
 suffix.sunPathRotation                 = °
@@ -426,7 +392,6 @@ option.BLOOMY_FOG_INTENSITY.comment    = Регулирует силу "свет
 option.OVERWORLD_FOG_INTENSITY         = Сила тумана верхнего мира
 option.NETHER_FOG_INTENSITY            = Сила тумана нижнего мира
 option.VL                              = Объемное освещение (VL)
-option.LPV_VL.comment                  = Источники света освещают туман. Требует включённого цветного освщения! 
 option.VL.comment                      = Создает световые волны и переменную плотность тумана
 option.VL_RENDER_SCALE                 = Масштаб рендеринга VL
 option.AIR_FOG_CLOUDY_NOISE            = Облачный туман
@@ -434,13 +399,6 @@ option.AIR_FOG_CLOUDY_NOISE.comment    = Едва заметные облачн�
 option.AIR_FOG_COLORED_LIGHT_SHAFTS    = Цветные световые лучи
 option.AIR_FOG_COLORED_LIGHT_SHAFTS.comment = Световые лучи, проходящие через полупрозрачные объекты, окрашиваются в зависимости от их цвета
 
-# LPV VL
-option.LPV_VL                          = Включено
-option.LPV_VL_STEPS                    = Шагов 
-option.LPV_VL_INTENSITY_OVERWORLD      = Интенсивность на поверхности
-option.LPV_VL_INTENSITY_UNDERGROUND    = Интенсивность под землей
-option.LPV_VL_INTENSITY_NETHER         = Интенсивность в нижнем мире
-option.LPV_VL_INTENSITY_END            = Интенсивность в крае
 
 # Rayleigh Fog
 option.AIR_FOG_RAYLEIGH_FALLOFF_START             = Начало уменьшения Рэлея
@@ -514,10 +472,6 @@ option.HARDCODED_SSS.comment           = Жестко запрограммиро
 option.RAIN_PUDDLES                    = Дождевые лужи
 option.EMISSION_STRENGTH               = Сила свечения
 option.EMISSION_STRENGTH.comment       = Регулирует яркость светящихся объектов, таких как фонари. Это не влияет на яркость излучаемого света, а только на яркость самого источника света. Это также влияет на жестко запрограммированные источники излучения
-option.DIRECTIONAL_LIGHTMAPS           = Карты направленного света
-option.DIRECTIONAL_LIGHTMAPS.comment   = Свет от блоков и неба будет затронут картами нормалей. Может вызвать некоторые визуальные проблемы из-за ограничений метода
-option.DIRECTIONAL_LIGHTMAPS_INTENSITY = Сила направленных световых карт
-option.DIRECTIONAL_LIGHTMAPS_INTENSITY.comment = Регулирует силу направленных световых карт
 option.POM_DEPTH                       = Глубина параллакса
 option.POM_DEPTH.comment               = Регулирует глубину эффекта параллаксного окклюзионного отображения (POM)
 option.POM_SAMPLES                     = Образцов параллакса
@@ -765,3 +719,72 @@ option.BOX_LINE_WIDTH           = Ширина линии
 option.DH_OVERDRAW_DISTANCE    = Дальность перерисовки
 option.DH_OVERDRAW_FADE_LENGTH = Длина затухания перерисовки
 option.NOISE_ON_DH_TERRAIN     = Шум на ландшафте DH
+
+# --------------------------------------------------------------------------------
+#   Ray Tracing & GI (RTGI) Settings
+# --------------------------------------------------------------------------------
+
+screen.raytracing                                                    = Настройки трассировки лучей и GI
+
+option.RAYTRACED_GI                                                  = Ray-Traced GI
+option.RAYTRACED_GI.comment                                          = Нативная трассировка лучей (RTGI) для реалистичного непрямого освещения от солнца, неба и источников света.
+
+option.RTGI_TRACER                                                   = Трассировщик RTGI
+option.RTGI_TRACER.comment                                           = Метод трассировки. Воксельный режим (RTGI_TRACER_VOXEL) полностью не зависит от положения и обзора камеры.
+value.RTGI_TRACER.RTGI_TRACER_VOXEL                                  = Воксельный
+value.RTGI_TRACER.RTGI_TRACER_HYBRID                                 = Гибридный
+option.RTGI_MULTIBOUNCE                                             = Мульти-отскоки (DDGI)
+option.RTGI_MULTIBOUNCE.comment                                     = Многократные отскоки света через 3D-кэш проб освещенности (DDGI). Обеспечивает реалистичные цветовые переотражения между поверхностями (color bleeding) и мягкое непрямое освещение комнат и пещер.
+value.RTGI_MULTIBOUNCE.RTGI_MULTIBOUNCE_OFF                         = ВЫКЛ (1 отскок)
+value.RTGI_MULTIBOUNCE.RTGI_MULTIBOUNCE_PROBES                      = Пробы DDGI
+value.RTGI_MULTIBOUNCE.0                                            = ВЫКЛ (1 отскок)
+value.RTGI_MULTIBOUNCE.1                                            = Пробы DDGI
+option.RTGI_PROBE_RAYS                                              = Лучи проб DDGI
+option.RTGI_PROBE_RAYS.comment                                      = Количество сферических лучей, выпускаемых каждой пробой для сбора непрямого света.
+option.RTGI_PROBE_HYSTERESIS                                        = Сглаживание проб DDGI
+option.RTGI_PROBE_HYSTERESIS.comment                                = Коэффициент временного накопления истории проб освещенности (0.85 обеспечивает стабильность без вспышек).
+
+option.RTGI_INTENSITY                                                = Физическая яркость RTGI
+option.RTGI_INTENSITY.comment                                        = Физический множитель интенсивности диффузного непрямого освещения.
+
+option.RTGI_BRIGHTNESS                                               = Яркость RTGI
+option.RTGI_BRIGHTNESS.comment                                        = Общая визуальная яркость непрямого освещения.
+
+option.RTGI_INTERIOR_RETENTION                                       = Удержание освещения интерьеров
+option.RTGI_INTERIOR_RETENTION.comment                               = Сохранение непрямого света неба внутри темных помещений. 1.00 сохраняет весь трассированный свет.
+
+
+option.RTGI_VOXELIZE_ENTITIES                                        = Вокселизация сущностей
+option.RTGI_VOXELIZE_ENTITIES.comment                                = Экспериментально: вокселизирует мобов и сущностей в теневом проходе. Позволяет динамическим сущностям отбрасывать и принимать непрямые тени.
+value.RTGI_VOXELIZE_ENTITIES.0                                       = ВЫКЛ
+value.RTGI_VOXELIZE_ENTITIES.1                                       = ВКЛ
+
+option.RTGI_POINT_LIGHT_STRENGTH                                     = Яркость света блоков
+option.RTGI_POINT_LIGHT_STRENGTH.comment                             = Яркость воксельного светового поля вокруг светящихся блоков.
+
+option.RTGI_POINT_LIGHT_RADIUS                                       = Радиус света блоков
+option.RTGI_POINT_LIGHT_RADIUS.comment                               = Радиус распространения света блоков в вокселях.
+
+option.RTGI_SSGI_LOCAL_LIGHT_SCALE                                   = Масштаб света SSGI
+option.RTGI_SSGI_LOCAL_LIGHT_SCALE.comment                            = Масштаб локального экранного освещения.
+
+option.RTGI_CAVE_AMBIENT_SCALE                                       = Освещение пещер
+option.RTGI_CAVE_AMBIENT_SCALE.comment                               = Масштаб минимального фонового освещения в пещерах.
+
+option.RTGI_RAY_COUNT                                                = Количество лучей RTGI
+option.RTGI_RAY_COUNT.comment                                        = Количество трассируемых лучей на пиксель за кадр.
+
+option.RTGI_RESOLUTION                                               = Разрешение RTGI
+option.RTGI_RESOLUTION.comment                                        = Разрешение буфера трассировки лучей. Half (0.5x) обеспечивает отличный баланс качества и скорости.
+value.RTGI_RESOLUTION.0                                              = Четверть (0.25x)
+value.RTGI_RESOLUTION.1                                              = Половина (0.5x)
+value.RTGI_RESOLUTION.2                                              = Полное (1.0x)
+
+option.RT_REFLECTIONS                                                = Трассировка отражений
+option.RT_REFLECTIONS.comment                                        = Отражения с трассировкой лучей в экранном пространстве и вокселях.
+
+option.PHYSICAL_BSDF_ENERGY_COMP                                     = Сохранение энергии BSDF
+option.PHYSICAL_BSDF_ENERGY_COMP.comment                             = Физическая компенсация рассеяния для шероховатых поверхностей.
+
+value.GI_DEBUG.GI_DEBUG_VARIANCE                                     = Дисперсия (SVGF)
+value.GI_DEBUG.GI_DEBUG_PROBE                                        = Пробы DDGI

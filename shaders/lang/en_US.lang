@@ -18,23 +18,23 @@ screen.misc                            = Misc
 screen.mods                            = Mod Options
 
 screen.weather                         = Weather 
-screen.colored_lights                  = Colored Lights Settings
 screen.rp_settings                     = Resource Pack Settings
 screen.reflections                     = Reflections
+option.RT_REFLECTION_RAYS              = RT Reflection Rays
+option.RT_REFLECTION_RAYS.comment      = Number of world-space voxel rays traced for rough reflections (GGX VNDF). Smooth surfaces use a single mirror ray. 0 disables reflections. Higher values reduce noise at a performance cost.
+value.RT_REFLECTION_RAYS.0             = Off
+value.RT_REFLECTION_RAYS.1             = 1
+value.RT_REFLECTION_RAYS.2             = 2
+value.RT_REFLECTION_RAYS.4             = 4
 screen.refraction                      = Refraction
 screen.light_sources                   = Light Sources
 screen.shadows                         = Shadows
-screen.ao                              = Ambient Occlusion
 screen.color_grading                   = Color Grading
 screen.exposure                        = Exposure
-screen.lpv_vl                          = Colored Lights Fog Scattering
 screen.box                             = Selection Box
 screen.developer                       = Developer Options
 
 screen.distant_horizons                = Distant Horizons
-screen.photonics                       = Photonics
-screen.photonics_sharp                 = Sharp Settings
-screen.photonics_restir                = ReSTIR Settings
 
 screen.aurora                          = Aurora
 screen.clouds                          = Clouds
@@ -116,20 +116,10 @@ option.WEATHER_WIND_VARIATION_SPEED        = Windiness Variation Speed
 
 # Lighting settings
 
-option.COLORED_LIGHTS                  = Colored Lights
-option.COLORED_LIGHTS.comment          = Variable-color block lighting using flood fill algorithm. Requires Iris 1.6 or above
-option.HANDHELD_LIGHTING               = Handheld Lighting
-option.HANDHELD_LIGHTING.comment       = Handheld items cast light on the world. If coloured lighting is enabled the handheld lighting will be coloured like the lights themselves
-option.HANDHELD_LIGHTING_INTENSITY     = Handheld Lighting Intensity
-option.HANDHELD_LIGHTING_INTENSITY.comment = Adjusts the brightness of handheld light sources
-option.AO_IN_SUNLIGHT                  = AO in Sunlight
-option.AO_IN_SUNLIGHT.comment          = Whether to apply shader ambient occlusion in direct sunlight/moonlight
 option.CLOUD_SHADOWS                   = Cloud Shadows
 option.CLOUD_SHADOWS.comment           = Shadows cast by clouds on the ground
 option.CLOUD_SHADOWS_INTENSITY         = Cloud Shadows Intensity
 option.CLOUD_SHADOWS_INTENSITY.comment = Adjusts the intensity of cloud shadows
-option.SH_SKYLIGHT                     = SH Skylight
-option.SH_SKYLIGHT.comment             = Uses spherical harmonics encoding for directional skylight in the Overworld, which provides a very natural result.\nThis works well with GTAO
 option.SSS_SHEEN                       = SSS Sheen
 option.SSS_SHEEN.comment               = Specular "sheen" effect on plants and leaves, helps tall grass and stuff to blend better with the grass specular
 option.SSS_INTENSITY                   = SSS Intensity
@@ -159,25 +149,6 @@ option.PIXELATED_SHADOWS_RESOLUTION    = Pixelated Shadows Resolution
 option.SSS_STEPS                       = SSS Steps 
 option.SSS_STEPS.comment               = Increase to reduce noise on foliage and other materials with SSS, at the cost of performance.
 
-option.SHADER_AO                       = Shader AO
-option.SHADER_AO.comment               = AO method used. Off - no shader AO. SSAO - lower quality but requires fewer samples/less filtering. GTAO - better quality but requires more samples/filtering
-value.SHADER_AO.SHADER_AO_NONE         = Off
-value.SHADER_AO.SHADER_AO_SSAO         = SSAO
-value.SHADER_AO.SHADER_AO_GTAO         = GTAO
-option.VANILLA_AO                      = Vanilla AO
-option.VANILLA_AO.comment              = Minecraft's built-in ambient occlusion
-option.VANILLA_AO_INTENSITY            = Vanilla AO Intensity
-option.VANILLA_AO_INTENSITY.comment    = Adjusts the intensity of minecraft's built in ambient occlusion
-option.SSAO_RADIUS                     = SSAO Radius
-option.SSAO_RADIUS.comment             = Adjusts the radius of SSAO -  the distance from which objects can occlude each other
-option.SSAO_STEPS                      = SSAO Steps
-option.SSAO_STEPS.comment              = Controls how noisy the SSAO appears
-option.GTAO_RADIUS                     = GTAO Radius
-option.GTAO_RADIUS.comment             = Adjusts the radius of GTAO - the distance from which objects can occlude each other
-option.GTAO_SLICES                     = GTAO Slices
-option.GTAO_SLICES.comment             = Controls how noisy the GTAO appears
-option.GTAO_HORIZON_STEPS              = GTAO Horizon Steps
-option.GTAO_HORIZON_STEPS.comment      = Controls the accuracy of GTAO. A higher step count also increase the intensity of the effect
 
 option.SUN_NR                          = §c▍ §fRed
 option.SUN_NG                          = §a▍ §fGreen
@@ -194,8 +165,6 @@ option.MOON_G                          = §a▍ §fGreen
 option.MOON_B                          = §9▍ §fBlue
 option.MOON_I                          = Moonlight Intensity
 option.SKYLIGHT_I                      = Skylight Intensity
-option.BOUNCED_LIGHT_I                 = Bounced Sunlight Intensity
-option.CAVE_LIGHTING_I                 = Cave Brightness
 option.LIGHTNING_FLASH                 = Lightning Flash
 option.NETHER_USE_BIOME_COLOR          = Use Biome Color
 option.NETHER_I                        = Ambient Intensity
@@ -216,20 +185,8 @@ option.BLOCKLIGHT_G                    = §a▍ §fGreen
 option.BLOCKLIGHT_B                    = §9▍ §fBlue
 option.BLOCKLIGHT_I                    = Blocklight Intensity
 
-option.COLORED_LIGHTS_VANILLA_LIGHTMAP_CONTRIBUTION                 = Vanilla Lightmap Contribution
-option.COLORED_LIGHTS_VANILLA_LIGHTMAP_CONTRIBUTION_FALLOFF         = Contribution Falloff
-option.COLORED_LIGHTS_VANILLA_LIGHTMAP_CONTRIBUTION_FALLOFF.comment = Changes the vanilla lightmap's contribution falloff.\nSquared: Lighting is brighter at the source and diminishes quickly.\nLinear: Lighting is soft and travels further from the source
-option.VOXEL_VOLUME_SIZE                                            = Voxel Volume Size
-option.VOXEL_VOLUME_SIZE.comment                                    = Adjusts the size of the volume in which colored lighting is calculated. High performance impact, also affected by shadow distance
-suffix.VOXEL_VOLUME_SIZE                                            = m³
-option.VOXEL_VOLUME_CENTER                                          = Voxel Volume Center
-option.VOXEL_VOLUME_CENTER.comment                                  = Ahead: voxel volume is centered in front of the player, meaning that more of it is visible
 
-value.COLORED_LIGHTS_VANILLA_LIGHTMAP_CONTRIBUTION_FALLOFF.COLORED_LIGHTS_VANILLA_LIGHTMAP_CONTRIBUTION_FALLOFF_SQUARED = Squared
-value.COLORED_LIGHTS_VANILLA_LIGHTMAP_CONTRIBUTION_FALLOFF.COLORED_LIGHTS_VANILLA_LIGHTMAP_CONTRIBUTION_FALLOFF_LINEAR  = Linear
 
-value.VOXEL_VOLUME_CENTER.VOXEL_VOLUME_CENTER_AHEAD  = Ahead
-value.VOXEL_VOLUME_CENTER.VOXEL_VOLUME_CENTER_PLAYER = Player
 
 suffix.shadowMapResolution             = ²
 suffix.sunPathRotation                 = °
@@ -443,7 +400,6 @@ option.BLOOMY_FOG_INTENSITY.comment         = Adjusts the intensity of "bloomy f
 option.OVERWORLD_FOG_INTENSITY              = Overworld Fog Intensity
 option.NETHER_FOG_INTENSITY                 = Nether Fog Intensity
 option.VL                                   = Volumetric Fog
-option.LPV_VL.comment                       = Light sources illuminate the fog. Requires Colored Lights! 
 option.VL.comment                           = Adds light shafts and variable fog density
 option.VL_RENDER_SCALE                      = VL Render Scale
 option.AIR_FOG_CLOUDY_NOISE                 = Cloudy Fog
@@ -451,13 +407,6 @@ option.AIR_FOG_CLOUDY_NOISE.comment         = Subtle cloudy shapes in the fog, b
 option.AIR_FOG_COLORED_LIGHT_SHAFTS         = Colored Light Shafts
 option.AIR_FOG_COLORED_LIGHT_SHAFTS.comment = Light shafts passing through translucent objects are tinted by their color
 
-# LPV VL
-option.LPV_VL                          = Enabled
-option.LPV_VL_STEPS                    = Steps 
-option.LPV_VL_INTENSITY_OVERWORLD      = Overworld Intensity
-option.LPV_VL_INTENSITY_UNDERGROUND    = Underground Intensity
-option.LPV_VL_INTENSITY_NETHER         = Nether Intensity
-option.LPV_VL_INTENSITY_END            = End Intensity
 
 # Rayleigh Fog
 option.AIR_FOG_RAYLEIGH_FALLOFF_START             = Rayleigh Falloff Start
@@ -531,10 +480,6 @@ option.HARDCODED_SSS.comment           = Hardcoded subsurface scattering for som
 option.RAIN_PUDDLES                    = Rain Puddles
 option.EMISSION_STRENGTH               = Emission Strength
 option.EMISSION_STRENGTH.comment       = Adjusts the brightness of emissive objects like torches. This does not affect the brightness of the light casted, only the brightness of the light source itself. This also effects the hardcoded emissives
-option.DIRECTIONAL_LIGHTMAPS           = Directional Lightmaps
-option.DIRECTIONAL_LIGHTMAPS.comment   = Caused blocklight and skylight to be affected by normal maps. Can cause some visual issues due to limitations of the method
-option.DIRECTIONAL_LIGHTMAPS_INTENSITY = Directional Lightmaps Strength
-option.DIRECTIONAL_LIGHTMAPS_INTENSITY.comment = Adjusts the intensity of Directional Lightmaps
 option.POM_DEPTH                       = Parallax Depth
 option.POM_DEPTH.comment               = How far POM can recess into a block
 option.POM_SAMPLES                     = Parallax Samples
@@ -558,22 +503,6 @@ suffix.POM_DISTANCE                    = m
 value.TEXTURE_FORMAT.TEXTURE_FORMAT_LAB = labPBR
 value.TEXTURE_FORMAT.TEXTURE_FORMAT_OLD = Old PBR
 
-option.ENVIRONMENT_REFLECTIONS         = Environment Reflections
-option.ENVIRONMENT_REFLECTIONS.comment = Screen-space reflections. Makes water and shiny blocks reflect their environment. Big performance impact
-option.SKY_REFLECTIONS                 = Sky Reflections
-option.SKY_REFLECTIONS.comment         = Makes water and shiny blocks reflect the sky
-option.SSR_ROUGHNESS_SUPPORT           = Roughness Support
-option.SSR_ROUGHNESS_SUPPORT.comment   = Makes reflections on rough surfaces actually appear rough. Big performance impact
-option.SSR_RAY_COUNT                   = Ray Count
-option.SSR_RAY_COUNT.comment           = Number of rays traced for rough reflections. More rays mean less noise but worse performance
-option.SSR_INTERSECTION_STEPS_SMOOTH   = Intersection Steps - Smooth
-option.SSR_INTERSECTION_STEPS_SMOOTH.comment = Adjusts the accuracy of smooth reflections, at the expense of performance
-option.SSR_INTERSECTION_STEPS_ROUGH    = Intersection Steps - Rough
-option.SSR_INTERSECTION_STEPS_ROUGH.comment = Adjusts the accuracy of rough reflections, at the expense of performance
-option.SSR_REFINEMENT_STEPS            = Refinement Steps
-option.SSR_REFINEMENT_STEPS.comment    = Adjusts the accuracy of all reflections, at the expense of performance
-option.SSR_ROUGHNESS_THRESHOLD         = Roughness Threshold
-option.SSR_ROUGHNESS_THRESHOLD.comment = Adjusts how smooth a surface must be for reflections to appear
 
 # Water settings
 
@@ -735,6 +664,22 @@ value.DEBUG_VIEW.DEBUG_VIEW_NONE       = OFF
 value.DEBUG_VIEW.DEBUG_VIEW_SAMPLER    = Sampler
 value.DEBUG_VIEW.DEBUG_VIEW_HISTOGRAM  = Histogram
 value.DEBUG_VIEW.DEBUG_VIEW_WEATHER    = Weather
+value.DEBUG_VIEW.DEBUG_VIEW_GI         = GI Buffers\n\nRequires Ray Traced GI to be enabled, otherwise the screen turns magenta.
+
+option.GI_DEBUG                        = GI Buffer
+option.GI_DEBUG.comment                = Which GI buffer the GI debug view displays.\n\nRaw - This frame's traced radiance, before temporal accumulation. Shows the per-frame noise directly.\nHistory - After temporal accumulation. Compare with Raw to see how much work the temporal filter is doing.\nFiltered - Exactly what surfaces are lit with.\nHit Source - Green: resolved in the voxel volume. Blue: escaped to the directional sky map. Red: unused in RT Mode.\nHistory Rejected - Red: temporal history discarded (disocclusion). Yellow: history accepted. Black: no history available.\nVoxel ID / Light / Albedo - Reads the voxel volume at the surface the camera sees. Magenta: outside the volume.\nClipmap Coverage - Bright red/green/blue = populated fine/medium/coarse voxel. Dark hue = inside bounds but no voxel record at the sampled point. Yellow = owning level boundary. Magenta = outside all active clipmaps.\nConvergence - Disagreement between this frame's estimate and the accumulated history. Grey means stable. This is temporal spread, not a variance estimate.
+value.GI_DEBUG.GI_DEBUG_OFF            = OFF
+value.GI_DEBUG.GI_DEBUG_RAW            = Raw
+value.GI_DEBUG.GI_DEBUG_HISTORY        = History
+value.GI_DEBUG.GI_DEBUG_FILTERED       = Filtered
+value.GI_DEBUG.GI_DEBUG_HIT            = Hit Source
+value.GI_DEBUG.GI_DEBUG_REJECT         = History Rejected
+value.GI_DEBUG.GI_DEBUG_VOXEL_ID       = Voxel ID
+value.GI_DEBUG.GI_DEBUG_VOXEL_LIGHT    = Voxel Light
+value.GI_DEBUG.GI_DEBUG_VOXEL_ALBEDO   = Voxel Albedo
+value.GI_DEBUG.GI_DEBUG_VARIANCE       = Variance
+value.GI_DEBUG.GI_DEBUG_PROBE          = Probe Cache (DDGI)
+value.GI_DEBUG.GI_DEBUG_COVERAGE = Clipmap Coverage
 
 value.tonemap_left.tonemap_aces_fit       = ACES Fit
 value.tonemap_left.tonemap_aces_full      = ACES Full
@@ -788,35 +733,67 @@ option.DH_OVERDRAW_DISTANCE     = Overdraw Distance
 option.DH_OVERDRAW_FADE_LENGTH  = Overdraw Fade Length
 option.NOISE_ON_DH_TERRAIN      = Noise on DH Terrain
 
-# Photonics
-
-option.PHOTONICS_ENABLED              = Use Photonics
-option.PHOTONICS_LIGHTING_MODE        = Lighting Mode
-option.PHOTONICS_LIGHTING_MODE.comment = The lighting algorithm Photonics uses for lighting.\n\nSharp - A very simple lighting algorithm with no noise, but a limited number of lights (Max Samples)\nReSTIR - Uses ReSTIR for lighting, supports an unlimited (Max Lights) number of lights, but may be noisy in certain areas.
-value.PHOTONICS_LIGHTING_MODE.SIMPLE  = Sharp
-value.PHOTONICS_LIGHTING_MODE.RESTIR  = ReSTIR
-option.PHOTONICS_ALPHA_MODE           = Transparency Mode
-option.PHOTONICS_ALPHA_MODE.comment   = Changes how Photonics deals with transparent voxels. \n\nOpaque - Treats transparent voxels as opaque\nPer Block - Uses the first transparent voxel, then skips the rest of the block\nPer Voxel - Uses every transparent voxel in a block (HEAVY PERFORMANCE IMPACT)
-value.PHOTONICS_ALPHA_MODE.NONE       = Opaque
-value.PHOTONICS_ALPHA_MODE.BLOCK      = Per Block
-value.PHOTONICS_ALPHA_MODE.VOXEL      = Per Voxel
-option.PHOTONICS_MAX_LIGHTS           = Max Lights
-option.PHOTONICS_MAX_LIGHTS.comment   = The max number of traced lights that can be loaded
-option.PHOTONICS_GLINT_STRENGTH       = Enchantment Glint Strength
-option.PHOTONICS_GLINT_STRENGTH.comment = The strength of enchanted items in handheld lighting
-value.PHOTONICS_GLINT_STRENGTH.0      = Off
-option.PHOTONICS_TWO_HANDHELD_RAYS    = Separate Handheld Rays
-option.PHOTONICS_TWO_HANDHELD_RAYS.comment = Whether both handheld lights should cast shadows. When disabled only one shadow will be cast
-option.PHOTONICS_SHARP_MAX_SAMPLES    = Max Samples
-option.PHOTONICS_RESTIR_INITIAL_SAMPLES   = Initial Samples
-option.PHOTONICS_RESTIR_SPR_SAMPLES       = Spatial Reuse Samples
-value.PHOTONICS_RESTIR_SPR_SAMPLES.0      = Off
-option.PHOTONICS_RESTIR_SPR_RADIUS        = Spatial Reuse Radius
-option.PHOTONICS_RESTIR_ACCUMULATION      = Accumulation Frames
-option.PHOTONICS_RESTIR_ACCUMULATION.comment = The max number of frames ReSTIR uses for accumulation. Lower values will cause lighting to be more responsive, at the cost of more noise.
-option.PHOTONICS_RESTIR_DENOISER_PASSES   = Denoiser Passes
-option.PHOTONICS_RESTIR_SOFT_SHADOWS      = Soft Shadows
-option.PHOTONICS_RESTIR_COMBINED_GI       = Include Skylight GI
-option.PHOTONICS_RESTIR_COMBINED_GI.comment = Whether Gi should be ran through ReSTIR's denoiser instead of its usual path. \nResults in much sharper Gi, at the cost of performance.
 
 
+
+
+# Ray Tracing & GI
+screen.raytracing                                                    = Ray Tracing & GI Settings
+screen.ao                                                           = RT Contact Occlusion
+profile.extreme                                                      = Extreme
+
+
+option.LIGHTING_MODE = Lighting Mode
+option.LIGHTING_MODE.comment = RT Mode is the gameplay-balanced ray-traced lighting path. PT Mode is reserved for a future quality-first path and is not available yet.
+value.LIGHTING_MODE.LIGHTING_MODE_RT = RT
+value.LIGHTING_MODE.LIGHTING_MODE_PT = PT (unavailable)
+option.RTGI_PROBE_HYSTERESIS                                        = Probe Temporal Stability
+option.RTGI_PROBE_HYSTERESIS.comment                                = Higher values keep probe history longer. Lower values react faster to lighting and camera movement.
+option.RTGI_PROBE_RAYS                                              = DDGI Probe Rays
+option.RTGI_PROBE_RAYS.comment                                      = Number of spherical rays cast by each probe to gather indirect irradiance.
+
+option.RTGI_INTENSITY                                               = RTGI Physical Intensity
+option.RTGI_INTENSITY.comment                                       = Calibrated single-bounce physical indirect lighting multiplier (default 1.00). In a diffuse enclosure, energy conservation guarantees indirect illuminance matches the incoming radiance.
+option.RTGI_BRIGHTNESS                                              = RTGI Indirect Brightness
+option.RTGI_BRIGHTNESS.comment                                      = Controls the strength and radiance of the indirect bounced lighting field. Higher values make GI bounces more prominent and vibrant.
+option.RT_CLIPMAP_SIZE = RT Clipmap Size
+option.RT_CLIPMAP_SIZE.comment = Texel side length of each clipmap level. Three levels use 1/2/4 blocks per voxel; 128 spans 128/256/512 blocks. Larger sizes cost more VRAM and DDA steps.
+option.RT_COVERAGE_LEVELS = RT Coverage Levels
+option.RT_COVERAGE_LEVELS.comment = Number of nested clipmap levels traced and populated. 1 = fine only, 2 = fine+medium, 3 = fine+medium+coarse. Coarse range still requires terrain submitted by the shadow/gbuffer passes.
+option.RT_AO_STRENGTH = RT Contact AO Strength
+option.RT_AO_STRENGTH.comment = Strength of short voxel-ray contact occlusion on direct light and highlights. Traced indirect lighting is not multiplied again. 0 disables contact rays.
+option.RT_AO_RADIUS = RT Contact AO Radius
+option.RT_AO_RADIUS.comment = Maximum contact-occlusion distance in blocks. Keep this small; large-scale occlusion comes from RTGI and probes.
+option.RT_AO_RAYS = RT Contact AO Rays
+option.RT_AO_RAYS.comment = Visibility rays per half-resolution contact-AO pixel. More rays reduce noise at a performance cost.
+option.RT_AO_IN_DIRECT = Contact AO in Direct Light
+option.RT_AO_IN_DIRECT.comment = Applies RT contact occlusion to direct sun/moon lighting as an artistic contact detail. Shadow-map visibility remains enabled separately.
+option.RTGI_VOXELIZE_ENTITIES                                       = Voxelize Entities
+option.RTGI_VOXELIZE_ENTITIES.comment                               = Experimental: voxelizes mobs and entities into the voxel scene in the shadow pass. Allows dynamic entities to cast and receive indirect voxel shadows.
+value.RTGI_VOXELIZE_ENTITIES.0                                      = OFF
+value.RTGI_VOXELIZE_ENTITIES.1                                      = ON
+
+option.RTGI_RAY_COUNT                                                = RTGI Ray Count
+
+option.RTGI_RAY_COUNT.comment                                        = Number of indirect diffuse rays traced per pixel. Higher values reduce noise at the cost of framerate.
+
+option.RTGI_RESOLUTION                                               = RTGI Resolution
+option.RTGI_RESOLUTION.comment                                       = Resolution at which indirect light rays are traced. Half-resolution (0.5x) offers high framerates with edge-aware reconstruction.
+value.RTGI_RESOLUTION.0                                              = Quarter (0.25x)
+value.RTGI_RESOLUTION.1                                              = Half (0.5x)
+value.RTGI_RESOLUTION.2                                              = Full (1.0x)
+
+option.RTGI_FILTER_PHI                                               = Atrous Colour Sigma
+option.RTGI_FILTER_PHI.comment                                       = Luminance edge-stopping scale (phi = value * sqrt(variance)) of the temporal filter. Higher softens detail and widens light bleed; lower keeps detail noisier.
+option.RTGI_PROBE_SPACING                                            = Probe Spacing
+option.RTGI_PROBE_SPACING.comment                                    = World-space distance between irradiance probes (the probe cache covers 32 x spacing blocks around you). Smaller resolves local color bleed and window bounce; larger reaches further at the cost of smearing small light features.
+option.RTGI_HISTORY_FRAMES                                           = Temporal History Cap
+option.RTGI_HISTORY_FRAMES.comment                                   = Maximum number of frames the temporal accumulation may average. Lower adapts faster to change, higher converges to a cleaner but staler image.
+option.RTGI_MAX_RADIANCE                                             = Ray Radiance Cap
+option.RTGI_MAX_RADIANCE.comment                                     = Per-ray radiance clamp applied during voxel tracing (firefly control). Keep at or above EMISSION_ANCHOR so bright emitters are not dimmed.
+option.EMISSION_ANCHOR                                               = Emission Radiance Anchor
+option.EMISSION_ANCHOR.comment                                       = Radiance of a light-15 emitter before EMISSION_STRENGTH. Anchored to the raster blocklight response; keep under RTGI_MAX_RADIANCE.
+
+
+option.PHYSICAL_BSDF_ENERGY_COMP                                     = Multi-Scatter Conservation
+option.PHYSICAL_BSDF_ENERGY_COMP.comment                             = Kulla-Conty multi-scattering specular energy compensation preventing rough surfaces from unnaturally darkening.
