@@ -114,4 +114,17 @@ float unsplit_2x8(vec2 v) {
     return float(i) * rcp(65535.0);
 }
 
+// Pack sky weight and sample age into fp16 integer [0, 2047]
+float pack_sky_age(float sky, float age) {
+    float sky_i = round(clamp01(sky) * 31.0);
+    float age_i = clamp(round(age), 0.0, 63.0);
+    return sky_i + age_i * 32.0;
+}
+
+vec2 unpack_sky_age(float packed) {
+    float age = floor(packed * (1.0 / 32.0));
+    float sky = (packed - age * 32.0) * (1.0 / 31.0);
+    return vec2(sky, age);
+}
+
 #endif // INCLUDE_UTILITY_ENCODING

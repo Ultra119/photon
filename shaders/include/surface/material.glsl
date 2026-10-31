@@ -4,6 +4,11 @@
 #include "/include/post_processing/aces/matrices.glsl"
 #include "/include/utility/color.glsl"
 
+// Reflection eligibility cutoff (Kneemund's method). Formerly the user-facing
+// SSR_ROUGHNESS_THRESHOLD; now a fixed material constant since RT reflections
+// trace rough surfaces with GGX VNDF rather than gating them off.
+const float reflection_roughness_threshold = 2.0;
+
 const float air_n = 1.000293; // for 0°C and 1 atm
 const float water_n = 1.333; // for 20°C
 
@@ -97,7 +102,7 @@ void decode_specular_map(vec4 specular_map, inout Material material) {
     material.ssr_multiplier = step(
         0.01,
         (material.f0.x
-         - material.f0.x * material.roughness * SSR_ROUGHNESS_THRESHOLD)
+         - material.f0.x * material.roughness * reflection_roughness_threshold)
     ); // based on Kneemund's method
 }
 #elif TEXTURE_FORMAT == TEXTURE_FORMAT_OLD
@@ -111,7 +116,7 @@ void decode_specular_map(vec4 specular_map, inout Material material) {
     material.ssr_multiplier = step(
         0.01,
         (material.f0.x
-         - material.f0.x * material.roughness * SSR_ROUGHNESS_THRESHOLD)
+         - material.f0.x * material.roughness * reflection_roughness_threshold)
     ); // based on Kneemund's method
 }
 #endif
@@ -768,8 +773,8 @@ Material material_from(
                     } else { // 58-60
                         if (material_mask == 58u) { // 58
 #ifdef HARDCODED_EMISSION
-                            // Redstone block
-                            material.emission = 0.33 * albedo_sqrt;
+                            // Redstone components and logic (non-emitting)
+                            material.emission = vec3(0.0);
 #endif
                         } else { // 59
                             // Open eyeblossom
@@ -825,16 +830,16 @@ Material material_from(
         }
     }
 
-    if (64u <= material_mask && material_mask < 80u) {
-// Stained glass, honey and slime
+    if ((80u <= material_mask && material_mask <= 96u) || (64u <= material_mask && material_mask < 80u)) {
+        // Clear glass, stained glass, honey and slime
 #ifdef HARDCODED_SPECULAR
         material.f0 = vec3(0.04);
-        material.roughness = 0.1;
+        material.roughness = 0.04;
         material.ssr_multiplier = 1.0;
 #endif
 
 #ifdef HARDCODED_SSS
-        material.sss_amount = 0.5;
+        material.sss_amount = (material_mask == 80u) ? 0.0 : 0.2;
 #endif
     }
 

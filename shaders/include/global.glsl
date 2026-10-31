@@ -1,4 +1,8 @@
+#if !defined INCLUDE_GLOBAL
+#define INCLUDE_GLOBAL
+
 // Extensions
+#extension GL_ARB_shader_image_load_store : enable
 
 /*
 #ifdef MC_GL_KHR_shader_subgroup
@@ -52,11 +56,6 @@
 
 #include "/settings.glsl"
 
-// Photonics shorthand, 'PHOTONICS' is always defined by Photonics when it's
-// installed
-#if defined PHOTONICS && defined PHOTONICS_ENABLED
-#define PHOTONICS_IN_USE
-#endif
 
 // Compatibility fixes
 
@@ -93,6 +92,13 @@ const float taau_render_scale = 1.0;
 
 #define rcp(x) (1.0 / (x))
 #define clamp01(x) clamp(x, 0.0, 1.0) // free on operation output
+
+// TAAU projection and viewport helpers
+vec2 taau_framebuffer_uv(vec2 uv) { return uv * taau_render_scale; }
+vec2 taau_projection_uv(vec2 uv) { return uv * rcp(taau_render_scale); }
+bool taau_uv_outside_viewport(vec2 uv) {
+    return any(greaterThanEqual(uv, vec2(taau_render_scale)));
+}
 #define max0(x) max(x, 0.0)
 #define min1(x) min(x, 1.0)
 
@@ -269,3 +275,5 @@ void fix_hand_depth(inout float depth) {
     bool unused;
     fix_hand_depth(depth, unused);
 }
+
+#endif // INCLUDE_GLOBAL

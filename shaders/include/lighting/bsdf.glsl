@@ -90,4 +90,27 @@ vec3 diffuse_hammon(
     return albedo * multi + single;
 }
 
+// Kulla-Conty Multi-Scattering Specular Energy Compensation
+vec3 get_specular_multiscatter_compensation(vec3 f0, float roughness, float NoV) {
+#ifdef PHYSICAL_BSDF_ENERGY_COMP
+    float e_s = exp(-4.0 * max(NoV, 1e-2) * (1.0 - roughness));
+    float E_mu = clamp01(mix(1.0 - roughness * 0.5, mix(e_s, 1.0, 0.15 + 0.85 * NoV), roughness));
+    vec3 E_avg = f0 + (vec3(1.0) - f0) * 0.45;
+    vec3 f_ms = (vec3(1.0) - E_mu) * E_avg / max(vec3(1e-4), vec3(1.0) - E_avg * (1.0 - E_mu));
+    return vec3(1.0) + f_ms;
+#else
+    return vec3(1.0);
+#endif
+}
+
+// Coupled Diffuse-Specular Energy Balance (Fresnel conservation)
+vec3 conserve_diffuse_energy(vec3 diffuse_light, vec3 f0, float NoV) {
+#ifdef PHYSICAL_BSDF_ENERGY_COMP
+    vec3 fresnel_nv = fresnel_dielectric(max(NoV, 1e-2), f0.x);
+    return diffuse_light * (vec3(1.0) - fresnel_nv);
+#else
+    return diffuse_light;
+#endif
+}
+
 #endif // INCLUDE_LIGHTING_BSDF
