@@ -13,6 +13,7 @@ FILES = [
     ("/world0/deferred1_a.csh", "comp"),
     ("/world0/deferred2_a.csh", "comp"),
     ("/world0/deferred3_a.csh", "comp"),
+    ("/world0/deferred3_b.csh", "comp"),
     ("/world0/deferred3.fsh", "frag"),
     ("/world0/deferred4.fsh", "frag"),
     ("/world0/composite1.fsh", "frag"),

@@ -537,6 +537,24 @@ vec3 entry_norm = (dot(mask, mask) > 0.5) ? (-mask * step_dir) : -sign(dir_level
 
 ## 6. What SEUS does that the fork should modernize (concept list, not code)
 
+### Re-verified against the current tree — 2026-10-31 (SEUS segment kickoff)
+
+The audit body above was written at `6d49083`; Waves 1–4 have since landed.
+Each concept re-checked against the code as of `8918d35`:
+
+| # | Concept | Fork status now |
+|---|---|---|
+| 1 | Primary signal carries lighting; probes assist | **Partial** — D5 near-hit probe gate (`smoothstep(1,3)`) landed in Wave 2, so probes no longer inject at full strength on close hits; `RTGI_RAY_COUNT` still 2 on `high` (decision pending with perf). |
+| 2 | Variance-guided everything | **Done** — T1 moments fixed (Wave 1); filter sigmas driven by real variance. SEUS's variance-scaled kernel *step* (`mix(3,4.25,var)`) not adopted; we keep a fixed stride pyramid (2 → 1) instead. |
+| 3 | Point-sampled history | **Done** — T2 (Wave 1). |
+| 4 | Anti-bleed dark-neighbour edge rule | **Applied (step 1)** — SEUS `PathTraceDenoiser` rule re-read from source (behind-plane + darker taps bypass the normal penalty with a variance-driven boost), in both à-trous passes. |
+| 5 | Receiver-plane ray-origin offset | **Open** — current origin is `normal×0.03 + dir×(0.02+0.008·dither)` (S3 part). SEUS formula re-verified at `deferred.fsh:228` (and the readable twin `program/deferred12.fsh:139`): `origin += dir·(1e-4·len) − n·(0.4·parallax/saturate(NoV) + 8e-4)`. |
+| 6 | Sky/sun leak gates | **Done** — S2-min + S2-full at the trace stage. *Stale note corrected:* the old “reattach via L2 plumbing” advice no longer applies. SEUS gates re-verified: `SUNLIGHT_LEAK_FIX saturate(a×100)` + `CAVE_GI_LEAK_FIX saturate(a×10)` combined (`deferred.fsh:192-197`); the fork uses one ×10 gate on sky-labeled terms. |
+| 7 | IR-cache discipline | **Mostly done** — query occlusion (D3), destination-validated relocation (D4), origin-exclusion ≈ probe gate (D5). *Not adopted:* storing only local emission in probes — the fork keeps sky in probes and gates it at query (documented design choice, Wave 4). |
+| 8 | Emitter pass-through | **Done** — Wave 4 (thin/non-cube emitters). |
+
+Also verified from the re-extracted pack (source of truth `/tmp/arena-coding-uploads/…RC1.txt`, a ZIP): SEUS runs **eight** à-trous passes (`deferred4…11` all include `program/template/PathTraceDenoiser.glsl`), each a variance-driven, blue-noise-jittered 3-tap line kernel. Iris branch `26.3` source confirms compute suffixes `_a…_z` per program slot (`ProgramSet.readComputeArray`), which is what makes the two-pass filter wiring below valid.
+
 1. **Primary signal carries the lighting**; caches only assist. Per-pixel temporal 1/N accumulation with per-pixel frame count, disocclusion → hard reset to raw (`deferred2.fsh` main). The fork should raise `RTGI_RAY_COUNT` or accept slower convergence instead of injecting noisy probes every frame (D5).
 2. **Variance-guided everything**: per-pixel variance packed next to history (`colortex5` layout in SEUS `awIafiSlNY`), kernel width and normal-exponent driven by it (`PathTraceDenoiser.glsl G(...)`). Replace T1's broken moments.
 3. **Point-sampled history** with plucked depth/normal comparisons (SEUS `c(v)` uses `floor(uv*res)+0.5` before every history fetch). Fix T2.
@@ -566,7 +584,7 @@ vec3 entry_norm = (dot(mask, mask) > 0.5) ? (-mask * step_dir) : -sign(dir_level
 **Wave 3 — leak gates & energy:**
 10. S2: re-attach a receiver-skylight gate (reconnect L2 plumbing or multiply in `shade_voxel_hit` using the hit voxel's stored sky light — currently hardwired to 0 in `voxel_storage.glsl:74`), plus the 1.1-block origin exclusion for sun bounce.
 11. S4: calibrate emission to actual Minecraft light levels (15 → chosen radiance unit), make small emitters pass-through.
-12. T4: two à-trous iterations (stride 2 then 1) once variance is real.
+12. T4: two à-trous iterations (stride 2 then 1) once variance is real. **[SEUS segment step 1: applied — pass 2 via `deferred3_b` + anti-bleed rule]**
 13. L1: either run translucents through the same filtered buffer (with their own depth) or gate probe-only lighting to be clearly dimmer/analytics.
 
 **Wave 4 — cleanup:**
