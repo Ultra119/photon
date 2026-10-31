@@ -52,7 +52,13 @@ VoxelMaterial get_voxel_material(uint block_id, vec3 fallback_color) {
             mat.is_solid = (block_id != 58u);
         } else {
             uint light_idx = clamp(block_id - 32u, 0u, 47u);
-            mat.emission = voxel_light_color_table[light_idx] * 2.5;
+            // S4b: color from the palette (peak-normalized), brightness from
+            // the block's actual Minecraft light level through the vanilla
+            // lightmap response — see light_colors.glsl. EMISSION_STRENGTH
+            // is the user-facing dial (previously ignored by the RT path).
+            mat.emission = get_voxel_light_color(block_id)
+                * (EMISSION_ANCHOR * EMISSION_STRENGTH
+                   * voxel_light_response(voxel_light_level_table[light_idx]));
             mat.roughness = 0.5;
             mat.is_solid = true;
         }

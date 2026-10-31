@@ -1,7 +1,7 @@
 # RT Lighting Bug Audit — fork HEAD `6d49083` (`arena/ce39d2b2-photon`)
 
 **Date:** 2026-10-30 audit; Waves 1–4 applied 2026-10-30/31.
-**Status:** Waves 1–4 applied — every actionable finding in sections 2–5 has a disposition (see status sections). Parked by user: the -23°/-26° brightness-flip investigation. **Next: the SEUS segment** (section 6, remaining concepts — multi-pass variance-scaled denoising, anti-bleed edge rule, receiver-plane origin offset, emitter calibration, probe sky discipline).
+**Status:** Waves 1–4 applied. SEUS segment steps 1–5 applied (report double-check → two-pass à-trous + anti-bleed → forward probe occlusion parity + origin offset + ray count → temporal variance-clip rework ×2 → **S4b emitter calibration to Minecraft light levels**). Parked by user: the -23°/-26° brightness-flip investigation. Remaining: S4b playtest verdict (user's eye), probe sky-store design point (documented choice), perf check on RTGI_RAY_COUNT=4.
 **Method:** full static re-read of the current RT pipeline (`rtgi_trace`, `rtgi_temporal`, `rtgi_filter`, `rtgi_probe_update`, `rt_gi.glsl`, `ddgi.glsl`, `voxel_dda.glsl`, `voxel_update/palette/storage`, `diffuse_lighting.glsl`) against the SEUS PTGI HRR Test 2.1 reference (extracted from the attached archive). Every finding below was re-verified from the current working tree; nothing is copied from prior audit docs, and prior "confirmed" claims were treated as untrusted. SEUS is used only as a behavioral reference — no code is taken from it.
 
 **Confidence labels:**
@@ -454,6 +454,51 @@ an experiment.
 Validation: full `run_checks.sh` green (320 keys, compute 315/0, wrapper
 1053/0, DDA 16/16, clipmap/boundary/AO/debug OK).
 
+## SEUS segment — step 5 (S4b): emitter calibration to Minecraft light levels
+
+The primary remaining noise lever after step 4: emitter brightness had no
+physical anchor, so binary hit/miss sampling worked against impossible
+contrast.
+
+- **Before:** `mat.emission = palette[id] × 2.5` — artistic color+intensity
+  table ×2.5 → glowstone-class radiance **35** against `RTGI_MAX_RADIANCE = 8`
+  (every bright hit saturated the per-ray cap into a pure binary firefly);
+  redstone torch 3.75; brewing stand (vanilla L1) 10; probe updates saw
+  multi-unit jumps on lucky hits (report item on probe hysteresis).
+- **After:** colors stay in `voxel_light_color_table` (peak-normalized via
+  `get_voxel_light_color`); brightness comes from a new per-entry
+  `voxel_light_level_table` (48 real MC light levels, mapped from
+  `block.10032..10079` in block.properties) through the **vanilla lightmap
+  response** `g(f) = f/(4−3f)` (LightTexture curve), scaled by
+  `EMISSION_ANCHOR = 6.0` and the user slider `EMISSION_STRENGTH` (0..2,
+  default 1 — previously ignored by the RT path entirely).
+
+Anchor rationale: 6.0 matches the raster block-light response
+(`blocklight_scale = 6.0` at level 15), sits just under `RTGI_MAX_RADIANCE`
+(8) so legitimate hits no longer saturate the firefly cap, and stays below
+the sunlight base scale (7×SUN_I).
+
+Reference points after calibration: glowstone/sea lantern/froglight/L15
+emitters → 6.0; torch/candle/end rod (L14) → 4.6; nether portal (L11) → 2.4;
+soul lights (L10) → 2.0; sea pickle (L6) → 0.86; amethyst cluster (L5) →
+0.67; redstone torch / brewing stand / enchanting table (L1) → 0.105.
+Entries that group decorative blocks or encode artistic intent (glow lichen,
+end portal frame with eye, crimson/warped fungus, open eyeblossom) are marked
+`(*)` in the table and kept faint rather than going fully dark; magma shares
+its entry with shroomlight/fire (parity with today) — all single-table edits
+if the user disagrees.
+
+Expected playtest effects: bright-class ray events 8 → 6 (no cap saturation),
+mid/low emitters drop the artistic excess (brewing stand 10 → 0.1),
+near-torch probe variance shrinks with the emission scale, and
+`EMISSION_STRENGTH` now dims/brightens RT emitters live for the "needs the
+user's eye" tuning. Side note for the user: RAW darker than HISTORY in the
+debug views is correct (one 4-spp frame vs the accumulated mean).
+
+Validation: full `run_checks.sh` green (320 keys, compute 315/0, wrapper
+1053/0); DDA 16/16 (synthetic emitter value, unaffected), RT boundary OK
+(raster texture-emission line untouched), clipmap/AO/gi_debug OK.
+
 ---
 
 ## 0. Symptom → root-cause map
@@ -594,6 +639,7 @@ vec3 entry_norm = (dot(mask, mask) > 0.5) ? (-mask * step_dir) : -sign(dir_level
 - Deterministic epsilon jitter is fine for avoiding division by zero, but the "ignore both origin voxels" rule (`:267-268`) plus face-sliding needs a *randomized* sub-voxel origin offset (SEUS: `origin += dir·(0.0001·len) − normal·(0.4·parallax/(NoV)+0.0008)`, `deferred.fsh:191`), not just a direction epsilon.
 
 ### S4 — Emission radiance is a fixed palette × 2.5, unrelated to Minecraft light levels
+**[Applied 2026-10-31 — SEUS segment step 5: colors kept from the palette (peak-normalized), brightness now = `EMISSION_ANCHOR (6.0) × EMISSION_STRENGTH × vanilla_lightmap_response(actual MC light level)` with a per-entry 48-level table in `light_colors.glsl`. See step-5 section.]**
 `[design-issue]` — `voxel_palette.glsl:96-101`, `light_colors.glsl`
 - `mat.emission = voxel_light_color_table[id-32] * 2.5` (`voxel_palette.glsl:78`) → glowstone-class entries already scaled ×12–14 in the table become radiance **30–35**; redstone torch ×1.5 → 3.75. The table was designed as a *color+relative intensity* table, and the extra ×2.5 has no physical anchor. Combined with T3's 0.15 ceiling the effective visible range of a torch is a coin flip per ray.
 - Also: small emitters are **solid DDA hits** that stop the ray (torch voxel blocks the path behind it), while their light is otherwise supposed to come from hitting the voxel — no next-event estimation, no pass-through like SEUS ID 241 (`continue` after adding emission, ray keeps going). This inflates variance and truncates multi-bounce paths at every torch.
@@ -677,7 +723,7 @@ Also verified from the re-extracted pack (source of truth `/tmp/arena-coding-upl
 
 **Wave 3 — leak gates & energy:**
 10. S2: re-attach a receiver-skylight gate (reconnect L2 plumbing or multiply in `shade_voxel_hit` using the hit voxel's stored sky light — currently hardwired to 0 in `voxel_storage.glsl:74`), plus the 1.1-block origin exclusion for sun bounce.
-11. S4: calibrate emission to actual Minecraft light levels (15 → chosen radiance unit), make small emitters pass-through.
+11. S4: calibrate emission to actual Minecraft light levels (15 → chosen radiance unit), make small emitters pass-through. **[Applied — SEUS segment step 5; pass-through was Wave 4.]**
 12. T4: two à-trous iterations (stride 2 then 1) once variance is real. **[SEUS segment step 1: applied — pass 2 via `deferred3_b` + anti-bleed rule]**
 13. L1: either run translucents through the same filtered buffer (with their own depth) or gate probe-only lighting to be clearly dimmer/analytics. **[SEUS segment step 2: applied via the better third option — forward probes now run the same query-time occlusion test (`DDGI_QUERY_OCCLUSION` on for non-deferred4 consumers, shared `voxel_samplers.glsl`), so glass/water can no longer read probes through walls; own-depth probe sampling kept (architecturally right for transmissives).]**
 
