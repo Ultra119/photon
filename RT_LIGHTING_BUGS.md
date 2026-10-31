@@ -1,7 +1,7 @@
 # RT Lighting Bug Audit — fork HEAD `6d49083` (`arena/ce39d2b2-photon`)
 
 **Date:** 2026-10-30 audit; Waves 1–4 applied 2026-10-30/31.
-**Status:** Waves 1–4 applied. SEUS segment steps 1–5 applied (report double-check → two-pass à-trous + anti-bleed → forward probe occlusion parity + origin offset + ray count → temporal variance-clip rework ×2 → **S4b emitter calibration to Minecraft light levels**). Parked by user: the -23°/-26° brightness-flip investigation. Remaining: S4b playtest verdict (user's eye), probe sky-store design point (documented choice), perf check on RTGI_RAY_COUNT=4.
+**Status:** Waves 1–4 applied. SEUS segment steps 1–6 applied. Step 6 (playtest verdict "clearly you can't fix this — you are missing something") cross-checked against the educational repo MahoganyTown/Minecraft-PTGI and adopted its **clip-free temporal + 1-2-4-8 à-trous pyramid + uncapped variance luminance weight** (see step-6 section — it identified two concrete defects the earlier tuning could never fix). Parked by user: the -23°/-26° brightness-flip investigation. Remaining: step-6 playtest, probe sky-store design point, perf on the 4-pass filter + RTGI_RAY_COUNT=4.
 **Method:** full static re-read of the current RT pipeline (`rtgi_trace`, `rtgi_temporal`, `rtgi_filter`, `rtgi_probe_update`, `rt_gi.glsl`, `ddgi.glsl`, `voxel_dda.glsl`, `voxel_update/palette/storage`, `diffuse_lighting.glsl`) against the SEUS PTGI HRR Test 2.1 reference (extracted from the attached archive). Every finding below was re-verified from the current working tree; nothing is copied from prior audit docs, and prior "confirmed" claims were treated as untrusted. SEUS is used only as a behavioral reference — no code is taken from it.
 
 **Confidence labels:**
@@ -498,6 +498,48 @@ debug views is correct (one 4-spp frame vs the accumulated mean).
 Validation: full `run_checks.sh` green (320 keys, compute 315/0, wrapper
 1053/0); DDA 16/16 (synthetic emitter value, unaffected), RT boundary OK
 (raster texture-emission line untouched), clipmap/AO/gi_debug OK.
+
+## SEUS segment — step 6: clip-free temporal + full à-trous pyramid (Minecraft-PTGI cross-check)
+
+Playtest verdict after steps 3–5: still confetti in lit zones. The user
+supplied the educational repo **MahoganyTown/Minecraft-PTGI** (PTGI for
+MC 1.21 + Iris). Cross-check findings vs our pipeline:
+
+1. **Their temporal has NO variance clip** — pure 1/n EMA (age cap 60),
+   disocclusion = position(≤0.90) + normal(≥0.95) + material-ID tests,
+   restart on failure. Ours had three clip-box iterations; every variant
+   either re-injected the current frame's few-sample noise into the long
+   history (steps 2–4) or let fireflies ride at full width.
+2. **Five à-trous passes at strides 1-2-4-8 (narrow→wide, per SVGF)** with
+   `phi_l = PHI_COLOUR·√variance`, **PHI_COLOUR = 10, uncapped**. Ours: two
+   passes at strides (2,1) — effective radius ~4 texels — and
+   `sigma_l = clamp(4·std+0.005, 0.01, max(center_m1+0.05, 0.35))`. The
+   `max(center_m1+0.05, …)` cap is a **concrete defect**: it makes phi track
+   the center's own brightness, so a converged emitter dot (m1≈0.8, std≈2)
+   computes phi≈0.85 against a ΔL≈5.5 to its dark surroundings →
+   `exp(-6.5)≈0` → **the dot rejects the very neighbours that would average
+   it away, in both directions** — the filter degenerates to pass-through
+   exactly where denoising is needed. This was the missing mechanism.
+3. Their emitter model (distance-from-voxel-center falloff, EMISSION=24 in
+   *their* exposure units — not transferable to ours) and their 10-tap
+   history-neighborhood search were noted but NOT adopted (falloff would
+   fight the clipmap single-hit-energy test; our TAAU-compensated
+   reprojection makes the center tap sufficient for now).
+
+Applied:
+- `rtgi_temporal.csh`: **variance clip + clip-drag removed entirely** —
+  pure mix(prev, current, 1/n) with motion dead-band, disocclusion tests and
+  the absolute radiance guard kept; M2 tracking unchanged.
+- `rtgi_filter.csh`: **four passes, strides 1 → 2 → 4 → 8** (narrow to wide,
+  SVGF order; wrappers deferred3_a..d; chain accum→inter→filtered→inter→filtered,
+  same two images — image budget unchanged at 15/16);
+- **sigma_l = PHI_COLOUR·√(var + 1e-6), PHI_COLOUR = 10, UNCAPPED** (the
+  defect fix above).
+
+Validation: full `run_checks.sh` green — properties 326 keys, compute matrix
+357/0 (includes deferred3_c/d), wrapper 1053/0, DDA 16/16, clipmap/boundary/
+AO/gi_debug OK. glslang had to be rebuilt (/tmp wiped; StandAlone target in
+16.6.0 is `glslang-standalone`).
 
 ---
 

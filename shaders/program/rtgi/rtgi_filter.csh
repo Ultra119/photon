@@ -19,21 +19,29 @@ const vec2 workGroupsRender = vec2(0.5, 0.5);
 #endif
 layout(local_size_x = 16, local_size_y = 16) in;
 
-// Two-pass à-trous (SEUS segment, T4): pass 1 runs at stride 2 on the
-// temporal output and writes an intermediate; pass 2 runs at stride 1 on that
-// result and writes the buffer deferred4 consumes. Wrappers select the pass.
+// Four-pass à-trous pyramid in SVGF order (narrow to wide), mirroring the
+// 1-2-4-8 ladder of the educational Minecraft-PTGI pack:
+//   pass 1: stride 1, temporal output -> inter
+//   pass 2: stride 2, inter          -> filtered
+//   pass 3: stride 4, filtered       -> inter
+//   pass 4: stride 8, inter          -> filtered (consumed by deferred4)
+// The previous two-pass (2, 1) chain had an effective radius of ~4 texels —
+// far too small to dissolve emitter confetti into a light field. Wrappers
+// (deferred3_a..d) select the pass.
 #ifndef RTGI_FILTER_PASS
 #define RTGI_FILTER_PASS 1
 #endif
 
-#if RTGI_FILTER_PASS == 1
+#if RTGI_FILTER_PASS == 1 || RTGI_FILTER_PASS == 3
 layout(rgba16f) writeonly uniform image2D rtgi_filter_inter_img;
 #else
 layout(rgba16f) writeonly uniform image2D rtgi_filtered_img;
 #endif
 
-// Pass 2 radiance input (pass-1 output); declared for both passes.
+// Pass-2/4 radiance input (intermediate) and pass-3 radiance input (previous
+// filtered output). Declared unconditionally; unused ones are pruned.
 uniform sampler2D rtgi_filter_inter_sampler;
+uniform sampler2D rtgi_filtered_sampler;
 
 uniform sampler2D rtgi_accum_sampler;
 uniform sampler2D rtgi_history_sampler;
@@ -76,6 +84,15 @@ const float bspline_kernel[5] = float[5](
     0.0625, 0.25, 0.375, 0.25, 0.0625
 );
 
+// Luminance edge-stopping constant (educational Minecraft-PTGI: 10.0).
+// phi_l = PHI_COLOUR * sqrt(variance) is deliberately UNCAPPED: the previous
+// clamp max(center_m1 + 0.05, 0.35) made phi track the center's own
+// brightness, so any outlier differing by more than the center's luminance —
+// emitter confetti dots versus their dark surroundings, in BOTH directions —
+// was rejected by the edge-stopping weight and the filter degenerated into a
+// pass-through exactly where denoising was needed.
+const float PHI_COLOUR = 10.0;
+
 void main() {
 #if RTGI_RESOLUTION == 0
     const float render_scale = 0.25;
@@ -97,7 +114,7 @@ void main() {
     ivec2 active_res = max(ivec2(1), ivec2(vec2(target_res) * taau_render_scale));
 
     if (taau_uv_outside_viewport(center_uv)) {
-        #if RTGI_FILTER_PASS == 1
+        #if RTGI_FILTER_PASS == 1 || RTGI_FILTER_PASS == 3
         imageStore(rtgi_filter_inter_img, texel, vec4(0.0));
         #else
         imageStore(rtgi_filtered_img, texel, vec4(0.0));
@@ -109,7 +126,7 @@ void main() {
 
     float center_depth = texelFetch(depthtex1, center_full, 0).x;
     if (center_depth >= 1.0) {
-        #if RTGI_FILTER_PASS == 1
+        #if RTGI_FILTER_PASS == 1 || RTGI_FILTER_PASS == 3
         imageStore(rtgi_filter_inter_img, texel, vec4(0.0));
         #else
         imageStore(rtgi_filtered_img, texel, vec4(0.0));
@@ -123,10 +140,12 @@ void main() {
     vec3 center_view_pos = screen_to_view_space(center_screen_pos, true);
     float center_dist = -center_view_pos.z;
 
-    #if RTGI_FILTER_PASS == 2
-    vec4 center_sample = texelFetch(rtgi_filter_inter_sampler, texel, 0);
-    #else
+    #if RTGI_FILTER_PASS == 1
     vec4 center_sample = sample_accum_data(texel, ping);
+    #elif RTGI_FILTER_PASS == 3
+    vec4 center_sample = texelFetch(rtgi_filtered_sampler, texel, 0);
+    #else
+    vec4 center_sample = texelFetch(rtgi_filter_inter_sampler, texel, 0);
     #endif
     vec3 center_radiance = center_sample.rgb;
 
@@ -145,18 +164,22 @@ void main() {
     float var_normalized = clamp01(center_std / (center_m1 + 0.02));
     float sigma_n = mix(128.0, 8.0, var_normalized);
 
-    // Depth tolerance: 5% of metric distance. Pass 1 covers the field at
-    // stride 2; pass 2 refines at stride 1 (standard SVGF pyramid; SEUS runs
-    // the same idea eight times with variance-scaled steps).
+    // Pass strides: 1 -> 2 -> 4 -> 8 (narrow to wide). The depth tolerance
+    // scales with the stride so a wide pass does not leak across surfaces
+    // that are still distinct at that spacing.
     #if RTGI_FILTER_PASS == 1
-    const int step_size = 2;
-    #else
     const int step_size = 1;
+    #elif RTGI_FILTER_PASS == 2
+    const int step_size = 2;
+    #elif RTGI_FILTER_PASS == 3
+    const int step_size = 4;
+    #else
+    const int step_size = 8;
     #endif
     float sigma_z = max(center_dist * 0.05, 0.10) * float(step_size);
 
-    // Luminance tolerance: scaled by measured standard deviation, clamped to avoid smearing outliers into dark regions
-    float sigma_l = clamp(4.0 * center_std + 0.005, 0.01, max(center_m1 * 1.0 + 0.05, 0.35));
+    // Luminance tolerance: variance-guided, UNCAPPED (see PHI_COLOUR above).
+    float sigma_l = PHI_COLOUR * sqrt(center_var + 1e-6);
 
     vec3 sum_radiance = vec3(0.0);
     float sum_sky_weight = 0.0;
@@ -183,10 +206,12 @@ void main() {
                 vec3(taau_projection_uv(n_uv), n_depth), true
             );
 
-            #if RTGI_FILTER_PASS == 2
-            vec4 n_sample = texelFetch(rtgi_filter_inter_sampler, neighbor_texel, 0);
-            #else
+            #if RTGI_FILTER_PASS == 1
             vec4 n_sample = sample_accum_data(neighbor_texel, ping);
+            #elif RTGI_FILTER_PASS == 3
+            vec4 n_sample = texelFetch(rtgi_filtered_sampler, neighbor_texel, 0);
+            #else
+            vec4 n_sample = texelFetch(rtgi_filter_inter_sampler, neighbor_texel, 0);
             #endif
             vec3 n_color = n_sample.rgb;
 
@@ -235,7 +260,7 @@ void main() {
     vec3 filtered = (sum_weights > 1e-4) ? (sum_radiance / sum_weights) : center_radiance;
     float filtered_sky = (sum_weights > 1e-4) ? (sum_sky_weight / sum_weights) : center_sky_weight;
 
-    #if RTGI_FILTER_PASS == 1
+    #if RTGI_FILTER_PASS == 1 || RTGI_FILTER_PASS == 3
     imageStore(rtgi_filter_inter_img, texel, vec4(filtered, clamp01(filtered_sky)));
     #else
     imageStore(rtgi_filtered_img, texel, vec4(filtered, clamp01(filtered_sky)));

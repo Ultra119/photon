@@ -115,7 +115,8 @@ void main() {
     vec4 gbuf = texelFetch(colortex1, full_texel, 0);
     vec3 current_world_normal = decode_unit_vector(unpack_unorm_2x8(gbuf.z));
 
-    // 3x3 neighbourhood statistics for variance clipping (variance-driven AABB)
+    // 3x3 neighbourhood statistics: spatial sigma seeds the M2 moment on
+    // freshly-reset pixels so the à-trous filter starts with a real variance.
     vec3 raw_m1 = vec3(0.0);
     vec3 raw_m2 = vec3(0.0);
 
@@ -133,21 +134,16 @@ void main() {
 
     // Extreme-outlier guard only. The trace pass already clamps per-ray
     // luminance (RTGI_MAX_RADIANCE), and a neighbour-relative ceiling makes
-    // the clamp itself flicker with the 2-ray neighbourhood while starving
+    // the clamp itself flicker with the neighbourhood while starving
     // legitimate emitter hits in dark scenes (brightness pumping). Real
-    // outlier control is the history variance clip below, which now runs on
-    // correctly tracked moments.
+    // outlier control is this absolute cap plus the variance-guided à-trous
+    // pyramid that runs after the temporal pass — matching the clip-free
+    // temporal of the educational Minecraft-PTGI SVGF.
     const float absolute_radiance_cap = 32.0;
     if (current_lum > absolute_radiance_cap) {
         current_radiance *= absolute_radiance_cap / current_lum;
         current_lum = absolute_radiance_cap;
     }
-
-    // NOTE: the history variance-clip box is built inside the history block
-    // below, sized by the ACCUMULATED temporal variance. Sizing it from the
-    // current frame's spatial statistics (the old bug) re-clamps the long
-    // history into the current few-sample noise every frame, so a static
-    // camera never converges past "slightly smoothed raw".
 
     // Reconstruct position in view and scene space (handle_jitter = true because depth buffer is jittered)
     vec3 screen_pos = vec3(taau_projection_uv(uv), depth);
@@ -229,51 +225,26 @@ void main() {
             // kept the converged history confetti-noisy.
             float motion_alpha = clamp01((motion_amount - 1.5) * 0.05);
 
-            // SVGF Disocclusion Test 3: History Variance-Clipping.
-            //
-            // Box sized by the accumulated temporal variance: aux.r tracks M2
-            // (EMA of sample luminance^2, alpha = 1/n); with M1 = luminance of
-            // the accumulated radiance, var = max(0, M2 - M1^2) is the spread
-            // of the frame-sample distribution the history was built from.
-            // The floor is the current spatial variance of the mean estimate
-            // (sigma^2 / n) so freshly-reset and low-variance pixels still get
-            // a sane box. The box tightens as history ages (var_t tracks the
-            // per-frame spread, not the standard error of the mean) and
-            // widens with motion so reprojected smears are not locked out.
-            float prev_lum = dot(prev_sample.rgb, luminance_weights);
-            float var_t = max(0.0, prev_aux.r - prev_lum * prev_lum);
-            float var_floor = dot(raw_sigma * raw_sigma, luminance_weights) / n_samples;
-            // Standard-error scaling: var_t tracks the per-frame sample
-            // spread, but the uncertainty of the accumulated estimate is
-            // spread/sqrt(n). Shrinking the box below ~1.6/sqrt(n)*sigma
-            // re-introduces the old clip-undoes-history bug; leaving it at
-            // full spread stops killing retained fireflies (radiance-8
-            // emitter dots against 0.2 walls survive any box wider than
-            // ~0.2 sigma). 1.6/sqrt(n) sits between the two.
-            float shrink = min(1.0, 1.6 * inversesqrt(n_samples));
-            float sigma_clip = sqrt(max(var_t, var_floor))
-                * shrink
-                * (1.0 + 0.05 * motion_amount);
-            vec3 clamp_box_min = max(vec3(0.0), raw_m1 - sigma_clip * 1.25);
-            // No raw_max ceiling: bounding the box by the current 3x3 maximum
-            // crushed legitimately brighter accumulated light (dark blotches
-            // inside bright pixels).
-            vec3 clamp_box_max = raw_m1 + sigma_clip * 1.25;
-
-            vec3 clamped_prev_radiance = clamp(prev_sample.rgb, clamp_box_min, clamp_box_max);
-            vec3 clip_delta = clamped_prev_radiance - prev_sample.rgb;
-            bool history_clipped = dot(clip_delta, clip_delta) > 1e-8;
-
             // Adaptive temporal alpha from sample count clamped by motion:
-            // alpha_temporal = 1 / n
+            // alpha_temporal = 1 / n.
+            //
+            // Deliberately NO history variance clip. The educational
+            // Minecraft-PTGI SVGF (and SEUS) accumulate with a pure 1/n
+            // blend: the disocclusion tests reject bad history, the absolute
+            // radiance cap bounds spikes, and the variance-guided à-trous
+            // pyramid (see rtgi_filter.csh) removes the residual outliers.
+            // Every clip-box variant tried here re-injected the current
+            // frame's few-sample noise into the long history ("smoothed
+            // noise that never becomes a light") or let fireflies ride at
+            // full width.
             float alpha_temporal = 1.0 / n_samples;
 
             float base_alpha = max(alpha_temporal, motion_alpha);
-            // Floor 0.01 (was 0.03): the old floor capped static accumulation
-            // at ~33 effective frames regardless of the age budget (96).
+            // Floor 0.01: keeps alpha within the 1/n intent of the 96-frame
+            // age budget.
             alpha = clamp(mix(1.0, base_alpha, total_confidence), 0.01, 1.0);
 
-            accumulated_radiance = mix(clamped_prev_radiance, current_radiance, alpha);
+            accumulated_radiance = mix(prev_sample.rgb, current_radiance, alpha);
             accumulated_sky = mix(prev_sky, current_sky_weight, alpha);
 
             // Second-moment tracking for the à-trous variance: M2 must be an
@@ -282,20 +253,7 @@ void main() {
             // variance = M2 - M1^2 to zero and disable all variance-guided
             // filtering. M1 needs no storage: the accumulated radiance's
             // luminance already is the matched EMA of sample luminance.
-            float prev_m2_source = prev_aux.r;
-            if (history_clipped) {
-                // SVGF-style moment correction: after a clip, move the carried
-                // second moment toward the squared clip distance so the next
-                // frames relax back gradually instead of stair-stepping, and
-                // so the filter sees the discontinuity as real variance.
-                // Bounded to at most ~4x variance growth per frame (sigma
-                // doubling): a clip can neither wedge the box permanently
-                // open nor run away on a single huge drag.
-                float drag2 = dot(clip_delta * clip_delta, luminance_weights);
-                drag2 = min(drag2, 16.0 * max(var_t, var_floor) + var_floor * 4.0);
-                prev_m2_source = prev_lum * prev_lum + max(var_floor * 4.0, drag2);
-            }
-            m2 = mix(prev_m2_source, current_lum * current_lum, alpha);
+            m2 = mix(prev_aux.r, current_lum * current_lum, alpha);
 
 #if GI_DEBUG == GI_DEBUG_REJECT
             history_accepted = 1.0;
