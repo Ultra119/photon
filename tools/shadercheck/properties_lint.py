@@ -27,7 +27,6 @@ KNOWN_DUPLICATE_KEYS = {
 }
 
 RTGI_SCREEN_OPTIONS = [
-    "LIGHTING_MODE",
     "RTGI_PROBE_RAYS",
     "RTGI_PROBE_HYSTERESIS",
     "RTGI_INTENSITY",
@@ -36,10 +35,25 @@ RTGI_SCREEN_OPTIONS = [
     "RTGI_VOXELIZE_ENTITIES",
     "RTGI_RAY_COUNT",
     "RTGI_RESOLUTION",
+    "RTGI_FILTER_PHI",
+    "RTGI_HISTORY_FRAMES",
+    "RTGI_MAX_RADIANCE",
+    "EMISSION_ANCHOR",
     "RT_REFLECTION_RAYS",
     "PHYSICAL_BSDF_ENERGY_COMP",
     "RT_CLIPMAP_SIZE",
     "RT_COVERAGE_LEVELS",
+]
+
+# LIGHTING_MODE is profile-driven only (RT/PT low-medium-high profiles); it must
+# NOT be a menu switch. The six profiles below are the required exposure.
+MODE_PROFILES = [
+    "profile.rt_low",
+    "profile.rt_medium",
+    "profile.rt_high",
+    "profile.pt_low",
+    "profile.pt_medium",
+    "profile.pt_high",
 ]
 
 DEAD_OPTIONS = [
@@ -565,8 +579,16 @@ def main() -> int:
         if f"image.{name}" not in properties:
             errors.append(f"missing custom image declaration: {name}")
 
-    if "LIGHTING_MODE" not in screen_line:
-        errors.append("LIGHTING_MODE is not exposed in the raytracing menu")
+    # Profile-driven lighting mode: no menu switch, six required profiles, and
+    # the settings option list must expose both RT and PT so profiles can set it.
+    if "LIGHTING_MODE" in screen_line:
+        errors.append("LIGHTING_MODE must not be a raytracing menu switch (profiles own it)")
+    property_lines = preprocessed.splitlines()
+    for profile_key in MODE_PROFILES:
+        if not any(line.strip().startswith(f"{profile_key} ") for line in property_lines):
+            errors.append(f"missing lighting profile: {profile_key}")
+    if "// [LIGHTING_MODE_RT LIGHTING_MODE_PT]" not in settings:
+        errors.append("settings.glsl LIGHTING_MODE option list must expose RT and PT for profiles")
 
     orphan_errors, orphan_warnings = check_orphan_options(properties, settings)
     errors.extend(orphan_errors)

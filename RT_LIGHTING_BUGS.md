@@ -572,6 +572,70 @@ Validation: full `run_checks.sh` green (326 keys, compute 357/0, wrapper
 
 ---
 
+## Turn 8: profile-driven PT/RT + precise test knobs (+ PT-safety completion)
+
+User requests: (1) remove the PT/RT switch from the RT menu and express
+PT/RT × low/medium/high as profiles; (2) finer-grained settings for testing;
+(3) Photon-vs-SEUS screenshot comparison ("something off with photon" — see
+session reply; camera-motion light trails accepted as normal, no fix).
+
+### Menu → profiles
+- `screen.raytracing` no longer contains `LIGHTING_MODE` (it was a
+  single-option dropdown — only `LIGHTING_MODE_RT` was ever selectable).
+- `settings.glsl` option list extended to
+  `[LIGHTING_MODE_RT LIGHTING_MODE_PT]` so profiles can set it.
+- Six new profiles in `shaders.properties` — `profile.rt_low|rt_medium|rt_high`
+  and `profile.pt_low|pt_medium|pt_high` — each = existing low/medium/high
+  payload + the matching `LIGHTING_MODE_*` value. `rt_low` also sets
+  `RTGI_PROBE_RAYS=16` (the old `profile.low` omitted the key and silently kept
+  the 32-ray default — inconsistent with medium's explicit 16).
+
+### PT-safety completion (was: PT structurally broken — now a valid placeholder)
+PT was never wired end-to-end: properties skipped voxel/RTGI image allocation
+and the RT compute programs' enable lines were *unconditional*, while
+`deferred4` still declared `rtgi_filtered_sampler` — selecting PT sampled
+unallocated resources (resolves Wave-4 item L3: the fallback now exists).
+Gates added (all `LIGHTING_MODE == LIGHTING_MODE_RT`):
+- `shaders.properties`: RT-only program enables (trace `deferred1_a`,
+  temporal `deferred2_a`, RT contact AO `deferred3`, à-trous `deferred3_a-d`,
+  probe update `deferred_a`) in all three worlds — previously they ran under PT
+  and would write to unallocated images.
+- `diffuse_lighting.glsl`: DDGI includes + `DIFFUSE_USE_RTGI` uniform gated;
+  indirect branch = `vec3(0.0)` under PT (direct-only).
+- `d4_deferred_shading.fsh`: terrain AO force 1.0 under PT (colortex6/14 are
+  RT-AO buffers and would be stale); RT 4-tap upsample gated.
+- `specular_lighting.glsl`: `voxel_samplers.glsl` include gated;
+  `RT_REFLECTION_CAN_TRACE_VOXEL` now `(LIGHTING_MODE == LIGHTING_MODE_RT)` →
+  PT reflections fall back to environment/sky (the existing else path).
+- Already gated before this turn (verified): voxelization writes in
+  `gbuffers_all_solid.vsh` / `shadow.vsh`, `final.fsh` RT blocks,
+  `c1_blend_layers.fsh`, image/SSBO declarations.
+
+**PT semantics today:** placeholder = direct lighting only (no GI, no RT AO,
+env-only reflections), selectable via `pt_*` profiles as a GI-off A/B
+baseline. It is *not* a second path tracer; the quality-first path remains
+future work.
+
+### New test settings (all on `screen.raytracing` + sliders + lang)
+| Setting | Default | Wired into |
+|---|---|---|
+| `RTGI_FILTER_PHI` | 10.0 | `rtgi_filter.csh` `PHI_COLOUR` (sigma_l = PHI·√var) |
+| `RTGI_HISTORY_FRAMES` | 96 | `rtgi_temporal.csh` n-cap (`float(RTGI_HISTORY_FRAMES)`) |
+| `RTGI_MAX_RADIANCE` | 8.0 | `rtgi_trace.csh` firefly clamp (its `#ifndef` default now overridable) |
+| `EMISSION_ANCHOR` | 6.0 | `light_colors.glsl` `const` → `#ifndef`-guarded define |
+
+### Validation
+- `properties_lint.py` updated: LIGHTING_MODE must be *absent* from
+  `screen.raytracing`, six profiles required, option list must expose both
+  modes; new menu options enforced (+ en_US.lang entries). → lint OK
+  (332 keys, 16 RTGI menu options).
+- PT-mode compile proof: settings default flipped to `LIGHTING_MODE_PT`,
+  full wrapper matrix **1053/1053 OK**, flipped back.
+- Full `run_checks.sh`: exit 0 — packing OK, lint OK, compute 357/0,
+  wrapper 1053/0, DDA 16/16, clipmap/boundary/AO/gi_debug OK.
+
+---
+
 ## 0. Symptom → root-cause map
 
 | Reported symptom | Primary causes (finding IDs) |

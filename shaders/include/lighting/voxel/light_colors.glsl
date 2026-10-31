@@ -129,11 +129,13 @@ const float[48] voxel_light_level_table = float[48](
 
 // Radiance of a light-15 emitter surface, times the user dial
 // (EMISSION_STRENGTH, 0..2). Anchored to the raster block-light response
-// (blocklight_scale = 6.0 at level 15), just under RTGI_MAX_RADIANCE (8) so
+// (blocklight_scale = 6.0 at level 15), just under RTGI_MAX_RADIANCE so
 // legitimate emitter hits no longer saturate the per-ray firefly cap, and
 // below the sunlight base scale (7.0 * SUN_I) so emitters stay believable
-// next to daylight.
-const float EMISSION_ANCHOR = 6.0;
+// next to daylight. Overridable from settings.glsl (exposed as a test knob).
+#ifndef EMISSION_ANCHOR
+#define EMISSION_ANCHOR 6.0
+#endif
 
 // Vanilla lightmap response g(f) = f / (4 - 3f) (LightTexture curve):
 // L15 -> 1.000, L14 -> 0.767, L11 -> 0.407, L10 -> 0.333, L6 -> 0.143,

@@ -91,7 +91,8 @@ const float bspline_kernel[5] = float[5](
 // emitter confetti dots versus their dark surroundings, in BOTH directions —
 // was rejected by the edge-stopping weight and the filter degenerated into a
 // pass-through exactly where denoising was needed.
-const float PHI_COLOUR = 10.0;
+// Value exposed as RTGI_FILTER_PHI in settings.glsl (test knob).
+#define PHI_COLOUR RTGI_FILTER_PHI
 
 void main() {
 #if RTGI_RESOLUTION == 0

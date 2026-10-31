@@ -243,7 +243,8 @@ void main() {
             float prev_sky = prev_sky_age.x;
             float prev_age = prev_sky_age.y;
 
-            n_samples = min(prev_age + 1.0, 96.0);
+            // History-age cap exposed as RTGI_HISTORY_FRAMES (test knob).
+            n_samples = min(prev_age + 1.0, float(RTGI_HISTORY_FRAMES));
 
             // Pure 1/n blend — NO motion-driven alpha and NO variance clip
             // (both the educational Minecraft-PTGI temporal and SEUS work

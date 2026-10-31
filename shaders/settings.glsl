@@ -59,12 +59,28 @@ const float wetnessHalflife         = 70.0;
 //   Ray Tracing & Global Illumination
 // ------------------------------------
 
-  // Lighting mode contract. RT is the only implemented mode today. PT is
-  // reserved for the future quality-first path and is deliberately not exposed
-  // in the settings menu yet.
+  // Lighting mode is profile-driven only (no menu switch): the RT/PT
+  // low-medium-high profiles in shaders.properties select the mode together
+  // with the quality budget. RT is the native path; PT is reserved for the
+  // future quality-first implementation. The PT placeholder is intentionally
+  // still valid to select: it runs direct lighting only (no GI, no RT AO)
+  // instead of sampling unallocated RT resources, so it doubles as a GI-off
+  // A/B baseline for testing.
   #define LIGHTING_MODE_RT 0
   #define LIGHTING_MODE_PT 1
-  #define LIGHTING_MODE LIGHTING_MODE_RT // [LIGHTING_MODE_RT]
+  #define LIGHTING_MODE LIGHTING_MODE_RT // [LIGHTING_MODE_RT LIGHTING_MODE_PT]
+
+  // Precise test knobs (see also the profiles). RTGI_FILTER_PHI scales the
+  // atrous edge-stopping sigma (higher = softer, leakier edges); RTGI_HISTORY_FRAMES
+  // caps temporal accumulation age; RTGI_MAX_RADIANCE clamps per-ray radiance
+  // at trace time (firefly control).
+  #define RTGI_FILTER_PHI 10.0 // [4.0 6.0 8.0 10.0 12.0 16.0 24.0 32.0]
+  #define RTGI_HISTORY_FRAMES 96 // [24 32 48 64 96 128 160]
+  #define RTGI_MAX_RADIANCE 8.0 // [2.0 3.0 4.0 6.0 8.0 12.0 16.0 32.0]
+  // Emission radiance anchor (light-15 emitter radiance before EMISSION_STRENGTH).
+  // Matches the raster blocklight_scale at level 15; keep it under
+  // RTGI_MAX_RADIANCE so legitimate emitter hits do not saturate the firefly cap.
+  #define EMISSION_ANCHOR 6.0 // [2.0 3.0 4.0 5.0 6.0 8.0 10.0 12.0 16.0 24.0]
 
   // 32 rays + 0.80 hysteresis: each probe still refreshes every 16 frames,
   // but the per-update Monte-Carlo noise is halved and only 20% of the value
