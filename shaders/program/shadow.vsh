@@ -64,8 +64,8 @@ uniform float time_midnight;
 uniform float biome_temperature;
 uniform float biome_humidity;
 
-#ifdef COLORED_LIGHTS
-writeonly uniform uimage3D voxel_img;
+#if LIGHTING_MODE == LIGHTING_MODE_RT
+// Voxel clipmap images
 
 uniform int renderStage;
 #endif
@@ -77,17 +77,17 @@ uniform int renderStage;
 #include "/include/lighting/shadows/distortion.glsl"
 #include "/include/vertex/displacement.glsl"
 
-#ifdef COLORED_LIGHTS
-#include "/include/lighting/lpv/voxelization.glsl"
+#if LIGHTING_MODE == LIGHTING_MODE_RT
+#include "/include/lighting/voxel/voxel_update.glsl"
 #endif
 
 void main() {
-    uv = gl_MultiTexCoord0.xy;
-    material_mask = uint(mc_Entity.x - 10000.0);
+    uv = (gl_TextureMatrix[0] * gl_MultiTexCoord0).xy;
+    material_mask = uint(max0(mc_Entity.x - 10000.0));
     tint = gl_Color.rgb;
 
-#if defined COLORED_LIGHTS && !defined PROGRAM_SHADOW_ENTITIES
-    update_voxel_map(material_mask);
+#if (LIGHTING_MODE == LIGHTING_MODE_RT) && (!defined PROGRAM_SHADOW_ENTITIES || (defined RTGI_VOXELIZE_ENTITIES && RTGI_VOXELIZE_ENTITIES == 1))
+    update_rt_voxel_grid(material_mask, tint, at_midBlock, clamp01(gl_MultiTexCoord1.xy * (1.0 / 240.0)), mc_midTexCoord, uv);
 #endif
 
 #if defined WORLD_NETHER

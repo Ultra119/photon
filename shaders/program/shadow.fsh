@@ -169,10 +169,19 @@ void main() {
             discard;
         }
 
-        shadowcolor0_out = mix(vec3(1.0), base_color.rgb * tint, base_color.a);
-        shadowcolor0_out
-            = 0.25 * srgb_eotf_inv(shadowcolor0_out) * rec709_to_rec2020;
-        shadowcolor0_out *= step(base_color.a, 1.0 - rcp(255.0));
+        if (material_mask >= 81u && material_mask <= 96u) {
+            // Stained glass: rich colored transmittance
+            vec3 glass_color = base_color.rgb * tint;
+            shadowcolor0_out = 0.25 * srgb_eotf_inv(glass_color) * rec709_to_rec2020;
+        } else if (material_mask == 80u) {
+            // Clear glass: 100% white transmittance
+            shadowcolor0_out = 0.25 * vec3(1.0);
+        } else {
+            shadowcolor0_out = mix(vec3(1.0), base_color.rgb * tint, base_color.a);
+            shadowcolor0_out
+                = 0.25 * srgb_eotf_inv(shadowcolor0_out) * rec709_to_rec2020;
+            shadowcolor0_out *= step(base_color.a, 1.0 - rcp(255.0));
+        }
     }
 #else
     vec4 base_color = textureLod(tex, uv, 0);
