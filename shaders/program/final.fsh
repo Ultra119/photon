@@ -28,7 +28,7 @@ uniform sampler2D DEBUG_SAMPLER;
 uniform float viewHeight;
 uniform float frameTimeCounter;
 
-#ifdef COLORED_LIGHTS
+#if LIGHTING_MODE == LIGHTING_MODE_RT && (defined WORLD_NETHER || !defined SHADOW)
 uniform sampler2D shadowtex0;
 #endif
 
@@ -53,6 +53,59 @@ uniform float far;
 
 #include "/include/misc/lod_mod_support.glsl"
 #include "/include/utility/space_conversion.glsl"
+#endif
+
+#if DEBUG_VIEW == DEBUG_VIEW_GI
+// space_conversion.glsl refers to its uniforms inside function bodies, so every
+// one of them must be declared even for functions this view never calls, and a
+// uniform may only be declared once in a translation unit. The DISTANCE_VIEW
+// block above declares exactly this set, so mirror it under the opposite
+// condition rather than duplicating it.
+#ifndef DISTANCE_VIEW
+uniform mat4 gbufferModelView;
+uniform mat4 gbufferModelViewInverse;
+uniform mat4 gbufferProjection;
+uniform mat4 gbufferProjectionInverse;
+
+uniform vec2 view_res;
+uniform vec2 taa_offset;
+
+uniform float near;
+uniform float far;
+#endif
+
+uniform vec3 cameraPosition;
+uniform int frameCounter;
+uniform sampler2D depthtex0;
+uniform sampler2D depthtex1;
+
+#include "/include/utility/space_conversion.glsl"
+
+// GI debug samplers
+#if LIGHTING_MODE == LIGHTING_MODE_RT
+uniform usampler3D voxel_sampler;
+#if GI_DEBUG == GI_DEBUG_COVERAGE
+uniform usampler3D voxel_mid_sampler;
+uniform usampler3D voxel_coarse_sampler;
+#endif
+
+uniform sampler2D rtgi_raw_sampler;
+uniform sampler2D rtgi_history_sampler;
+uniform sampler2D rtgi_accum_sampler;
+uniform sampler2D rtgi_filtered_sampler;
+#if GI_DEBUG == GI_DEBUG_HIT
+uniform sampler2D rtgi_hit_sampler;
+#endif
+#if GI_DEBUG == GI_DEBUG_REJECT
+uniform sampler2D rtgi_reject_sampler;
+#endif
+#if GI_DEBUG == GI_DEBUG_VARIANCE
+uniform sampler2D rtgi_sky_accum_sampler;
+uniform sampler2D rtgi_sky_history_sampler;
+#endif
+
+#include "/include/debug/gi_debug.glsl"
+#endif
 #endif
 
 const int debug_text_scale = 2;
@@ -122,156 +175,8 @@ vec3 cas_filter(sampler2D sampler, ivec2 texel, const float sharpness) {
     return clamp01((b + d + f + h) * w + e) / weight_sum;
 }
 
-void draw_iris_required_error_message() {
-    fragment_color = vec3(
-        sqr(sin(uv.xy + vec2(0.4, 0.2) * frameTimeCounter)) * 0.5 + 0.3,
-        1.0
-    );
-    begin_text(ivec2(gl_FragCoord.xy) / 3, ivec2(0, viewHeight / 3));
-    text.fg_col = vec4(0.0, 0.0, 0.0, 1.0);
-    text.bg_col = vec4(0.0);
-    print((
-        _I,
-        _r,
-        _i,
-        _s,
-        _space,
-        _i,
-        _s,
-        _space,
-        _r,
-        _e,
-        _q,
-        _u,
-        _i,
-        _r,
-        _e,
-        _d,
-        _space,
-        _f,
-        _o,
-        _r,
-        _space,
-        _f,
-        _e,
-        _a,
-        _t,
-        _u,
-        _r,
-        _e,
-        _space,
-        _quote,
-        _C,
-        _o,
-        _l,
-        _o,
-        _r,
-        _e,
-        _d,
-        _space,
-        _L,
-        _i,
-        _g,
-        _h,
-        _t,
-        _s,
-        _quote
-    ));
-    print_line();
-    print_line();
-    print_line();
-    print((_H, _o, _w, _space, _t, _o, _space, _f, _i, _x, _colon));
-    print_line();
-    print((
-        _space,
-        _space,
-        _minus,
-        _space,
-        _D,
-        _i,
-        _s,
-        _a,
-        _b,
-        _l,
-        _e,
-        _space,
-        _C,
-        _o,
-        _l,
-        _o,
-        _r,
-        _e,
-        _d,
-        _space,
-        _L,
-        _i,
-        _g,
-        _h,
-        _t,
-        _s,
-        _space,
-        _i,
-        _n,
-        _space,
-        _t,
-        _h,
-        _e,
-        _space,
-        _L,
-        _i,
-        _g,
-        _h,
-        _t,
-        _i,
-        _n,
-        _g,
-        _space,
-        _m,
-        _e,
-        _n,
-        _u
-    ));
-    print_line();
-    print(
-        (_space,
-         _space,
-         _minus,
-         _space,
-         _I,
-         _n,
-         _s,
-         _t,
-         _a,
-         _l,
-         _l,
-         _space,
-         _I,
-         _r,
-         _i,
-         _s,
-         _space,
-         _1,
-         _dot,
-         _6,
-         _space,
-         _o,
-         _r,
-         _space,
-         _a,
-         _b,
-         _o,
-         _v,
-         _e)
-    );
-    print_line();
-    end_text(fragment_color);
-}
 
 void main() {
-#if defined COLORED_LIGHTS && !defined IS_IRIS
-    draw_iris_required_error_message();
-    return;
-#endif
 
     ivec2 texel = ivec2(gl_FragCoord.xy);
 
@@ -292,6 +197,14 @@ void main() {
     }
 #elif DEBUG_VIEW == DEBUG_VIEW_WEATHER
     debug_weather(fragment_color);
+#elif DEBUG_VIEW == DEBUG_VIEW_GI
+#if LIGHTING_MODE == LIGHTING_MODE_RT
+    fragment_color = gi_debug_view(texel, uv, fragment_color);
+    fragment_color = gi_debug_stamp_swatch(fragment_color, texel);
+#else
+        // Fallback when GI debug is unavailable
+    fragment_color = vec3(0.6, 0.0, 0.6);
+#endif
 #endif
 
 #ifdef DISTANCE_VIEW
@@ -330,7 +243,7 @@ void main() {
         : vec3(clamp01(dist * rcp(DISTANCE_VIEW_MAX_DISTANCE)));
 #endif
 
-#if defined COLORED_LIGHTS && (defined WORLD_NETHER || !defined SHADOW)
+#if LIGHTING_MODE == LIGHTING_MODE_RT && (defined WORLD_NETHER || !defined SHADOW)
     // Must sample shadowtex0 so that the shadow map is rendered
     if (uv.x < 0.0) {
         fragment_color = texture(shadowtex0, uv).rgb;
