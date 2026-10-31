@@ -177,36 +177,65 @@ void main() {
         + dot(raw_sigma * raw_sigma, luminance_weights);
 
     if (inside_prev_screen) {
-        // Point-sample history at the reprojected integer texel. Bilinear
-        // filtering here would interpolate the packed sky/age bytes, the
-        // octahedral normal and the stored distance, corrupting every
-        // disocclusion test at depth/normal edges.
-        ivec2 prev_texel = clamp(
-            ivec2(prev_framebuffer_uv * vec2(target_res)),
-            ivec2(0),
-            target_res - 1
+        // Neighborhood reprojection search (educational Minecraft-PTGI
+        // concept, modernized): the reprojected point-sample is sub-pixel
+        // accurate, but TAAU jitter and round-off can land the fetch half a
+        // texel off — at depth/normal edges that fails the disocclusion
+        // tests and resets the whole pixel to raw dots. Search the center
+        // plus a 1-texel ring in the previous buffer and take the first tap
+        // that passes both tests. History fetches stay point-sampled:
+        // bilinear filtering would interpolate the packed sky/age bytes,
+        // the octahedral normal and the stored distance, corrupting every
+        // disocclusion test.
+        const vec2 search_taps[9] = vec2[9](
+            vec2( 0.0,  0.0),
+            vec2( 0.5, -0.5), vec2(-0.5,  0.5), vec2( 0.5,  0.5), vec2(-0.5, -0.5),
+            vec2( 1.0,  0.0), vec2(-1.0,  0.0), vec2( 0.0,  1.0), vec2( 0.0, -1.0)
         );
-        vec4 prev_sample = ping ? texelFetch(rtgi_history_sampler, prev_texel, 0)
-                                : texelFetch(rtgi_accum_sampler, prev_texel, 0);
-        vec4 prev_aux = ping ? texelFetch(rtgi_sky_history_sampler, prev_texel, 0)
-                             : texelFetch(rtgi_sky_accum_sampler, prev_texel, 0);
 
-        float prev_dist = prev_sample.a;
-        float dist_diff = abs(current_dist - prev_dist);
+        bool history_valid = false;
+        float total_confidence = 0.0;
+        vec4 prev_sample = vec4(0.0);
+        vec4 prev_aux = vec4(0.0);
 
-        // SVGF Disocclusion Test 1: Tight metric depth tolerance
-        float dist_tolerance = max(current_dist * 0.06, 0.10);
-        bool depth_valid = (prev_dist > 0.05) && (dist_diff < dist_tolerance * 2.0);
-        float depth_confidence = clamp01(1.0 - max(0.0, dist_diff - dist_tolerance) / dist_tolerance);
+        for (int tap = 0; tap < 9 && !history_valid; ++tap) {
+            vec2 tap_uv = prev_framebuffer_uv + search_taps[tap] / vec2(target_res);
+            bool tap_inside = clamp01(tap_uv) == tap_uv
+                && !taau_uv_outside_viewport(tap_uv);
+            if (!tap_inside) {
+                continue;
+            }
 
-        // SVGF Disocclusion Test 2: Normal orientation consistency
-        vec3 prev_world_normal = decode_unit_vector(prev_aux.ba);
-        float normal_dot = dot(current_world_normal, prev_world_normal);
-        bool normal_valid = normal_dot > 0.85;
-        float normal_confidence = smoothstep(0.70, 0.90, normal_dot);
+            ivec2 prev_texel = clamp(
+                ivec2(tap_uv * vec2(target_res)),
+                ivec2(0),
+                target_res - 1
+            );
+            // Neighbor taps can round to the same texel; harmless duplicate.
+            prev_sample = ping ? texelFetch(rtgi_history_sampler, prev_texel, 0)
+                               : texelFetch(rtgi_accum_sampler, prev_texel, 0);
+            prev_aux = ping ? texelFetch(rtgi_sky_history_sampler, prev_texel, 0)
+                            : texelFetch(rtgi_sky_accum_sampler, prev_texel, 0);
 
-        bool history_valid = depth_valid && normal_valid;
-        float total_confidence = depth_confidence * normal_confidence;
+            float prev_dist = prev_sample.a;
+            float dist_diff = abs(current_dist - prev_dist);
+
+            // SVGF Disocclusion Test 1: Tight metric depth tolerance
+            float dist_tolerance = max(current_dist * 0.06, 0.10);
+            bool depth_valid = (prev_dist > 0.05) && (dist_diff < dist_tolerance * 2.0);
+            float depth_confidence = clamp01(1.0 - max(0.0, dist_diff - dist_tolerance) / dist_tolerance);
+
+            // SVGF Disocclusion Test 2: Normal orientation consistency
+            vec3 prev_world_normal = decode_unit_vector(prev_aux.ba);
+            float normal_dot = dot(current_world_normal, prev_world_normal);
+            bool normal_valid = normal_dot > 0.85;
+            float normal_confidence = smoothstep(0.70, 0.90, normal_dot);
+
+            if (depth_valid && normal_valid) {
+                history_valid = true;
+                total_confidence = depth_confidence * normal_confidence;
+            }
+        }
 
         if (history_valid) {
             // Unpack previous sample age and sky weight
@@ -216,33 +245,18 @@ void main() {
 
             n_samples = min(prev_age + 1.0, 96.0);
 
-            vec2 screen_motion = abs(prev_framebuffer_uv - uv) * view_res * render_scale;
-            float motion_amount = length(screen_motion);
-            // Dead-band below 1.5 px: TAAU jitter and reprojection round-off
-            // register as sub-pixel "motion" every frame even when the camera
-            // is perfectly still; without the gate they floor alpha at ~0.05
-            // and cap the effective accumulation at ~20 frames, which is what
-            // kept the converged history confetti-noisy.
-            float motion_alpha = clamp01((motion_amount - 1.5) * 0.05);
-
-            // Adaptive temporal alpha from sample count clamped by motion:
-            // alpha_temporal = 1 / n.
-            //
-            // Deliberately NO history variance clip. The educational
-            // Minecraft-PTGI SVGF (and SEUS) accumulate with a pure 1/n
-            // blend: the disocclusion tests reject bad history, the absolute
-            // radiance cap bounds spikes, and the variance-guided à-trous
-            // pyramid (see rtgi_filter.csh) removes the residual outliers.
-            // Every clip-box variant tried here re-injected the current
-            // frame's few-sample noise into the long history ("smoothed
-            // noise that never becomes a light") or let fireflies ride at
-            // full width.
+            // Pure 1/n blend — NO motion-driven alpha and NO variance clip
+            // (both the educational Minecraft-PTGI temporal and SEUS work
+            // this way). Motion is handled entirely by the reprojection and
+            // the disocclusion tests above: a motion alpha dumped the
+            // accumulated light field back to raw dots on every pan (it hit
+            // 1.0 at ~22 RTGI px/frame) and forced a full re-convergence
+            // after every stop. Ghosting during fast motion is the standard
+            // tradeoff for keeping the field intact.
             float alpha_temporal = 1.0 / n_samples;
 
-            float base_alpha = max(alpha_temporal, motion_alpha);
-            // Floor 0.01: keeps alpha within the 1/n intent of the 96-frame
-            // age budget.
-            alpha = clamp(mix(1.0, base_alpha, total_confidence), 0.01, 1.0);
+            // Confidence keeps freshly-disoccluded pixels responsive.
+            alpha = clamp(mix(1.0, alpha_temporal, total_confidence), 0.01, 1.0);
 
             accumulated_radiance = mix(prev_sample.rgb, current_radiance, alpha);
             accumulated_sky = mix(prev_sky, current_sky_weight, alpha);

@@ -1,7 +1,7 @@
 # RT Lighting Bug Audit — fork HEAD `6d49083` (`arena/ce39d2b2-photon`)
 
 **Date:** 2026-10-30 audit; Waves 1–4 applied 2026-10-30/31.
-**Status:** Waves 1–4 applied. SEUS segment steps 1–6 applied. Step 6 (playtest verdict "clearly you can't fix this — you are missing something") cross-checked against the educational repo MahoganyTown/Minecraft-PTGI and adopted its **clip-free temporal + 1-2-4-8 à-trous pyramid + uncapped variance luminance weight** (see step-6 section — it identified two concrete defects the earlier tuning could never fix). Parked by user: the -23°/-26° brightness-flip investigation. Remaining: step-6 playtest, probe sky-store design point, perf on the 4-pass filter + RTGI_RAY_COUNT=4.
+**Status:** Waves 1–4 applied. SEUS segment steps 1–7 applied. Step 6 (Minecraft-PTGI cross-check) fixed the static case: clip-free temporal + 1-2-4-8 à-trous pyramid + uncapped variance luminance weight. Step 7 (playtest: motion broke the field into raw dots, slow re-convergence after stops) **removed the motion-driven alpha entirely and added the 9-tap neighborhood reprojection search** — motion is now handled purely by reprojection + disocclusion, per the Minecraft-PTGI/SEUS temporal design. Parked by user: the -23°/-26° brightness-flip investigation. Remaining: step-7 playtest (motion smoothness, ghosting tradeoff), probe sky-store design point, perf on the 4-pass filter.
 **Method:** full static re-read of the current RT pipeline (`rtgi_trace`, `rtgi_temporal`, `rtgi_filter`, `rtgi_probe_update`, `rt_gi.glsl`, `ddgi.glsl`, `voxel_dda.glsl`, `voxel_update/palette/storage`, `diffuse_lighting.glsl`) against the SEUS PTGI HRR Test 2.1 reference (extracted from the attached archive). Every finding below was re-verified from the current working tree; nothing is copied from prior audit docs, and prior "confirmed" claims were treated as untrusted. SEUS is used only as a behavioral reference — no code is taken from it.
 
 **Confidence labels:**
@@ -540,6 +540,35 @@ Validation: full `run_checks.sh` green — properties 326 keys, compute matrix
 357/0 (includes deferred3_c/d), wrapper 1053/0, DDA 16/16, clipmap/boundary/
 AO/gi_debug OK. glslang had to be rebuilt (/tmp wiped; StandAlone target in
 16.6.0 is `glslang-standalone`).
+
+## SEUS segment — step 7: motion robustness (no motion alpha + neighborhood search)
+
+Playtest after step 6: static converges and looks good; **any pan breaks the
+field into raw-like dots; re-convergence after stops is slow; forward/back
+motion keeps only the FOE-centred oval intact** (radial flow ≈ 0 at the
+focus of expansion, large at the frame edges).
+
+Two causes, both in `rtgi_temporal.csh`:
+1. **Motion-driven alpha** — `clamp01((motion − 1.5px)·0.05)` reached 1.0 at
+   ~22 RTGI px/frame: a normal pan replaced the accumulated field with raw
+   4-spp dots every frame (and the room visibly dimmed, since raw dot-mean
+   ≪ converged brightness). Neither Minecraft-PTGI nor SEUS has any
+   motion-driven alpha: they blend 1/n always and let reprojection +
+   disocclusion tests handle motion.
+2. **Single-tap reprojection** — TAAU jitter + round-off can land the
+   history fetch half a texel off; at depth/normal edges that fails the
+   tests and resets the pixel. Minecraft-PTGI searches a 10-tap
+   neighborhood for the first valid history.
+
+Applied (modernized, own tap set): motion alpha removed (pure 1/n, softened
+only by disocclusion confidence); 9-tap neighborhood search (center + 4
+diagonal sub-texel + 4 axis 1-texel taps), first tap passing depth+normal
+wins; history stays point-sampled (bilinear would corrupt the packed
+auxiliary data). Ghosting during fast motion is the deliberate tradeoff
+(standard for this design).
+
+Validation: full `run_checks.sh` green (326 keys, compute 357/0, wrapper
+1053/0, DDA 16/16, clipmap/boundary/AO/gi_debug OK).
 
 ---
 
