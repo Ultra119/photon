@@ -1,7 +1,7 @@
 # RT Lighting Bug Audit — fork HEAD `6d49083` (`arena/ce39d2b2-photon`)
 
-**Date:** 2026-10-30 (Waves 1–2 + Wave 3 part 1 applied same day)
-**Status:** Waves 1–2 and Wave 3-part-1 (S2-full, coverage fade, origin dither) applied — see status sections below. Rest of Wave 3 + Wave 4 pending.
+**Date:** 2026-10-30 audit; Waves 1–4 applied 2026-10-30/31.
+**Status:** Waves 1–4 applied — every actionable finding in sections 2–5 has a disposition (see status sections). Parked by user: the -23°/-26° brightness-flip investigation. **Next: the SEUS segment** (section 6, remaining concepts — multi-pass variance-scaled denoising, anti-bleed edge rule, receiver-plane origin offset, emitter calibration, probe sky discipline).
 **Method:** full static re-read of the current RT pipeline (`rtgi_trace`, `rtgi_temporal`, `rtgi_filter`, `rtgi_probe_update`, `rt_gi.glsl`, `ddgi.glsl`, `voxel_dda.glsl`, `voxel_update/palette/storage`, `diffuse_lighting.glsl`) against the SEUS PTGI HRR Test 2.1 reference (extracted from the attached archive). Every finding below was re-verified from the current working tree; nothing is copied from prior audit docs, and prior "confirmed" claims were treated as untrusted. SEUS is used only as a behavioral reference — no code is taken from it.
 
 **Confidence labels:**
@@ -269,6 +269,96 @@ Playtest checklist for part 2:
 3. Expect sun-lit GI outdoors to improve visibly — bounce beyond ~5 blocks
    used to be killed outright; watch FPS (one ≤48-step DDA per GI ray hit).
 4. Reconfirm sealed room at night/noon and daylight interiors (S2 layer).
+
+---
+
+## Wave 4 (cleanup pass) status — applied 2026-10-31
+
+Closure pass over every finding still open after Waves 1–3. Each finding gets
+an explicit disposition.
+
+### Fixed in this pass
+
+- **D4 — probe relocation rewritten (destination-validated, multi-axis).**
+  The old search walked only the 6 axis neighbours at ±1.5/±2.5 blocks and
+  never verified the voxel the probe would *land* in; probes deep inside any
+  multi-block structure stayed buried and were zeroed, leaving dim holes the
+  trilinear blend spreads. Now: full 26-neighbourhood at 1.5 blocks first,
+  then axis rings at 2.5 and 3.5, each candidate accepted only if its exact
+  destination voxel is air. Still gives up (zeroes the probe) when no air is
+  within 3.5 blocks, same as before but only for truly entombed probes.
+  `relocation_code` diagnostic encoding updated (1–26 ring, 27+ axis rings).
+- **S4 — emitter pass-through implemented (SEUS ID-241 semantics).**
+  Fine-level thin emitters (`shape != VOXEL_SHAPE_CUBE`: torches, lanterns,
+  glow lichen, end rods, chains, panes-class light sources…) now add
+  `mat.emission × transmittance-so-far` to the viewer and **do not terminate
+  the ray** — a torch no longer blocks its own light, and probe rays near
+  emitters keep collecting the scene instead of dying at the flame. Full-block
+  emitters remain solid hits; coarse levels stay occupancy-only (D6).
+  The pass lands in a new `VoxelHit.passed_emission` field (viewer-ready,
+  added by consumers *outside* their ×transmittance term so later glass never
+  attenuates light that entered the path in front of it). Consumers updated:
+  `rt_gi` hit+miss, `rt_reflections` hit+miss, probe update hit+miss.
+  *Deferred part:* the uncalibrated emission palette ×2.5 (table values have
+  no physical anchor) — re-tune together with RTGI_BRIGHTNESS once the SEUS
+  energy/rebounce work lands; changing emitter brightness blind risks a
+  pack-wide balance regression.
+- **L4 — dead point-light remnants removed.**
+  `is_voxel_light_source` / `is_point_light_emitter` (never referenced; the
+  first still carried the stale “radial light field” comment from Step 9/13)
+  deleted, with a pointer to where emitter handling actually lives now. The
+  dead `accumulated_light` struct field was not just deleted — it was
+  **repurposed as `passed_emission`** for S4.
+
+### Closed by design decision (no code change)
+
+- **L2 — sky-weight plumbing.** No longer dead: the gate consumes sky
+  weights *at the trace stage* (S2-full in `evaluate_rtgi_ray`), and the
+  per-pixel sky byte shares the temporal aux with the live sample-age byte —
+  removing it would be pure churn. Downstream `.alpha` remains diagnostic
+  (debug views) only.
+- **L3 — `LIGHTING_MODE_PT`.** The settings comment states it is reserved
+  scaffolding, deliberately unexposed; properties gate on `== RT` everywhere.
+  The real concern — zero indirect floor outside the ±64-block probe window —
+  is a known constraint, noted for the SEUS segment (analytic fallback or
+  window follow-up), not a defect to hot-patch.
+- **L5 — hysteresis menu range.** Default already moved to 0.80 with the
+  rationale documented in `settings.glsl`; the upper range stays as a user
+  knob on purpose.
+- **S5 — full per-frame voxel rebuild.** Structural constraint of the current
+  voxelizer (Iris shadow-pass driven, `clear=true`); a persistent dirty-region
+  voxelizer is its own project. Documented, not scheduled.
+
+### Deferred to the SEUS segment (their content, done properly there)
+
+- **T4 — multi-pass à-trous.** A second stride-1 pass plus the SEUS
+  anti-bleed edge rule (dark occluded neighbours get weight protection) and
+  variance-scaled kernels are exactly the denoise work the SEUS comparison
+  exists for; bolting on a second blind pass now would just smear more.
+- **L1 — forward-lit surfaces sample raw probes.** Structural: translucents
+  run in gbuffers, *before* the temporal/filter passes exist this frame.
+  Options (previous-frame filtered buffer with its ping-pong caveat vs
+  clearly-differentiated probe-only treatment) belong to the SEUS raw/denoise
+  discussion.
+- **S4b — emission calibration to Minecraft light levels** (see above).
+
+### Parked by user (2026-10-31)
+
+- The -23°/-26° final-image brightness flip, the view-angle light spot on
+  wall/ceiling, history-reject “layered duplicate” ghosting during camera
+  rotation, and the still-unanswered block-light streak isolation question.
+  Diagnosis so far: post-Wave-3 GI has no camera-pitch input (static-verified),
+  the spot presents as raster/screen-space (specular or SSRT candidate), and
+  the ghosting is standard SVGF-under-rotation roughness. Pick up with the
+  probe set from the 2026-10-31 hand-off message whenever wanted.
+
+### SEUS segment plan (next)
+
+From section 6, remaining concepts: anti-bleed filter rule + multi-pass
+variance-scaled denoising (T4), receiver-plane ray-origin offset scaled by
+1/NoV (S1/S3 remainder), emitter energy calibration (S4b), probe sky
+discipline / origin exclusion (D5 remainder), and the L1/L3 structural
+decisions.
 
 ---
 

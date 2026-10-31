@@ -108,7 +108,8 @@ vec4 evaluate_rtgi_ray(
         vec3 hit_local = vx_hit.radiance - hit_sky;
 
         vec3 radiance = (hit_local + hit_sky * sky_gate + probe_bounce)
-            * vx_hit.transmittance;
+            * vx_hit.transmittance
+            + vx_hit.passed_emission;
 
         float sky_lum = dot(
             hit_sky * sky_gate + probe_bounce * probe_irr.a,
@@ -122,7 +123,8 @@ vec4 evaluate_rtgi_ray(
 
     hit_source = RTGI_HIT_SKY;
     vec3 sky_radiance = texture(sky_map, project_sky(ray_dir_world)).rgb
-        * vx_hit.transmittance * sky_gate;
+        * vx_hit.transmittance * sky_gate
+        + vx_hit.passed_emission;
     return vec4(sky_radiance, sky_gate);
 }
 

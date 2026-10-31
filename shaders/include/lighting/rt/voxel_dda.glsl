@@ -105,7 +105,13 @@ struct VoxelHit {
     float distance;
     vec3 transmittance;
     float sky_weight;
-    vec3 accumulated_light;
+    // S4 emitter pass-through: emission gathered from thin (non-cube) emitters
+    // along the path, already multiplied by the transmittance accumulated at
+    // the pass point. Consumers add it OUTSIDE their ×transmittance term —
+    // later glass along the ray must not attenuate light that entered the
+    // path in front of it. (Replaces the dead Step-9 `accumulated_light`
+    // point-light field remnant.)
+    vec3 passed_emission;
     vec3 albedo;
 };
 
@@ -208,7 +214,7 @@ VoxelHit make_miss_voxel_hit(vec3 ray_origin_scene, vec3 ray_dir, float max_dist
     result.distance = max_dist;
     result.transmittance = vec3(1.0);
     result.sky_weight = 0.0;
-    result.accumulated_light = vec3(0.0);
+    result.passed_emission = vec3(0.0);
     result.albedo = vec3(0.0);
     return result;
 }
@@ -374,14 +380,32 @@ VoxelHit trace_voxel_level(
                         t, clamped_next_t, entry_norm, hit_t, hit_norm
                     );
                     if (did_hit) {
-                        vec3 hit_face_scene = start_scene + dda_dir * (hit_t * scale);
-                        shade_voxel_hit(
-                            result, sample_data, mat, hit_face_scene, hit_norm,
-                            ray_transmittance, voxel_grid, level,
-                            direct_sun_color, l_dir
-                        );
-                        result.distance = t_start_world + hit_t * scale;
-                        return result;
+                        if (level == 0 && sample_data.is_emitter
+                            && shape != VOXEL_SHAPE_CUBE) {
+                            // S4 emitter pass-through (SEUS ID-241 semantics,
+                            // re-deriving the never-wired point-light hook):
+                            // thin emitters — torches, lanterns, glow lichen,
+                            // end rods, chains — contribute their emission to
+                            // the viewer and do NOT terminate the ray; the
+                            // path continues to the geometry behind them, so
+                            // a torch no longer blocks its own light and
+                            // probe rays near emitters keep collecting the
+                            // scene instead of dying at the flame. Emission
+                            // is pre-multiplied by the transmittance so far
+                            // and is reported through passed_emission.
+                            result.passed_emission +=
+                                mat.emission * ray_transmittance;
+                        } else {
+                            vec3 hit_face_scene =
+                                start_scene + dda_dir * (hit_t * scale);
+                            shade_voxel_hit(
+                                result, sample_data, mat, hit_face_scene,
+                                hit_norm, ray_transmittance, voxel_grid, level,
+                                direct_sun_color, l_dir
+                            );
+                            result.distance = t_start_world + hit_t * scale;
+                            return result;
+                        }
                     }
                 }
             }

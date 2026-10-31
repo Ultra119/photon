@@ -73,40 +73,58 @@ void main() {
         uint vx_data = texelFetch(voxel_sampler, vx_coord, 0).r;
         VoxelSample vs = unpack_voxel_data(vx_data);
         if (vs.block_id != 0u) {
+            // D4: destination-validated relocation. The old search walked only
+            // the 6 axis neighbours at ±1.5/±2.5 blocks and never verified the
+            // voxel it would LAND in, so a probe deep inside any multi-block
+            // structure stayed buried, was zeroed, and left a dim hole that
+            // the trilinear blend spreads across the room. Walk the full
+            // 26-neighbourhood at 1.5 blocks first, then axis rings at 2.5
+            // and 3.5; each candidate is accepted only if its exact
+            // destination voxel is air.
             bool found_air = false;
-            const ivec3 offsets[6] = ivec3[6](
-                ivec3( 1, 0, 0), ivec3(-1, 0, 0),
-                ivec3( 0, 1, 0), ivec3( 0,-1, 0),
-                ivec3( 0, 0, 1), ivec3( 0, 0,-1)
-            );
 
-            for (int i = 0; i < 6; ++i) {
-                ivec3 neighbor_coord = vx_coord + offsets[i];
-                if (is_inside_voxel_grid(neighbor_coord)) {
-                    uint n_data = texelFetch(voxel_sampler, neighbor_coord, 0).r;
-                    VoxelSample n_vs = unpack_voxel_data(n_data);
-                    if (n_vs.block_id == 0u) {
-                        probe_world_pos += vec3(offsets[i]) * 1.5;
-                        probe_scene_pos = probe_world_pos - cameraPosition;
-                        relocation_code = float(i + 1);
-                        found_air = true;
-                        break;
+            for (int dz = -1; dz <= 1 && !found_air; ++dz) {
+                for (int dy = -1; dy <= 1 && !found_air; ++dy) {
+                    for (int dx = -1; dx <= 1 && !found_air; ++dx) {
+                        if (dx == 0 && dy == 0 && dz == 0) continue;
+                        vec3 dest_pos = probe_world_pos + vec3(dx, dy, dz) * 1.5;
+                        ivec3 dest_coord = ivec3(
+                            floor(scene_to_voxel_space(dest_pos - cameraPosition))
+                        );
+                        if (is_inside_voxel_grid(dest_coord)) {
+                            uint d_data = texelFetch(voxel_sampler, dest_coord, 0).r;
+                            if (unpack_voxel_data(d_data).block_id == 0u) {
+                                probe_world_pos = dest_pos;
+                                relocation_code = float(1 + (dz + 1) * 9 + (dy + 1) * 3 + (dx + 1));
+                                found_air = true;
+                            }
+                        }
                     }
                 }
             }
 
             if (!found_air) {
-                for (int i = 0; i < 6; ++i) {
-                    ivec3 neighbor_coord = vx_coord + offsets[i] * 2;
-                    if (is_inside_voxel_grid(neighbor_coord)) {
-                        uint n_data = texelFetch(voxel_sampler, neighbor_coord, 0).r;
-                        VoxelSample n_vs = unpack_voxel_data(n_data);
-                        if (n_vs.block_id == 0u) {
-                            probe_world_pos += vec3(offsets[i]) * 2.5;
-                            probe_scene_pos = probe_world_pos - cameraPosition;
-                            relocation_code = float(i + 7);
-                            found_air = true;
-                            break;
+                const ivec3 axis_offsets[6] = ivec3[6](
+                    ivec3( 1, 0, 0), ivec3(-1, 0, 0),
+                    ivec3( 0, 1, 0), ivec3( 0,-1, 0),
+                    ivec3( 0, 0, 1), ivec3( 0, 0,-1)
+                );
+                const float rings[2] = float[2](2.5, 3.5);
+
+                for (int ring = 0; ring < 2 && !found_air; ++ring) {
+                    for (int i = 0; i < 6 && !found_air; ++i) {
+                        vec3 dest_pos =
+                            probe_world_pos + vec3(axis_offsets[i]) * rings[ring];
+                        ivec3 dest_coord = ivec3(
+                            floor(scene_to_voxel_space(dest_pos - cameraPosition))
+                        );
+                        if (is_inside_voxel_grid(dest_coord)) {
+                            uint d_data = texelFetch(voxel_sampler, dest_coord, 0).r;
+                            if (unpack_voxel_data(d_data).block_id == 0u) {
+                                probe_world_pos = dest_pos;
+                                relocation_code = 27.0 + float(ring * 6 + i);
+                                found_air = true;
+                            }
                         }
                     }
                 }
@@ -118,6 +136,8 @@ void main() {
                 imageStore(ddgi_cell_img, probe_texel, ivec4(probe_cell, 0));
                 return;
             }
+
+            probe_scene_pos = probe_world_pos - cameraPosition;
         }
     }
 
@@ -149,11 +169,12 @@ void main() {
         float ray_sky;
 
         if (vx_hit.hit) {
-            ray_radiance = vx_hit.radiance * vx_hit.transmittance;
+            ray_radiance =
+                vx_hit.radiance * vx_hit.transmittance + vx_hit.passed_emission;
             ray_sky = vx_hit.sky_weight;
         } else {
             ray_radiance = texture(colortex4, project_sky(ray_dir)).rgb
-                * vx_hit.transmittance;
+                * vx_hit.transmittance + vx_hit.passed_emission;
             ray_sky = 1.0;
         }
 

@@ -70,7 +70,8 @@ vec3 trace_rt_reflection(
     if (vx_hit.hit) {
         // Outgoing radiance at the hit surface (emission + first diffuse bounce
         // of direct sun), attenuated by any tinted glass along the ray.
-        vec3 radiance = vx_hit.radiance * vx_hit.transmittance;
+        vec3 radiance =
+            vx_hit.radiance * vx_hit.transmittance + vx_hit.passed_emission;
 
         // Firefly guard: suppress extreme single-ray emitter spikes so rough
         // multi-ray reflections stay temporally stable.
@@ -82,7 +83,7 @@ vec3 trace_rt_reflection(
         return radiance;
     }
 
-    return environment * vx_hit.transmittance;
+    return environment * vx_hit.transmittance + vx_hit.passed_emission;
 }
 
 #endif // INCLUDE_LIGHTING_RT_REFLECTIONS
