@@ -116,7 +116,6 @@ void main() {
     vec3 current_world_normal = decode_unit_vector(unpack_unorm_2x8(gbuf.z));
 
     // 3x3 neighbourhood statistics for variance clipping (variance-driven AABB)
-    vec3 raw_max = current_radiance;
     vec3 raw_m1 = vec3(0.0);
     vec3 raw_m2 = vec3(0.0);
 
@@ -124,7 +123,6 @@ void main() {
         for (int dx = -1; dx <= 1; ++dx) {
             ivec2 n_coord = clamp(texel + ivec2(dx, dy), ivec2(0), target_res - 1);
             vec3 n_val = texelFetch(rtgi_raw_sampler, n_coord, 0).rgb;
-            raw_max = max(raw_max, n_val);
             raw_m1 += n_val;
             raw_m2 += n_val * n_val;
         }
@@ -145,10 +143,11 @@ void main() {
         current_lum = absolute_radiance_cap;
     }
 
-    // Expand bounding box by 1.25 sigma to prevent color clipping on stationary gradients,
-    // bounded by raw_max so variance never exceeds the local window maximum
-    vec3 clamp_box_min = max(vec3(0.0), raw_m1 - raw_sigma * 1.25);
-    vec3 clamp_box_max = min(raw_max, raw_m1 + raw_sigma * 1.25);
+    // NOTE: the history variance-clip box is built inside the history block
+    // below, sized by the ACCUMULATED temporal variance. Sizing it from the
+    // current frame's spatial statistics (the old bug) re-clamps the long
+    // history into the current few-sample noise every frame, so a static
+    // camera never converges past "slightly smoothed raw".
 
     // Reconstruct position in view and scene space (handle_jitter = true because depth buffer is jittered)
     vec3 screen_pos = vec3(taau_projection_uv(uv), depth);
@@ -221,19 +220,46 @@ void main() {
 
             n_samples = min(prev_age + 1.0, 64.0);
 
-            // SVGF Disocclusion Test 3: History Variance-Clipping
+            vec2 screen_motion = abs(prev_framebuffer_uv - uv) * view_res * render_scale;
+            float motion_amount = length(screen_motion);
+            float motion_alpha = clamp01(motion_amount * 0.05);
+
+            // SVGF Disocclusion Test 3: History Variance-Clipping.
+            //
+            // Box sized by the accumulated temporal variance: aux.r tracks M2
+            // (EMA of sample luminance^2, alpha = 1/n); with M1 = luminance of
+            // the accumulated radiance, var = max(0, M2 - M1^2) is the spread
+            // of the frame-sample distribution the history was built from.
+            // The floor is the current spatial variance of the mean estimate
+            // (sigma^2 / n) so freshly-reset and low-variance pixels still get
+            // a sane box. The box tightens as history ages (var_t tracks the
+            // per-frame spread, not the standard error of the mean) and
+            // widens with motion so reprojected smears are not locked out.
+            float prev_lum = dot(prev_sample.rgb, luminance_weights);
+            float var_t = max(0.0, prev_aux.r - prev_lum * prev_lum);
+            float var_floor = dot(raw_sigma * raw_sigma, luminance_weights) / n_samples;
+            float n_rel = (n_samples - 1.0) / 63.0;
+            float sigma_clip = sqrt(max(var_t, var_floor))
+                * mix(1.0, 0.35, n_rel)
+                * (1.0 + 0.05 * motion_amount);
+            vec3 clamp_box_min = max(vec3(0.0), raw_m1 - sigma_clip * 1.25);
+            // No raw_max ceiling: bounding the box by the current 3x3 maximum
+            // crushed legitimately brighter accumulated light (dark blotches
+            // inside bright pixels).
+            vec3 clamp_box_max = raw_m1 + sigma_clip * 1.25;
+
             vec3 clamped_prev_radiance = clamp(prev_sample.rgb, clamp_box_min, clamp_box_max);
+            vec3 clip_delta = clamped_prev_radiance - prev_sample.rgb;
+            bool history_clipped = dot(clip_delta, clip_delta) > 1e-8;
 
             // Adaptive temporal alpha from sample count clamped by motion:
             // alpha_temporal = 1 / n
             float alpha_temporal = 1.0 / n_samples;
 
-            vec2 screen_motion = abs(prev_framebuffer_uv - uv) * view_res * render_scale;
-            float motion_amount = length(screen_motion);
-            float motion_alpha = clamp01(motion_amount * 0.08);
-
             float base_alpha = max(alpha_temporal, motion_alpha);
-            alpha = clamp(mix(1.0, base_alpha, total_confidence), 0.03, 1.0);
+            // Floor 0.01 (was 0.03): the old floor capped static accumulation
+            // at ~33 effective frames regardless of the 64-frame age budget.
+            alpha = clamp(mix(1.0, base_alpha, total_confidence), 0.01, 1.0);
 
             accumulated_radiance = mix(clamped_prev_radiance, current_radiance, alpha);
             accumulated_sky = mix(prev_sky, current_sky_weight, alpha);
@@ -244,7 +270,16 @@ void main() {
             // variance = M2 - M1^2 to zero and disable all variance-guided
             // filtering. M1 needs no storage: the accumulated radiance's
             // luminance already is the matched EMA of sample luminance.
-            m2 = mix(prev_aux.r, current_lum * current_lum, alpha);
+            float prev_m2_source = prev_aux.r;
+            if (history_clipped) {
+                // SVGF-style moment correction: after a clip, move the carried
+                // second moment toward the squared clip distance so the next
+                // frames relax back gradually instead of stair-stepping, and
+                // so the filter sees the discontinuity as real variance.
+                float drag2 = dot(clip_delta * clip_delta, luminance_weights);
+                prev_m2_source = prev_lum * prev_lum + max(var_floor * 4.0, drag2);
+            }
+            m2 = mix(prev_m2_source, current_lum * current_lum, alpha);
 
 #if GI_DEBUG == GI_DEBUG_REJECT
             history_accepted = 1.0;

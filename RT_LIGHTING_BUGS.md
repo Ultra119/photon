@@ -383,6 +383,38 @@ decisions.
 Validation: full `run_checks.sh` green — properties 320 keys, compute matrix
 315/0, wrapper matrix 1053/0, DDA 16/16, clipmap/boundary/AO/debug OK.
 
+## SEUS segment — step 3 (playtest fix): temporal clip was undoing the accumulation
+
+Playtest symptom (static camera): GI stays "slightly smoothed noise, not a
+light"; on movement the raw ray structure reappears. Root cause in
+`rtgi_temporal.csh`: the history variance-clip box was sized by the **current
+frame's 3×3 spatial statistics** (and ceilinged by the 3×3 maximum), not by
+the accumulated temporal variance that the aux buffer already tracks (M2 in
+`.r`). Every frame the long history was re-clamped into the current 4-spp
+noise neighborhood, so a static camera never converged past a spatially
+smoothed raw frame; the `raw_max` ceiling additionally crushed legitimately
+bright accumulated light (dark blotches inside bright window pixels).
+
+Fix (SVGF-style):
+- clip box = current 3×3 mean ± 1.25·σ_clip, where σ_clip derives from the
+  accumulated temporal variance `max(0, M2 − M1²)` with a spatial-variance/n
+  floor, tightened by history age (×0.35 at n=64) and widened with motion;
+- no `raw_max` ceiling;
+- clip-drag moment correction: after a clip, the carried M2 moves toward the
+  squared clip distance (relaxes instead of stair-stepping; the à-trous
+  filter sees the discontinuity as real variance);
+- alpha floor 0.03 → 0.01 (the old floor capped static accumulation at ~33
+  frames despite the 64-frame age budget);
+- motion_alpha factor 0.08 → 0.05 (a bit more history through small motions;
+  the variance clip guards ghosting).
+
+Expected playtest change: with a still camera the light field should now
+*converge* over ~1–2 s into a smooth gradient (fireflies fade instead of
+persisting); small camera motions keep most of the accumulation; fast turns
+still show raw-ish rays by design (history rejected on large motion).
+
+Validation: full `run_checks.sh` green (same matrix as step 2).
+
 ---
 
 ## 0. Symptom → root-cause map
