@@ -415,6 +415,45 @@ still show raw-ish rays by design (history rejected on large motion).
 
 Validation: full `run_checks.sh` green (same matrix as step 2).
 
+## SEUS segment — step 4 (playtest fix 2): effective sample count was floored by jitter "motion"
+
+Playtest (three debug swatches: orange = RAW, blue = HISTORY, green =
+FILTERED): RAW dark & sparsely dotted, HISTORY bright & densely confetti-dotted,
+FILTERED smoother but still dotty in lit zones; user verdict "worse".
+
+Reading of the evidence:
+- HISTORY brighter than RAW is *correct* behaviour now: RAW is one frame of
+  binary hit/miss sampling at 4 spp; HISTORY is the accumulated mean — the
+  colored lights finally accumulate at all (they never did under the step-2
+  clamp). Step 3 worked.
+- The confetti is the residual per-pixel mean error: bright emitters
+  (`RTGI_MAX_RADIANCE = 8`) against 0.2–0.5 walls make binary-sampling noise
+  hugely visible, and two temporal defects capped the effective sample count:
+  1. `motion_alpha = clamp01(motion*0.05)` had no dead-band — TAAU jitter
+     registers ~1 px of "motion" every frame even when the camera is still,
+     flooring alpha at ~0.05 → n_eff ≈ 20 frames regardless of age;
+  2. the step-3 clip box's asymptote 0.35·σ_frame is ~3× the standard error
+     (σ/√n ≈ 0.12σ at n=64) → retained fireflies were never clipped out.
+
+Fixes (`rtgi_temporal.csh`):
+- motion dead-band: `motion_alpha = clamp01((motion − 1.5 px) * 0.05)`;
+- age budget 64 → 96 (float16 sky+age packing keeps ≥2-ULP sky precision to
+  age 96; beyond that sky starts quantizing at 4 ULP);
+- clip-box shrink = `min(1, 1.6/√n)` — standard-error scaling between the
+  two failure modes (full spread never kills fireflies; too-tight undoes
+  history);
+- clip-drag M2 growth bounded to ≤4× variance per frame.
+
+What is NOT a defect: HISTORY-vs-RAW brightness delta (mean vs one sample).
+What remains after this: residual noise is fundamentally proportional to
+emitter radiance — this re-opens **S4b (emitter calibration)** as the primary
+remaining quality lever (report item 7; the palette ×2.5 has no physical
+anchor). Tuning `RTGI_MAX_RADIANCE` (8) is the direct knob if the user wants
+an experiment.
+
+Validation: full `run_checks.sh` green (320 keys, compute 315/0, wrapper
+1053/0, DDA 16/16, clipmap/boundary/AO/debug OK).
+
 ---
 
 ## 0. Symptom → root-cause map

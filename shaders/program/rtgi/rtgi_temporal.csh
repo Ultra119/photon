@@ -218,11 +218,16 @@ void main() {
             float prev_sky = prev_sky_age.x;
             float prev_age = prev_sky_age.y;
 
-            n_samples = min(prev_age + 1.0, 64.0);
+            n_samples = min(prev_age + 1.0, 96.0);
 
             vec2 screen_motion = abs(prev_framebuffer_uv - uv) * view_res * render_scale;
             float motion_amount = length(screen_motion);
-            float motion_alpha = clamp01(motion_amount * 0.05);
+            // Dead-band below 1.5 px: TAAU jitter and reprojection round-off
+            // register as sub-pixel "motion" every frame even when the camera
+            // is perfectly still; without the gate they floor alpha at ~0.05
+            // and cap the effective accumulation at ~20 frames, which is what
+            // kept the converged history confetti-noisy.
+            float motion_alpha = clamp01((motion_amount - 1.5) * 0.05);
 
             // SVGF Disocclusion Test 3: History Variance-Clipping.
             //
@@ -238,9 +243,16 @@ void main() {
             float prev_lum = dot(prev_sample.rgb, luminance_weights);
             float var_t = max(0.0, prev_aux.r - prev_lum * prev_lum);
             float var_floor = dot(raw_sigma * raw_sigma, luminance_weights) / n_samples;
-            float n_rel = (n_samples - 1.0) / 63.0;
+            // Standard-error scaling: var_t tracks the per-frame sample
+            // spread, but the uncertainty of the accumulated estimate is
+            // spread/sqrt(n). Shrinking the box below ~1.6/sqrt(n)*sigma
+            // re-introduces the old clip-undoes-history bug; leaving it at
+            // full spread stops killing retained fireflies (radiance-8
+            // emitter dots against 0.2 walls survive any box wider than
+            // ~0.2 sigma). 1.6/sqrt(n) sits between the two.
+            float shrink = min(1.0, 1.6 * inversesqrt(n_samples));
             float sigma_clip = sqrt(max(var_t, var_floor))
-                * mix(1.0, 0.35, n_rel)
+                * shrink
                 * (1.0 + 0.05 * motion_amount);
             vec3 clamp_box_min = max(vec3(0.0), raw_m1 - sigma_clip * 1.25);
             // No raw_max ceiling: bounding the box by the current 3x3 maximum
@@ -258,7 +270,7 @@ void main() {
 
             float base_alpha = max(alpha_temporal, motion_alpha);
             // Floor 0.01 (was 0.03): the old floor capped static accumulation
-            // at ~33 effective frames regardless of the 64-frame age budget.
+            // at ~33 effective frames regardless of the age budget (96).
             alpha = clamp(mix(1.0, base_alpha, total_confidence), 0.01, 1.0);
 
             accumulated_radiance = mix(clamped_prev_radiance, current_radiance, alpha);
@@ -276,7 +288,11 @@ void main() {
                 // second moment toward the squared clip distance so the next
                 // frames relax back gradually instead of stair-stepping, and
                 // so the filter sees the discontinuity as real variance.
+                // Bounded to at most ~4x variance growth per frame (sigma
+                // doubling): a clip can neither wedge the box permanently
+                // open nor run away on a single huge drag.
                 float drag2 = dot(clip_delta * clip_delta, luminance_weights);
+                drag2 = min(drag2, 16.0 * max(var_t, var_floor) + var_floor * 4.0);
                 prev_m2_source = prev_lum * prev_lum + max(var_floor * 4.0, drag2);
             }
             m2 = mix(prev_m2_source, current_lum * current_lum, alpha);
