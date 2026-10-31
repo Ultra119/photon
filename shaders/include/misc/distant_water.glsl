@@ -102,21 +102,17 @@ vec4 draw_distant_water(
 
     // Specular reflections
 
-#if defined ENVIRONMENT_REFLECTIONS || defined SKY_REFLECTIONS
+#if RT_REFLECTION_RAYS > 0
     mat3 new_tbn = get_tbn_matrix(normal);
     water_color.rgb
         += get_specular_reflections(
                water_material,
                new_tbn,
-               position_screen,
-               position_view,
                position_world,
                normal,
                flat_normal,
                direction_world,
-               direction_world * new_tbn,
-               light_levels.y,
-               true
+               direction_world * new_tbn
            )
         * fog_visibility;
 #endif

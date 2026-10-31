@@ -28,12 +28,6 @@ flat in vec3 moon_color;
 #include "/include/fog/overworld/parameters.glsl"
 flat in OverworldFogParameters fog_params;
 
-#if defined SH_SKYLIGHT
-flat in mat3 sky_sh_0;
-flat in mat3 sky_sh_1;
-flat in mat3 sky_sh_2;
-flat in vec3 skylight_up;
-#endif
 
 flat in float rainbow_amount;
 #endif
@@ -68,10 +62,6 @@ uniform sampler2D colortex8; // cloud shadow map
 uniform sampler3D depthtex0; // atmosphere scattering LUT
 uniform sampler2D depthtex1;
 
-#ifdef COLORED_LIGHTS
-uniform sampler3D light_sampler_a;
-uniform sampler3D light_sampler_b;
-#endif
 
 #ifdef BLOCKY_CLOUDS
 uniform sampler2D depthtex2; // minecraft cloud texture
@@ -154,9 +144,6 @@ const bool colortex11MipmapEnabled = true;
 #define ATMOSPHERE_SCATTERING_LUT depthtex0
 #define TEMPORAL_REPROJECTION
 
-#ifdef PHOTONICS_IN_USE
-#define PHOTONICS_DIFFUSE
-#endif
 
 #include "/include/fog/simple_fog.glsl"
 #include "/include/lighting/diffuse_lighting.glsl"
@@ -306,6 +293,7 @@ void main() {
         // Apply purkinje shift
         fragment_color = purkinje_shift(fragment_color, vec2(0.0, 1.0));
     } else { // Terrain
+#if LIGHTING_MODE == LIGHTING_MODE_RT
         // Sample ambient occlusion a while before using it (latency hiding)
 
         vec2 half_res_pos = gl_FragCoord.xy * (0.5 / taau_render_scale) - 0.5;
@@ -325,6 +313,7 @@ void main() {
         float ambient_depth_10 = texelFetch(colortex14, p10, 0).x;
         float ambient_depth_01 = texelFetch(colortex14, p01, 0).x;
         float ambient_depth_11 = texelFetch(colortex14, p11, 0).x;
+#endif // LIGHTING_MODE_RT
 
         // Unpack gbuffer data
 
@@ -403,6 +392,7 @@ void main() {
 
         // Upscale ambient occlusion
 
+#if LIGHTING_MODE == LIGHTING_MODE_RT
         float lin_z = screen_to_view_space_depth(
             combined_projection_matrix_inverse,
             depth
@@ -438,23 +428,14 @@ void main() {
         }
 
         float ao = ambient_upscaled.x;
-        float ambient_sss = ambient_upscaled.y;
+#else
+        // PT placeholder: d3_ao (RT contact AO) does not run; direct-only.
+        float ao = 1.0;
+#endif // LIGHTING_MODE_RT
 
-        vec3 bent_normal;
-        bent_normal.xy = ambient_upscaled.zw * 2.0 - 1.0;
-        bent_normal.z
-            = sqrt(clamp01(1.0 - dot(bent_normal.xy, bent_normal.xy)));
-        bent_normal = mat3(gbufferModelViewInverse) * bent_normal;
-
-        // Sense check bent normal
-        if (dot(bent_normal, normal) < eps) {
-            bent_normal = normal;
-        }
-
-        // No AO/bent normal on hand
+        // The hand is outside the world-space voxel volume.
         if (is_hand) {
             ao = 1.0;
-            bent_normal = normal;
         }
 
         // Calculate lighting dot products
@@ -545,16 +526,16 @@ void main() {
 
         // Diffuse lighting
 
+        vec3 direct_diffuse;
         fragment_color = get_diffuse_lighting(
             material,
             position_scene,
             normal,
             flat_normal,
-            bent_normal,
+            normal, // Deferred RTGI does not use a bent-normal probe offset.
             shadows,
             light_levels,
             ao,
-            ambient_sss,
             sss_depth,
 #ifdef CLOUD_SHADOWS
             cloud_shadows,
@@ -564,41 +545,38 @@ void main() {
 #else
             shadow_distance_fade,
 #endif
-#ifdef PHOTONICS_DIFFUSE
-            is_lod,
-#endif
             NoL,
             NoV,
             NoH,
-            LoV
+            LoV,
+            direct_diffuse
         );
 
         // Specular highlight
 
 #if defined WORLD_OVERWORLD || defined WORLD_END
-        fragment_color
-            += get_specular_highlight(material, NoL, NoV, NoH, LoV, LoH)
-            * light_color * shadows * cloud_shadows * ao;
+        vec3 direct_specular = get_specular_highlight(material, NoL, NoV, NoH, LoV, LoH)
+            * light_color * shadows * cloud_shadows;
+#ifdef RT_AO_IN_DIRECT
+        direct_specular *= ao;
+#endif
+        fragment_color += direct_specular;
 #endif
 
         // Specular reflections
 
-#if defined ENVIRONMENT_REFLECTIONS || defined SKY_REFLECTIONS
+#if RT_REFLECTION_RAYS > 0
         if (material.ssr_multiplier > eps) {
             mat3 tbn = get_tbn_matrix(normal);
 
             fragment_color += get_specular_reflections(
                 material,
                 tbn,
-                vec3(uv, depth),
-                position_view,
                 position_world,
                 normal,
                 flat_normal,
                 direction_world,
-                direction_world * tbn,
-                light_levels.y,
-                false
+                direction_world * tbn
             );
         }
 #endif

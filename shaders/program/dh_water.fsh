@@ -55,10 +55,6 @@ uniform sampler2D colortex8; // Cloud shadow map
 
 uniform sampler2D depthtex0;
 
-#ifdef COLORED_LIGHTS
-uniform sampler3D light_sampler_a;
-uniform sampler3D light_sampler_b;
-#endif
 
 #ifdef SHADOW
 #ifdef WORLD_OVERWORLD
@@ -142,10 +138,6 @@ uniform vec4 entityColor;
 #if defined PROGRAM_GBUFFERS_TEXTURED \
     || defined PROGRAM_GBUFFERS_PARTICLES_TRANSLUCENT
 #define NO_NORMAL
-#endif
-
-#ifdef DIRECTIONAL_LIGHTMAPS
-#include "/include/lighting/directional_lightmaps.glsl"
 #endif
 
 #include "/include/fog/simple_fog.glsl"
@@ -281,7 +273,6 @@ void main() {
         shadows,
         light_levels,
         1.0,
-        0.0,
         sss_depth,
 #ifdef CLOUD_SHADOWS
         cloud_shadows,

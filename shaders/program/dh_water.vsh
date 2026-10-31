@@ -98,11 +98,8 @@ void main() {
         * (mat3(gl_ModelViewMatrix) * gl_Normal);
 
     light_color = texelFetch(colortex4, ivec2(191, 0), 0).rgb;
-#if defined WORLD_OVERWORLD && defined SH_SKYLIGHT
-    ambient_color = texelFetch(colortex4, ivec2(191, 11), 0).rgb;
-#else
+    // Environment sky color for media/fog
     ambient_color = texelFetch(colortex4, ivec2(191, 1), 0).rgb;
-#endif
 
     is_water = uint(dhMaterialId == DH_BLOCK_WATER);
 
