@@ -44,11 +44,11 @@ flat in vec2 atlas_tile_scale;
 
 #ifdef COLORWHEEL
 vec2 light_levels;
-float vanilla_ao;
+float colorwheel_ao_unused;
 #else
 in vec2 light_levels;
 #if defined PROGRAM_GBUFFERS_TERRAIN
-in float vanilla_ao;
+in float colorwheel_ao_unused;
 #endif
 #endif
 
@@ -56,9 +56,6 @@ in float vanilla_ao;
 in vec2 uv_local;
 #endif
 
-#if defined PROGRAM_GBUFFERS_VOXELS
-in vec3 block_normal;
-#endif
 
 // ------------
 //   Uniforms
@@ -110,10 +107,6 @@ uniform vec4 entityColor;
 #include "/include/surface/parallax.glsl"
 #endif
 
-#ifdef DIRECTIONAL_LIGHTMAPS
-#include "/include/lighting/directional_lightmaps.glsl"
-#endif
-
 #include "/include/misc/material_fix.glsl"
 #include "/include/misc/material_masks.glsl"
 #include "/include/utility/dithering.glsl"
@@ -122,9 +115,6 @@ uniform vec4 entityColor;
 #include "/include/utility/random.glsl"
 #include "/include/utility/space_conversion.glsl"
 
-#if defined PROGRAM_GBUFFERS_VOXELS
-#include "/photonics/photonics.glsl"
-#endif
 
 #if defined PROGRAM_GBUFFERS_TERRAIN && defined POM
 #define read_tex(x) textureGrad(x, parallax_uv, uv_gradient[0], uv_gradient[1])
@@ -251,7 +241,6 @@ void main() {
     bool parallax_shadow = false;
     float dither = interleaved_gradient_noise(gl_FragCoord.xy, frameCounter);
 
-#ifndef PROGRAM_GBUFFERS_VOXELS
 #if defined PROGRAM_GBUFFERS_TERRAIN && defined POM
     float view_distance = length(tangent_pos);
 
@@ -307,7 +296,7 @@ void main() {
         base_color,
         base_color,
         light_levels,
-        vanilla_ao,
+        colorwheel_ao_unused, // Required API output; not used for RT lighting.
         overlayColor
     );
     light_levels = clamp((light_levels - 1.0 / 32.0) * 32.0 / 30.0, 0.0, 1.0);
@@ -327,51 +316,6 @@ void main() {
 #ifdef SPECULAR_MAPPING
     vec4 specular_map = read_tex(specular);
 #endif
-#else
-    vec3 screen_pos = vec3(
-        gl_FragCoord.xy * view_pixel_size * rcp(taau_render_scale),
-        gl_FragCoord.z
-    );
-
-    vec3 view_pos = screen_to_view_space(screen_pos, true);
-    vec3 scene_pos = view_to_scene_space(view_pos);
-
-    vec3 world_pos = scene_pos + cameraPosition;
-    vec3 world_dir = normalize(scene_pos - gbufferModelViewInverse[3].xyz);
-
-    RayJob ray = RayJob(
-        world_pos - world_offset - 0.001f * block_normal, // Ray origin
-        world_dir, // Ray direction
-        vec3(0),
-        vec3(0),
-        vec3(0),
-        false
-    );
-
-    ray_constraint = ivec3(ray.origin);
-    trace_ray(ray);
-
-    if (!ray.result_hit) {
-        discard;
-    }
-    if (ray.result_normal == vec3(0.0)) {
-        ray.result_normal = block_normal;
-    }
-
-    scene_pos = ray.result_position + world_offset - cameraPosition;
-    view_pos = scene_to_view_space(scene_pos);
-    screen_pos = view_to_screen_space(gbufferProjection, view_pos, true);
-
-    gl_FragDepth = screen_pos.z;
-
-    vec4 base_color = vec4(ray.result_color, 1.0f);
-    vec3 ph_normal = ray.result_normal;
-
-#if defined SPECULAR_MAPPING
-    vec4 specular_map = vec4(0.0f);
-#endif
-#endif
-
 #if defined PROGRAM_GBUFFERS_ENTITIES
     if (material_mask == MATERIAL_LIGHTNING_BOLT) {
         base_color = vec4(1.0);
@@ -408,19 +352,6 @@ void main() {
     base_color.rgb = vec3(1.0);
 #endif
 
-#if defined PROGRAM_GBUFFERS_TERRAIN && defined VANILLA_AO
-#if SHADER_AO != SHADER_AO_NONE
-    const float vanilla_ao_strength = 0.9 * VANILLA_AO_INTENSITY;
-    const float vanilla_ao_lift = 0.5 * (1-((1-VANILLA_AO_INTENSITY)*0.5));
-#else
-    const float vanilla_ao_strength = 1.0 * VANILLA_AO_INTENSITY;
-    const float vanilla_ao_lift = 0.0;
-#endif
-
-    base_color.rgb *= lift(vanilla_ao, vanilla_ao_lift) * vanilla_ao_strength
-        + (1.0 - vanilla_ao_strength);
-#endif
-
 #if defined PROGRAM_GBUFFERS_ENTITIES
     base_color.rgb = mix(base_color.rgb, entityColor.rgb, entityColor.a);
 #endif
@@ -445,24 +376,17 @@ void main() {
 
     vec2 adjusted_light_levels = light_levels;
 
-#if defined NORMAL_MAPPING && !defined PROGRAM_GBUFFERS_VOXELS
+#if defined NORMAL_MAPPING
     vec3 normal;
     float material_ao;
     decode_normal_map(normal_map, normal, material_ao);
 
     normal = tbn * normal;
 
-    adjusted_light_levels *= mix(0.7, 1.0, material_ao);
-
-#ifdef DIRECTIONAL_LIGHTMAPS
-    adjusted_light_levels *= get_directional_lightmaps(scene_pos, normal);
-#endif
+    // Surface irradiance is handled by RTGI
 #endif
 
-#if defined PROGRAM_GBUFFERS_VOXELS
-#define flat_normal ph_normal
-#define detailed_normal ph_normal
-#elif defined NO_NORMAL
+#if defined NO_NORMAL
     // No normal vector => make one from screen-space partial derivatives
     vec3 particle_normal = normalize(cross(dFdx(scene_pos), dFdy(scene_pos)));
 #define flat_normal particle_normal

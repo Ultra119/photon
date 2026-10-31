@@ -15,8 +15,9 @@
 #ifdef PROGRAM_GBUFFERS_WATER
 layout(location = 0) out vec4 refraction_data;
 layout(location = 1) out vec4 fragment_color;
+layout(location = 2) out vec4 glass_filter_data;
 
-/* RENDERTARGETS: 3,13 */
+/* RENDERTARGETS: 3,13,17 */
 #else
 layout(location = 0) out vec4 fragment_color;
 
@@ -69,20 +70,22 @@ uniform sampler2D colortex8; // Cloud shadow map
 
 uniform sampler2D depthtex1;
 
-#ifdef COLORED_LIGHTS
-uniform sampler3D light_sampler_a;
-uniform sampler3D light_sampler_b;
-#endif
 
 #ifdef SHADOW
 #ifdef WORLD_OVERWORLD
 uniform sampler2D shadowtex0;
 uniform sampler2DShadow shadowtex1;
+#ifdef SHADOW_COLOR
+uniform sampler2D shadowcolor0;
+#endif
 #endif
 
 #ifdef WORLD_END
 uniform sampler2D shadowtex0;
 uniform sampler2DShadow shadowtex1;
+#ifdef SHADOW_COLOR
+uniform sampler2D shadowcolor0;
+#endif
 #endif
 #endif
 
@@ -153,21 +156,16 @@ vec3 light_color, ambient_color;
 
 #define TEMPORAL_REPROJECTION
 
-#ifdef SHADOW_COLOR
-#undef SHADOW_COLOR
-#endif
+// SHADOW_COLOR supported
 
 #if defined PROGRAM_GBUFFERS_TEXTURED \
     || defined PROGRAM_GBUFFERS_PARTICLES_TRANSLUCENT
 #define NO_NORMAL
 #endif
 
-#ifdef DIRECTIONAL_LIGHTMAPS
-#include "/include/lighting/directional_lightmaps.glsl"
-#endif
-
 #include "/include/fog/simple_fog.glsl"
 #include "/include/lighting/diffuse_lighting.glsl"
+#include "/include/lighting/voxel/light_colors.glsl"
 #include "/include/lighting/shadows/pcss.glsl"
 #include "/include/lighting/specular_lighting.glsl"
 #include "/include/misc/lod_mod_support.glsl"
@@ -359,6 +357,12 @@ vec4 draw_nether_portal(vec3 direction_world, float layer_dist) {
 #endif
 
 void main() {
+#ifdef PROGRAM_GBUFFERS_WATER
+    // Initialize refraction and glass filter buffers
+    refraction_data = vec4(0.0);
+    glass_filter_data = vec4(1.0, 1.0, 1.0, 0.0);
+#endif
+
     vec2 coord = gl_FragCoord.xy * view_pixel_size * rcp(taau_render_scale);
 
     // Clip to TAAU viewport
@@ -372,11 +376,8 @@ void main() {
     // Get light colors
 
     light_color = texelFetch(colortex4, ivec2(191, 0), 0).rgb;
-#if defined WORLD_OVERWORLD && defined SH_SKYLIGHT
-    ambient_color = texelFetch(colortex4, ivec2(191, 11), 0).rgb;
-#else
+    // Environment sky color for media/fog
     ambient_color = texelFetch(colortex4, ivec2(191, 1), 0).rgb;
-#endif
 
     // Space conversions
 
@@ -572,12 +573,7 @@ void main() {
 
         normal = tbn * normal_tangent;
 
-        adjusted_light_levels *= mix(0.7, 1.0, material_ao);
-
-#ifdef DIRECTIONAL_LIGHTMAPS
-        adjusted_light_levels
-            *= get_directional_lightmaps(position_scene, normal);
-#endif
+        // Raw light levels for shadow/SSS eligibility
 #endif
 
 #ifdef SPECULAR_MAPPING
@@ -634,7 +630,6 @@ void main() {
               shadows,
               adjusted_light_levels,
               1.0,
-              0.0,
               sss_depth,
 #ifdef CLOUD_SHADOWS
               cloud_shadows,
@@ -657,27 +652,18 @@ void main() {
 
     // Specular reflections
 
-#if defined ENVIRONMENT_REFLECTIONS || defined SKY_REFLECTIONS
+#if RT_REFLECTION_RAYS > 0
     if (material.ssr_multiplier > eps) {
-        vec3 position_screen = vec3(
-            gl_FragCoord.xy * rcp(taau_render_scale) * view_pixel_size,
-            gl_FragCoord.z
-        );
-
         mat3 new_tbn = get_tbn_matrix(normal);
 
         fragment_color.rgb += get_specular_reflections(
             material,
             new_tbn,
-            position_screen,
-            position_view,
             world_pos,
             normal,
             tbn[2],
             direction_world,
-            direction_world * new_tbn,
-            light_levels.y,
-            is_water
+            direction_world * new_tbn
         );
     }
 #endif
@@ -720,7 +706,14 @@ void main() {
     // Refraction data
 
 #if defined PROGRAM_GBUFFERS_WATER
-    refraction_data.xy = split_2x8(normal_tangent.x * 0.5 + 0.5);
-    refraction_data.zw = split_2x8(normal_tangent.y * 0.5 + 0.5);
+    if (is_water) {
+        refraction_data.xy = split_2x8(normal_tangent.x * 0.5 + 0.5);
+        refraction_data.zw = split_2x8(normal_tangent.y * 0.5 + 0.5);
+    } else if (material_mask >= 81u && material_mask <= 96u) {
+        // Stained glass optical filter tint
+        uint tint_idx = clamp(material_mask - 81u, 0u, 15u);
+        vec3 filter_color = voxel_tint_color_table[tint_idx];
+        glass_filter_data = vec4(filter_color, 1.0);
+    }
 #endif
 }
