@@ -62,6 +62,7 @@ void main() {
     vec3 probe_scene_pos = probe_world_pos - cameraPosition;
 
     vec3 direct_light_col = texelFetch(colortex4, ivec2(191, 0), 0).rgb;
+    vec3 sky_irradiance_col = texelFetch(colortex4, ivec2(191, 1), 0).rgb;
 
     // Relocate probes that landed inside solid geometry.
     ivec3 vx_coord = ivec3(floor(scene_to_voxel_space(probe_scene_pos)));
@@ -159,6 +160,7 @@ void main() {
             ray_dir,
             dither,
             direct_light_col,
+            sky_irradiance_col,
             light_dir,
             48.0
         );

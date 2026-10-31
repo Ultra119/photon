@@ -49,6 +49,7 @@ vec3 trace_rt_reflection(
     usampler3D voxel_mid,
     usampler3D voxel_coarse,
     vec3 direct_sun_color,
+    vec3 sky_irradiance,
     vec3 l_dir,
     sampler2D sky_map
 ) {
@@ -63,6 +64,7 @@ vec3 trace_rt_reflection(
         ray_dir_world,
         dither,
         direct_sun_color,
+        sky_irradiance,
         l_dir,
         rt_scene_max_distance
     );

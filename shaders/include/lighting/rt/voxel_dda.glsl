@@ -229,6 +229,7 @@ void shade_voxel_hit(
     usampler3D voxel_grid,
     int level,
     vec3 direct_sun_color,
+    vec3 sky_irradiance,
     vec3 l_dir
 ) {
     result.hit = true;
@@ -248,24 +249,42 @@ void shade_voxel_hit(
     }
     vec3 sun_irradiance = direct_sun_color * (sun_vis * NoL);
 
-    // Solid voxels never inject analytic sky/block ambient. Emission is
-    // intrinsic radiance and is not divided by pi.
-    vec3 emission_radiance = mat.emission;
+    // Skylight bounce (the other half of a lit surface's outgoing radiance).
+    // Before this term existed, only sun-lit and emissive hits contributed
+    // bounce — a skylit floor (or any surface lit through a window/slot but
+    // currently in shadow) returned zero radiance, so indoor scenes had no
+    // colored fill and no smooth spread around sun patches. Sky visibility is
+    // a vertical voxel march (Minecraft skylight is a column lookup): cheap,
+    // occludes against the same geometry the GI ray sees, and is leak-safe —
+    // sealed interiors march into their own roof and get zero. The term is
+    // tagged as sky-origin (below), so the receiver-side S2 skylight gate in
+    // evaluate_rtgi_ray still applies to it.
     vec3 bounce_albedo = mat.albedo;
     if (sample_data.block_id == 5u || sample_data.block_id == 14u || sample_data.block_id == 2u) {
         bounce_albedo *= 0.35;
     }
     result.albedo = bounce_albedo;
 
+    vec3 sky_bounce = vec3(0.0);
+    if (sky_irradiance.r + sky_irradiance.g + sky_irradiance.b > 0.0) {
+        vec3 sky_start = hit_face_scene + hit_norm * 0.05;
+        float sky_vis = trace_sun_visibility(voxel_grid, level, sky_start, vec3(0.0, 1.0, 0.0));
+        sky_bounce = bounce_albedo * sky_irradiance * sky_vis * voxel_bounce_rcp_pi;
+    }
+
+    // Solid voxels never inject analytic block ambient. Emission is
+    // intrinsic radiance and is not divided by pi.
+    vec3 emission_radiance = mat.emission;
+
     vec3 bounce_radiance = bounce_albedo * sun_irradiance * voxel_bounce_rcp_pi;
-    vec3 sky_lit = bounce_radiance;
+    vec3 sky_lit = bounce_radiance + sky_bounce;
     vec3 local_lit = emission_radiance;
     float sky_lum = dot(sky_lit, luminance_weights);
     float local_lum = dot(local_lit, luminance_weights);
     result.sky_weight = clamp01(sky_lum / max(sky_lum + local_lum, eps));
     // Outgoing radiance at the hit is unattenuated; callers multiply by the
     // accumulated transmittance exactly once (including across clip levels).
-    result.radiance = emission_radiance + bounce_radiance;
+    result.radiance = emission_radiance + bounce_radiance + sky_bounce;
 }
 
 // Trace one clipmap level. Distances are world blocks from the original ray
@@ -282,6 +301,7 @@ VoxelHit trace_voxel_level(
     float max_dist_world,
     float dither,
     vec3 direct_sun_color,
+    vec3 sky_irradiance,
     vec3 l_dir,
     out float level_exit_world
 ) {
@@ -418,7 +438,7 @@ VoxelHit trace_voxel_level(
                             shade_voxel_hit(
                                 result, sample_data, mat, hit_face_scene,
                                 hit_norm, ray_transmittance, voxel_grid, level,
-                                direct_sun_color, l_dir
+                                direct_sun_color, sky_irradiance, l_dir
                             );
                             result.distance = t_start_world + hit_t * scale;
                             return result;
@@ -457,6 +477,7 @@ VoxelHit trace_voxel_dda(
     vec3 ray_dir,
     float dither,
     vec3 direct_sun_color,
+    vec3 sky_irradiance,
     vec3 l_dir,
     float max_dist
 ) {
@@ -472,19 +493,19 @@ VoxelHit trace_voxel_dda(
             hit = trace_voxel_level(
                 voxel_grid, level,
                 ray_origin_scene, surface_normal, dda_dir, t_start, max_dist,
-                dither, direct_sun_color, l_dir, level_exit
+                dither, direct_sun_color, sky_irradiance, l_dir, level_exit
             );
         } else if (level == 1) {
             hit = trace_voxel_level(
                 voxel_mid, level,
                 ray_origin_scene, surface_normal, dda_dir, t_start, max_dist,
-                dither, direct_sun_color, l_dir, level_exit
+                dither, direct_sun_color, sky_irradiance, l_dir, level_exit
             );
         } else {
             hit = trace_voxel_level(
                 voxel_coarse, level,
                 ray_origin_scene, surface_normal, dda_dir, t_start, max_dist,
-                dither, direct_sun_color, l_dir, level_exit
+                dither, direct_sun_color, sky_irradiance, l_dir, level_exit
             );
         }
 

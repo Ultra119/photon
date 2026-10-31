@@ -205,6 +205,10 @@ vec3 trace_specular_ray(
         voxel_mid_sampler,
         voxel_coarse_sampler,
         light_color,
+        // Sky irradiance stored by d0_sky_map next to the sky map (corner
+        // column 191, row 1) — same source the GI trace uses, so reflected
+        // diffuse hits carry their skylight bounce too.
+        texelFetch(colortex4, ivec2(191, 1), 0).rgb,
         light_dir,
         colortex4
     );

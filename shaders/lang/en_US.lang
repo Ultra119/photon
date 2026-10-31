@@ -785,6 +785,8 @@ value.RTGI_RESOLUTION.2                                              = Full (1.0
 
 option.RTGI_FILTER_PHI                                               = Atrous Colour Sigma
 option.RTGI_FILTER_PHI.comment                                       = Luminance edge-stopping scale (phi = value * sqrt(variance)) of the temporal filter. Higher softens detail and widens light bleed; lower keeps detail noisier.
+option.RTGI_PROBE_SPACING                                            = Probe Spacing
+option.RTGI_PROBE_SPACING.comment                                    = World-space distance between irradiance probes (the probe cache covers 32 x spacing blocks around you). Smaller resolves local color bleed and window bounce; larger reaches further at the cost of smearing small light features.
 option.RTGI_HISTORY_FRAMES                                           = Temporal History Cap
 option.RTGI_HISTORY_FRAMES.comment                                   = Maximum number of frames the temporal accumulation may average. Lower adapts faster to change, higher converges to a cleaner but staler image.
 option.RTGI_MAX_RADIANCE                                             = Ray Radiance Cap

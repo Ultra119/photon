@@ -636,6 +636,63 @@ future work.
 
 ---
 
+## Turn 9: local bounce — skylight-bounce term + denser probes (mats don't bleed)
+
+User comparison (Photon image-12/14 vs SEUS image-13/15, confirmed): Photon
+outdoors/day already reads well, but **no color or light bounces off the
+sunlit carpet mats, and there is no smooth sideways spread of light onto the
+nearby walls/ceiling where the sun patch lands** — SEUS shows a strong warm
+halo around the beam column and bounce from the whole floor.
+
+Static root causes found in the trace path:
+
+1. **`shade_voxel_hit` had no skylight term** — a hit's outgoing radiance was
+   `emission + albedo × sun × sun_vis / π` only. Any surface not currently
+   sun-lit (shaded carpet stripes, skylit floor anywhere under a window/slot,
+   walls lit purely by sky) returned **zero** bounce radiance. Only sun-lit
+   and emissive geometry ever fed indirect light, so indoor fill was
+   starved and colorless. (This is the missing half of report item S2 —
+   instead of stored per-voxel sky light, the hit now gets a *vertical voxel
+   sky-visibility march* — Minecraft skylight is a column lookup — which is
+   leak-safe: sealed interiors march into their own roof and get zero, and
+   the term is tagged sky-origin so the existing receiver-side S2 skylight
+   gate still applies.)
+2. **Probe spacing was a hardcoded `4.0`** — the 32³ irradiance cache
+   covered 128 blocks at 4-block cells; a 2×6-block sun patch or window
+   bounce was averaged across a cell and sampled by only ~32 fibonacci rays
+   → the cache physically could not represent local color bleed. Now
+   `RTGI_PROBE_SPACING` (settings + menu slider, default **2.0**): same
+   probe count (32³ texture), same ray budget, half the cell size → 2×
+   spatial detail; extent halves to 64 blocks (±32 around camera).
+3. **Lattice-offset hardcode** — `sample_ddgi_irradiance` shifted world
+   positions by `vec3(2.0)` (= old spacing/2). Left as-is, changing spacing
+   would misalign the query against the `(cell + 0.5) * spacing` probe
+   lattice; now derived from the spacing.
+
+Wiring (all three `trace_voxel_dda` consumers thread a new
+`sky_irradiance` argument = `colortex4` corner (191,1), written by
+`d0_sky_map` beside the sun color at (191,0)):
+`rtgi_trace.csh` → `evaluate_rtgi_ray`; `rtgi_probe_update.csh` (its own
+inline shading); `specular_lighting.trace_specular_ray` →
+`trace_rt_reflection` (reflected diffuse hits carry their sky bounce too).
+Sky bounce = `albedo × ambient_color × sky_vis / π`, added to
+`result.radiance` and included in `sky_weight` (so `sky_gate` = receiver
+skylight ×10 still gates it — S2 discipline unchanged).
+
+Expected effect: the entire skylit floor becomes a secondary (colored)
+emitter, so the sun patch gets a smooth warm halo on adjacent walls/ceiling
+plus carpet color bleed, both locally (per-pixel rays) and cached (denser
+probes). Cost: +1 short vertical march per ray hit (skipped when ambient is
+zero). If indoor scenes feel too full, `RTGI_INTENSITY`/`RTGI_BRIGHTNESS`
+trim it; for long-range GI at the cost of local bleed, slide
+`RTGI_PROBE_SPACING` back to 3.0/4.0.
+
+Validation: full `run_checks.sh` exit 0 — packing OK, lint OK (17 RTGI menu
+options), compute 357/0, wrapper 1053/0, DDA 16/16,
+clipmap/boundary/AO/gi_debug OK.
+
+---
+
 ## 0. Symptom → root-cause map
 
 | Reported symptom | Primary causes (finding IDs) |

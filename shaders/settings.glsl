@@ -77,6 +77,11 @@ const float wetnessHalflife         = 70.0;
   #define RTGI_FILTER_PHI 10.0 // [4.0 6.0 8.0 10.0 12.0 16.0 24.0 32.0]
   #define RTGI_HISTORY_FRAMES 96 // [24 32 48 64 96 128 160]
   #define RTGI_MAX_RADIANCE 8.0 // [2.0 3.0 4.0 6.0 8.0 12.0 16.0 32.0]
+  // World-space spacing of the irradiance probe grid (32^3 toroidal cache;
+  // grid extent = 32 * spacing around the camera). Smaller spacing resolves
+  // local color bleed (window/sun-patch bounce); 4.0 reaches further but
+  // averages small bright features into nothing.
+  #define RTGI_PROBE_SPACING 2.0 // [1.0 1.5 2.0 3.0 4.0]
   // Emission radiance anchor (light-15 emitter radiance before EMISSION_STRENGTH).
   // Matches the raster blocklight_scale at level 15; keep it under
   // RTGI_MAX_RADIANCE so legitimate emitter hits do not saturate the firefly cap.

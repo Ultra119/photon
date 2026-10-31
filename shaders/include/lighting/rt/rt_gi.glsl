@@ -46,6 +46,7 @@ vec4 evaluate_rtgi_ray(
     usampler3D voxel_coarse,
     sampler2D sky_map,
     vec3 direct_sun_color,
+    vec3 sky_irradiance,
     vec3 l_dir,
     out int hit_source
 ) {
@@ -58,6 +59,7 @@ vec4 evaluate_rtgi_ray(
         ray_dir_world,
         dither,
         direct_sun_color,
+        sky_irradiance,
         l_dir,
         rt_scene_max_distance
     );

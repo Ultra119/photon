@@ -135,6 +135,9 @@ void main() {
 
     // Direct lighting & ambient colors encoded in colortex4 column 191
     vec3 direct_light_col = texelFetch(colortex4, ivec2(191, 0), 0).rgb;
+    // Sky irradiance (row 1 of the same column): feeds the skylight-bounce
+    // term of voxel hit shading so skylit surfaces re-bounce like SEUS/PTGI.
+    vec3 sky_irradiance_col = texelFetch(colortex4, ivec2(191, 1), 0).rgb;
 
     // Ray budget (default 2 rays/pixel)
 #ifndef RTGI_RAY_COUNT
@@ -170,6 +173,7 @@ void main() {
             voxel_coarse_sampler,
             colortex4,
             direct_light_col,
+            sky_irradiance_col,
             light_dir,
             hit_source
         );

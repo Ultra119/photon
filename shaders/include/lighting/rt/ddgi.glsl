@@ -28,8 +28,18 @@
 #include "/include/lighting/rt/voxel_dda.glsl"
 #endif
 
+// Probe grid: fixed 32^3 toroidal texture, spacing set by RTGI_PROBE_SPACING
+// (settings.glsl). Default 2.0 (was a hardcoded 4.0): at 4-block spacing the
+// cache could not represent local color bleed — a sunlit mat patch or window
+// bounce was averaged across a 4-block cell and showed up as nothing, which
+// read as "no light bounces off the mats". 2.0 doubles the spatial detail of
+// the cache at the same probe/ray count (the grid texture stays 32^3, only
+// the world extent halves to 64 blocks).
+#ifndef RTGI_PROBE_SPACING
+#define RTGI_PROBE_SPACING 2.0
+#endif
 const int   ddgi_probe_dim     = 32;
-const float ddgi_probe_spacing = 4.0;
+const float ddgi_probe_spacing = RTGI_PROBE_SPACING;
 const float ddgi_grid_extent   = float(ddgi_probe_dim) * ddgi_probe_spacing;
 const float ddgi_rcp_spacing   = 1.0 / ddgi_probe_spacing;
 
@@ -97,7 +107,10 @@ vec4 sample_ddgi_irradiance(
     vec3 cam_pos
 ) {
     ivec3 min_cell = get_ddgi_min_cell(cam_pos);
-    vec3 p_coord = (world_pos - vec3(2.0)) * ddgi_rcp_spacing;
+    // Shift by half a cell so world positions map to the (cell + 0.5) * spacing
+    // probe lattice; must track RTGI_PROBE_SPACING (was a hardcoded -2.0 that
+    // silently broke the lattice alignment when spacing changed).
+    vec3 p_coord = (world_pos - vec3(ddgi_probe_spacing * 0.5)) * ddgi_rcp_spacing;
     ivec3 base_cell = ivec3(floor(p_coord));
     vec3 frac_coord = fract(p_coord);
 
@@ -106,11 +119,11 @@ vec4 sample_ddgi_irradiance(
     float total_weight = 0.0;
     // Validity coverage: the trilinear mass (wx*wy*wz, which sums to 1 over
     // the full 2x2x2 neighbourhood) contributed by probes that passed the
-    // toroidal window check. The window edge sits ±64 blocks around the
-    // camera and its trailing slice stays stale-invalid for up to 16 frames
-    // after every 4-block camera move; without coverage tracking the
-    // surviving probes renormalize to full brightness and that boundary
-    // draws a bright camera-locked line across the floor.
+    // toroidal window check. The window edge sits ±half the grid extent
+    // around the camera and its trailing slice stays stale-invalid for up to
+    // 16 frames after every RTGI_PROBE_SPACING-sized camera move; without
+    // coverage tracking the surviving probes renormalize to full brightness
+    // and that boundary draws a bright camera-locked line across the floor.
     float accum_coverage = 0.0;
 
     for (int dz = 0; dz <= 1; ++dz) {
