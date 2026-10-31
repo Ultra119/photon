@@ -27,9 +27,7 @@ layout(rgba16f) writeonly uniform image2D rtgi_raw_img;
 layout(rgba8) writeonly uniform image2D rtgi_hit_img;
 #endif
 
-uniform usampler3D voxel_sampler;
-uniform usampler3D voxel_mid_sampler;
-uniform usampler3D voxel_coarse_sampler;
+#include "/include/lighting/rt/voxel_samplers.glsl"
 uniform sampler2D shadowtex0;
 uniform sampler2D depthtex0;
 uniform sampler2D depthtex1;

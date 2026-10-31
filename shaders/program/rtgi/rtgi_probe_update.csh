@@ -20,9 +20,7 @@ layout(rgba16f) uniform image3D ddgi_irradiance_img;
 layout(rgba16f) uniform image3D ddgi_direction_img;
 layout(rgba32i) uniform iimage3D ddgi_cell_img;
 
-uniform usampler3D voxel_sampler;
-uniform usampler3D voxel_mid_sampler;
-uniform usampler3D voxel_coarse_sampler;
+#include "/include/lighting/rt/voxel_samplers.glsl"
 uniform sampler2D shadowtex0;
 uniform sampler2D colortex4; // sky map & light colors
 uniform sampler2D noisetex;

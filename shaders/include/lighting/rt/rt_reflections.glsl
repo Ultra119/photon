@@ -13,10 +13,10 @@
   leaves the voxel volume resolves to directional sky/environment radiance. This
   keeps reflections valid off-screen and behind the camera.
 
-  Voxel hit shading needs the shadow map to resolve direct sun at the hit
-  surface. Dimensions/programs without a shadow map (Nether, SHADOW disabled)
-  cannot shade voxel hits, so the transport resolves to environment radiance
-  there. That is an environment-only RT reflection, not an SSR fallback.
+  Voxel hit shading resolves sun visibility with the voxel march (Wave-3
+  cascade fix); it no longer depends on the raster shadow map, so all worlds
+  and SHADOW-disabled profiles trace real voxel reflections. Escaped rays
+  resolve to environment radiance (sky map), not an SSR fallback.
 
 --------------------------------------------------------------------------------
 */
@@ -24,13 +24,11 @@
 #include "voxel_dda.glsl"
 #include "/include/sky/projection.glsl"
 
-// Voxel hit shading requires shadowtex0/shadowModelView/shadowProjection, which
-// are only declared by the Overworld/End programs that enable SHADOW.
-#if defined SHADOW && !defined WORLD_NETHER
+// Voxel hit shading used to require the raster shadow map (removed in the
+// Wave-3 cascade fix: sun visibility is a voxel march now). Every program
+// that can reach this path already binds the clipmap voxel textures, so voxel
+// reflections work in the Nether and with SHADOW disabled too.
 #define RT_REFLECTION_CAN_TRACE_VOXEL 1
-#else
-#define RT_REFLECTION_CAN_TRACE_VOXEL 0
-#endif
 
 // Directional environment radiance for a reflection ray that escapes the voxel
 // scene. This is the sky map, not a screen-space or history buffer.

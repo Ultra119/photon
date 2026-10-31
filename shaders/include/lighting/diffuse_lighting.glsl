@@ -15,8 +15,13 @@
 
 // RT Mode has one indirect-lighting contract:
 // - deferred4 consumes the filtered opaque RTGI radiance buffer;
-// - forward-lit surfaces consume the world-space irradiance probe cache.
-// There is no analytic sky/block/cave fallback.
+// - forward-lit surfaces (water, glass, translucent) consume the world-space
+//   irradiance probe cache at their own depth — but now through the same
+//   query-time occlusion test the RT trace uses, so they can no longer read
+//   probes through walls (L1). There is no analytic sky/block/cave fallback.
+#if !defined PROGRAM_DEFERRED4
+#define DDGI_QUERY_OCCLUSION
+#endif
 #include "/include/lighting/rt/ddgi.glsl"
 #if defined PROGRAM_DEFERRED4
 #define DIFFUSE_USE_RTGI

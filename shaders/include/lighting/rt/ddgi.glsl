@@ -20,6 +20,14 @@
 
 #include "/include/utility/color.glsl"
 
+#if defined DDGI_QUERY_OCCLUSION
+// The query-time occlusion test (D3) needs the fine voxel texture and the
+// segment marcher; pull both in so every consumer — RTGI trace, forward
+// diffuse, debug — compiles the same contract from one place.
+#include "/include/lighting/rt/voxel_samplers.glsl"
+#include "/include/lighting/rt/voxel_dda.glsl"
+#endif
+
 const int   ddgi_probe_dim     = 32;
 const float ddgi_probe_spacing = 4.0;
 const float ddgi_grid_extent   = float(ddgi_probe_dim) * ddgi_probe_spacing;

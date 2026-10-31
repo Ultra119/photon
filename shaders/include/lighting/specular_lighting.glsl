@@ -14,9 +14,7 @@
 // ray march and no previous-composite scene source. The voxel scene is always
 // allocated in RT Mode; the transport itself guards shadow-map availability.
 #include "/include/lighting/rt/rt_reflections.glsl"
-uniform usampler3D voxel_sampler;
-uniform usampler3D voxel_mid_sampler;
-uniform usampler3D voxel_coarse_sampler;
+#include "/include/lighting/rt/voxel_samplers.glsl"
 
 // ----------------------
 //   Specular Highlight

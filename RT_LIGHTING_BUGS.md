@@ -331,16 +331,12 @@ an explicit disposition.
 
 ### Deferred to the SEUS segment (their content, done properly there)
 
-- **T4 — multi-pass à-trous.** A second stride-1 pass plus the SEUS
-  anti-bleed edge rule (dark occluded neighbours get weight protection) and
-  variance-scaled kernels are exactly the denoise work the SEUS comparison
-  exists for; bolting on a second blind pass now would just smear more.
-- **L1 — forward-lit surfaces sample raw probes.** Structural: translucents
-  run in gbuffers, *before* the temporal/filter passes exist this frame.
-  Options (previous-frame filtered buffer with its ping-pong caveat vs
-  clearly-differentiated probe-only treatment) belong to the SEUS raw/denoise
-  discussion.
-- **S4b — emission calibration to Minecraft light levels** (see above).
+- **T4 — multi-pass à-trous.** ✅ SEUS segment step 1 (see below).
+- **L1 — forward-lit surfaces sample raw probes.** ✅ SEUS segment step 2
+  (occlusion parity, see below); the previous-frame-filtered-buffer option was
+  rejected — own-depth probes are architecturally right for transmissives.
+- **S4b — emission calibration to Minecraft light levels** — still open; needs
+  the user's eye on brightness (palette ×2.5 has no physical anchor).
 
 ### Parked by user (2026-10-31)
 
@@ -359,6 +355,33 @@ variance-scaled denoising (T4), receiver-plane ray-origin offset scaled by
 1/NoV (S1/S3 remainder), emitter energy calibration (S4b), probe sky
 discipline / origin exclusion (D5 remainder), and the L1/L3 structural
 decisions.
+
+---
+
+## SEUS segment — step 2 status — applied 2026-10-31
+
+- **L1 occlusion parity:** `diffuse_lighting.glsl` defines
+  `DDGI_QUERY_OCCLUSION` for every non-deferred4 consumer (water, DH water,
+  translucent, voxy), so forward-sampled probes run the same segment-occlusion
+  test as the RT trace — glass and water can no longer read probes through
+  walls. `ddgi.glsl` now pulls in the voxel textures and `voxel_dda` itself
+  under the macro; the three `voxel_*_sampler` uniforms were consolidated
+  into a shared guarded header (`voxel_samplers.glsl`) also used by the RTGI
+  compute programs and `specular_lighting.glsl`.
+- **Item 5 origin offset** implemented in `trace_voxel_level` (formula in the
+  section-6 table).
+- **`RTGI_RAY_COUNT` on `high`: 2 → 4** — the 2-ray raw buffer was the noise
+  floor that forced every clamp/filter compromise; paired with the two-pass
+  filter from step 1. Revert in `profile.high` if FPS regresses.
+- **Stale reflection gate removed:** `RT_REFLECTION_CAN_TRACE_VOXEL` no
+  longer requires the raster shadow map (that dependency died with the Wave-3
+  cascade fix) — voxel-space reflections now work in the Nether and with
+  SHADOW off; the zero-color sun march is skipped (`direct_sun_color == 0`).
+- Still open (needs user's eye): **S4b emission calibration**. Not scheduled:
+  vanilla Photon mirror (EminGT/Phonetration repos return 404).
+
+Validation: full `run_checks.sh` green — properties 320 keys, compute matrix
+315/0, wrapper matrix 1053/0, DDA 16/16, clipmap/boundary/AO/debug OK.
 
 ---
 
@@ -544,11 +567,11 @@ Each concept re-checked against the code as of `8918d35`:
 
 | # | Concept | Fork status now |
 |---|---|---|
-| 1 | Primary signal carries lighting; probes assist | **Partial** — D5 near-hit probe gate (`smoothstep(1,3)`) landed in Wave 2, so probes no longer inject at full strength on close hits; `RTGI_RAY_COUNT` still 2 on `high` (decision pending with perf). |
+| 1 | Primary signal carries lighting; probes assist | **Applied (step 2)** — D5 near-hit probe gate (Wave 2) plus `RTGI_RAY_COUNT` raised **2 → 4 on `high`** (2-ray raw was the noise floor everything else fought; revert in `profile.high` if FPS bites). |
 | 2 | Variance-guided everything | **Done** — T1 moments fixed (Wave 1); filter sigmas driven by real variance. SEUS's variance-scaled kernel *step* (`mix(3,4.25,var)`) not adopted; we keep a fixed stride pyramid (2 → 1) instead. |
 | 3 | Point-sampled history | **Done** — T2 (Wave 1). |
 | 4 | Anti-bleed dark-neighbour edge rule | **Applied (step 1)** — SEUS `PathTraceDenoiser` rule re-read from source (behind-plane + darker taps bypass the normal penalty with a variance-driven boost), in both à-trous passes. |
-| 5 | Receiver-plane ray-origin offset | **Open** — current origin is `normal×0.03 + dir×(0.02+0.008·dither)` (S3 part). SEUS formula re-verified at `deferred.fsh:228` (and the readable twin `program/deferred12.fsh:139`): `origin += dir·(1e-4·len) − n·(0.4·parallax/saturate(NoV) + 8e-4)`. |
+| 5 | Receiver-plane ray-origin offset | **Applied (step 2)** — modernized: grazing-scaled normal clearance `n·(0.015 + 0.035/(NoV+0.25))`, along-ray epsilon `dir·(0.015 + 1e-4·max_dist + 0.008·dither)`, and a bounded buried-start escape along the normal instead of SEUS's parallax term (the RT path has no per-pixel POM data). SEUS formula reference: `deferred.fsh:228`. |
 | 6 | Sky/sun leak gates | **Done** — S2-min + S2-full at the trace stage. *Stale note corrected:* the old “reattach via L2 plumbing” advice no longer applies. SEUS gates re-verified: `SUNLIGHT_LEAK_FIX saturate(a×100)` + `CAVE_GI_LEAK_FIX saturate(a×10)` combined (`deferred.fsh:192-197`); the fork uses one ×10 gate on sky-labeled terms. |
 | 7 | IR-cache discipline | **Mostly done** — query occlusion (D3), destination-validated relocation (D4), origin-exclusion ≈ probe gate (D5). *Not adopted:* storing only local emission in probes — the fork keeps sky in probes and gates it at query (documented design choice, Wave 4). |
 | 8 | Emitter pass-through | **Done** — Wave 4 (thin/non-cube emitters). |
@@ -585,7 +608,7 @@ Also verified from the re-extracted pack (source of truth `/tmp/arena-coding-upl
 10. S2: re-attach a receiver-skylight gate (reconnect L2 plumbing or multiply in `shade_voxel_hit` using the hit voxel's stored sky light — currently hardwired to 0 in `voxel_storage.glsl:74`), plus the 1.1-block origin exclusion for sun bounce.
 11. S4: calibrate emission to actual Minecraft light levels (15 → chosen radiance unit), make small emitters pass-through.
 12. T4: two à-trous iterations (stride 2 then 1) once variance is real. **[SEUS segment step 1: applied — pass 2 via `deferred3_b` + anti-bleed rule]**
-13. L1: either run translucents through the same filtered buffer (with their own depth) or gate probe-only lighting to be clearly dimmer/analytics.
+13. L1: either run translucents through the same filtered buffer (with their own depth) or gate probe-only lighting to be clearly dimmer/analytics. **[SEUS segment step 2: applied via the better third option — forward probes now run the same query-time occlusion test (`DDGI_QUERY_OCCLUSION` on for non-deferred4 consumers, shared `voxel_samplers.glsl`), so glass/water can no longer read probes through walls; own-depth probe sampling kept (architecturally right for transmissives).]**
 
 **Wave 4 — cleanup:**
 14. L2 remove or reconnect sky split; L3 remove dead `LIGHTING_MODE_PT` or restore a fallback; L4 delete dead field/function and fix stale comments; S5 consider persistent voxels across frames with dirty-region updates (bigger project).

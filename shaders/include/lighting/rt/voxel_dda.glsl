@@ -238,7 +238,9 @@ void shade_voxel_hit(
 
     float NoL = max(0.0, dot(hit_norm, l_dir));
     float sun_vis = 0.0;
-    if (NoL > 0.0) {
+    // Skip the march when the light carries no color (Nether light_color is
+    // zero) — sun visibility is multiplied by it anyway.
+    if (NoL > 0.0 && (direct_sun_color.r + direct_sun_color.g + direct_sun_color.b) > 0.0) {
         // Voxel-space sun visibility (see trace_sun_visibility): world-stable,
         // no dependence on the camera-fitted raster cascade box.
         vec3 shadow_start = hit_face_scene + hit_norm * 0.05 + l_dir * 0.02;
@@ -290,16 +292,31 @@ VoxelHit trace_voxel_level(
     vec3 inv_dir_level = 1.0 / dir_level;
     float max_dist_level = max(0.0, max_dist_world - t_start_world) / scale;
 
-    // A small normal/directional bias clears the raster surface seam. Coarser
-    // levels start just outside the finer cube, so they only need a forward
-    // bias. The per-ray dither (threaded through from the caller — previously
-    // dead) nudges the origin along the ray so exactly-on-boundary starts and
-    // face/corner-aligned slides do not repeat the same leak every frame;
-    // DDA tie-breaks shift, turning persistent seam streaks into temporally
-    // averaged noise. Probe updates pass a per-ray-index (frame-stable) value
-    // so the probe field itself does not gain noise.
-    vec3 start_scene = base_scene + dda_dir * (0.02 + 0.008 * dither);
-    if (level == 0) start_scene += surface_normal * 0.03;
+    // Receiver-plane origin offset (SEUS concept, modernized — no parallax
+    // term: the RT path has no per-pixel POM data, so a bounded buried-start
+    // escape below replaces SEUS's parallax retraction). Clearance off the
+    // receiver plane grows toward grazing rays, where the same positional
+    // error maps to a much larger error along a near-parallel ray; the
+    // along-ray epsilon scales with the path budget so DDA tie-breaks at
+    // face/corner seams never repeat exactly. The per-ray dither (frame-varying
+    // for per-pixel traces, per-ray-index and frame-stable for probe updates)
+    // keeps seam leaks decorrelated across frames.
+    vec3 start_scene = base_scene
+        + dda_dir * (0.015 + 0.0001 * max_dist_world + 0.008 * dither);
+    if (level == 0) {
+        float no_v = clamp(abs(dot(dda_dir, surface_normal)), 0.0, 1.0);
+        start_scene += surface_normal * (0.015 + 0.035 / (no_v + 0.25));
+        // Buried-start escape: depth-displaced receivers (POM) or geometry
+        // edges can leave the origin inside a solid voxel; step out along the
+        // receiver normal (bounded) instead of predicting the displacement.
+        for (int esc = 0; esc < 8; ++esc) {
+            ivec3 s_cell = ivec3(floor((start_scene - origin_scene) / scale));
+            if (!is_inside_voxel_grid(s_cell)) break;
+            uint s_packed = texelFetch(voxel_grid, rt_clip_texel(s_cell), 0).r;
+            if (unpack_voxel_data(s_packed).block_id == 0u) break;
+            start_scene += surface_normal * 0.06;
+        }
+    }
     vec3 start_level = (start_scene - origin_scene) / scale;
 
     level_exit_world = t_start_world;
