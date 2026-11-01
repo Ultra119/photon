@@ -973,4 +973,58 @@ Also verified from the re-extracted pack (source of truth `/tmp/arena-coding-upl
 
 ---
 
+## 9. Turn 11 — partial-block light shaping (2026-11-01)
+
+User umbrella report: "light doesn't play well with partial blocks", with four
+symptoms: (1) carpet against a wall casts a phantom full-block shadow,
+(2) fences block light in the upper half of their cell, (3) the upper half of
+two-block-tall plants casts a colored shadow, (4) stairs leak light both ways
+(GI rays and lantern emission pass through stair blocks; stairs also fail to
+shadow correctly).
+
+Root causes (static analysis, all code-confirmed):
+
+- The geometric shape sniff (`get_voxel_shape_class`) is per-vertex and the
+  `imageAtomicMax` word keeps whichever shape claim sorts highest. A stair's
+  y=0.5 tread face is indistinguishable from a slab's top face, so stair cells
+  flip-flopped between SLAB/STAIRS/OTHER — leaking one half of the cell in a
+  facing-dependent, race-y way. Stairs were also spread across ~15 material
+  lines plus a large unassigned group remapped to stone.
+- Carpets/plates/snow/daylight sensors (block.10097, forced CUBE after
+  turn 10) shadowed their entire voxel cell.
+- Upper halves of double plants (block.10004) were stone-class full cubes with
+  green vertex tint — a phantom colored shadow in the top half of grass.
+- Wooden fences/slabs and every wooden stair sat in the never-voxelized
+  megaclass block.10030 (is_transparent_block); fences could not be thin and
+  wooden slab floors/ceilings were invisible to GI rays.
+- `trace_sun_visibility` (turn 9 sun march) ignored shapes: any solid voxel
+  blocked the full cell.
+
+Fixes:
+
+- Shape field widened to 4 bits (bits 19-22; flags 23-24; id stays 25-31) with
+  new `VOXEL_SHAPE_COVER = 8u` (1/16 box for carpets, plates, lowest snow
+  layer, daylight sensor). Pack/unpack, coarse force-CUBE mask and the packing
+  test were updated together.
+- Deterministic per-class shapes: 98 stairs → CUBE (orientation-independent;
+  step-notch over-occlusion accepted over any leak), 99 fences → PANE (thin
+  center post; light passes around it at all heights), 100 covers → COVER,
+  101 beds → SLAB_BOTTOM, 103 wooden slabs → CUBE (conservative). These
+  classes no longer consult the geometric sniff, removing the race.
+- block.properties: all vanilla stairs (58 names, including previously
+  unassigned stone variants) → 10098; wooden fences + nether_brick_fence →
+  10099; carpets/snow/plates/daylight sensor → 10100; beds → 10101; wooden
+  slabs → 10103; upper plant halves (old 10004) → 10102 and added to
+  `should_voxelize`'s non-solid list so they are never written (air-like).
+- The sun march now shape-tests the fine-level voxel (CUBE at coarse levels):
+  covers and fence posts no longer kill direct sun for their whole cell.
+
+Known remaining (deliberate scope): doors/trapdoors/signs/ladders/chests and
+fence gates remain in the never-voxelized class 30/80 (GI passes through them
+— thin leak, unreported); trapdoors and doors need state-dependent vertical
+panels before they can get honest shapes; stone slabs rely on the old
+geometric path (OTHER → full box, conservative).
+
+---
+
 *Static analysis only; no shader was executed. All line numbers refer to the tree at audit time (`6d49083`). SEUS PTGI HRR Test 2.1 GFME 1.22 RC1 was used solely to understand reference behavior (raw/accum/denoise/temporal/leak-gate/rebounce); no SEUS code is included or should be copied into this project.*
