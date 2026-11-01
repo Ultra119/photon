@@ -74,11 +74,50 @@ bool voxel_shape_contains(uint shape_class, ivec3 voxel_coord, vec3 voxel_space_
         return f.x > 0.375 && f.x < 0.625 && f.z > 0.375 && f.z < 0.625;
     } else if (shape_class == VOXEL_SHAPE_COVER) {
         return f.y < 0.0625;
-    } else if (shape_class == VOXEL_SHAPE_STAIRS) {
-        return f.y < 0.5 || f.x < 0.5; // bottom slab + legacy upper x<0.5 box
+    } else if (shape_class == VOXEL_SHAPE_STAIRS_B_N) {
+        return f.y < 0.5 || (f.y >= 0.5 && f.z < 0.5);
+    } else if (shape_class == VOXEL_SHAPE_STAIRS_B_E) {
+        return f.y < 0.5 || (f.y >= 0.5 && f.x > 0.5);
+    } else if (shape_class == VOXEL_SHAPE_STAIRS_B_S) {
+        return f.y < 0.5 || (f.y >= 0.5 && f.z > 0.5);
+    } else if (shape_class == VOXEL_SHAPE_STAIRS_B_W) {
+        return f.y < 0.5 || (f.y >= 0.5 && f.x < 0.5);
+    } else if (shape_class == VOXEL_SHAPE_STAIRS_T_N) {
+        return f.y >= 0.5 || (f.y < 0.5 && f.z < 0.5);
+    } else if (shape_class == VOXEL_SHAPE_STAIRS_T_E) {
+        return f.y >= 0.5 || (f.y < 0.5 && f.x > 0.5);
+    } else if (shape_class == VOXEL_SHAPE_STAIRS_T_S) {
+        return f.y >= 0.5 || (f.y < 0.5 && f.z > 0.5);
+    } else if (shape_class == VOXEL_SHAPE_STAIRS_T_W) {
+        return f.y >= 0.5 || (f.y < 0.5 && f.x < 0.5);
     }
     // CUBE / PLANT / GLASS / OTHER: treat as occupying the full cell.
     return true;
+}
+
+// Stairs = slab box + tall-side arm box; returns the nearer sub-hit.
+bool stair_box_hit(
+    vec3 ray_start, vec3 inv_dir,
+    vec3 box_a_min, vec3 box_a_max,
+    vec3 box_b_min, vec3 box_b_max,
+    float seg_start, float seg_end,
+    vec3 voxel_entry_normal,
+    out float hit_t, out vec3 hit_normal
+) {
+    float t1; vec3 n1;
+    bool h1 = intersect_sub_box(ray_start, inv_dir, box_a_min, box_a_max, seg_start, seg_end, voxel_entry_normal, t1, n1);
+    float t2; vec3 n2;
+    bool h2 = intersect_sub_box(ray_start, inv_dir, box_b_min, box_b_max, seg_start, seg_end, voxel_entry_normal, t2, n2);
+    if (h1 && h2) {
+        if (t1 < t2) { hit_t = t1; hit_normal = n1; }
+        else { hit_t = t2; hit_normal = n2; }
+        return true;
+    } else if (h1) {
+        hit_t = t1; hit_normal = n1; return true;
+    } else if (h2) {
+        hit_t = t2; hit_normal = n2; return true;
+    }
+    return false;
 }
 
 bool test_voxel_shape_hit(
@@ -104,21 +143,46 @@ bool test_voxel_shape_hit(
     } else if (shape_class == VOXEL_SHAPE_COVER) {
         // 1/16-block cover box: carpets, pressure plates, snow layer.
         return intersect_sub_box(ray_start, inv_dir, v, v + vec3(1.0, 0.0625, 1.0), seg_start, seg_end, voxel_entry_normal, hit_t, hit_normal);
-    } else if (shape_class == VOXEL_SHAPE_STAIRS) {
-        float t1; vec3 n1;
-        bool h1 = intersect_sub_box(ray_start, inv_dir, v, v + vec3(1.0, 0.5, 1.0), seg_start, seg_end, voxel_entry_normal, t1, n1);
-        float t2; vec3 n2;
-        bool h2 = intersect_sub_box(ray_start, inv_dir, v + vec3(0.0, 0.5, 0.0), v + vec3(0.5, 1.0, 1.0), seg_start, seg_end, voxel_entry_normal, t2, n2);
-        if (h1 && h2) {
-            if (t1 < t2) { hit_t = t1; hit_normal = n1; }
-            else { hit_t = t2; hit_normal = n2; }
-            return true;
-        } else if (h1) {
-            hit_t = t1; hit_normal = n1; return true;
-        } else if (h2) {
-            hit_t = t2; hit_normal = n2; return true;
-        }
-        return false;
+    } else if (shape_class == VOXEL_SHAPE_STAIRS_B_N) {
+        return stair_box_hit(ray_start, inv_dir,
+            v, v + vec3(1.0, 0.5, 1.0),
+            v + vec3(0.0, 0.5, 0.0), v + vec3(1.0, 1.0, 0.5),
+            seg_start, seg_end, voxel_entry_normal, hit_t, hit_normal);
+    } else if (shape_class == VOXEL_SHAPE_STAIRS_B_E) {
+        return stair_box_hit(ray_start, inv_dir,
+            v, v + vec3(1.0, 0.5, 1.0),
+            v + vec3(0.5, 0.5, 0.0), v + vec3(1.0, 1.0, 1.0),
+            seg_start, seg_end, voxel_entry_normal, hit_t, hit_normal);
+    } else if (shape_class == VOXEL_SHAPE_STAIRS_B_S) {
+        return stair_box_hit(ray_start, inv_dir,
+            v, v + vec3(1.0, 0.5, 1.0),
+            v + vec3(0.0, 0.5, 0.5), v + vec3(1.0, 1.0, 1.0),
+            seg_start, seg_end, voxel_entry_normal, hit_t, hit_normal);
+    } else if (shape_class == VOXEL_SHAPE_STAIRS_B_W) {
+        return stair_box_hit(ray_start, inv_dir,
+            v, v + vec3(1.0, 0.5, 1.0),
+            v + vec3(0.0, 0.5, 0.0), v + vec3(0.5, 1.0, 1.0),
+            seg_start, seg_end, voxel_entry_normal, hit_t, hit_normal);
+    } else if (shape_class == VOXEL_SHAPE_STAIRS_T_N) {
+        return stair_box_hit(ray_start, inv_dir,
+            v + vec3(0.0, 0.5, 0.0), v + vec3(1.0, 1.0, 1.0),
+            v + vec3(0.0, 0.0, 0.0), v + vec3(1.0, 0.5, 0.5),
+            seg_start, seg_end, voxel_entry_normal, hit_t, hit_normal);
+    } else if (shape_class == VOXEL_SHAPE_STAIRS_T_E) {
+        return stair_box_hit(ray_start, inv_dir,
+            v + vec3(0.0, 0.5, 0.0), v + vec3(1.0, 1.0, 1.0),
+            v + vec3(0.5, 0.0, 0.0), v + vec3(1.0, 0.5, 1.0),
+            seg_start, seg_end, voxel_entry_normal, hit_t, hit_normal);
+    } else if (shape_class == VOXEL_SHAPE_STAIRS_T_S) {
+        return stair_box_hit(ray_start, inv_dir,
+            v + vec3(0.0, 0.5, 0.0), v + vec3(1.0, 1.0, 1.0),
+            v + vec3(0.0, 0.0, 0.5), v + vec3(1.0, 0.5, 1.0),
+            seg_start, seg_end, voxel_entry_normal, hit_t, hit_normal);
+    } else if (shape_class == VOXEL_SHAPE_STAIRS_T_W) {
+        return stair_box_hit(ray_start, inv_dir,
+            v + vec3(0.0, 0.5, 0.0), v + vec3(1.0, 1.0, 1.0),
+            v + vec3(0.0, 0.0, 0.0), v + vec3(0.5, 0.5, 1.0),
+            seg_start, seg_end, voxel_entry_normal, hit_t, hit_normal);
     }
     return intersect_sub_box(ray_start, inv_dir, v, v + vec3(1.0), seg_start, seg_end, voxel_entry_normal, hit_t, hit_normal);
 }

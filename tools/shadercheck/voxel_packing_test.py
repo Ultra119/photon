@@ -43,7 +43,7 @@ def main():
     for _ in range(1000):
         bid = rng.randint(0, 127)
         bl = rng.random()
-        shape = rng.randint(0, 8)
+        shape = rng.randint(0, 15)
         rgb = [rng.random() for _ in range(3)]
         trans, emit = rng.random() < 0.5, rng.random() < 0.5
         u = unpack(pack(bid, bl, shape, rgb, trans, emit))

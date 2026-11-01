@@ -188,11 +188,12 @@ void main() {
     // motion, fresh history, emitter contrast — blow sigma_l up until every
     // weight_luma ~ 1, and the à-trous kernel then paints a symmetric
     // square bloom around bright blocks (spreads equally outward and
-    // inward; constant screen-space size as the player moves). The fixed
-    // ceiling binds only for very high contrast edges (window/emitter vs
-    // dark surroundings, |dL| >> 2) while same-magnitude noise still
-    // bleeds and gets denoised.
-    float sigma_l = min(PHI_COLOUR * sqrt(center_var + 1e-6), 2.0);
+    // inward; the footprint scales with the BUFFER texel size, so it
+    // halves at RTGI_RESOLUTION full and doubles at half — the reported
+    // behaviour). Ceiling 1.0: a bright-block edge of a few radiance units
+    // dies as exp(-(dL/1)^2), while same-surface noise (dL ~ 1.4*sigma_n)
+    // still passes when PHI*sqrt(var) sits at the floor.
+    float sigma_l = min(PHI_COLOUR * sqrt(center_var + 1e-6), 1.0);
 
     vec3 sum_radiance = vec3(0.0);
     float sum_sky_weight = 0.0;

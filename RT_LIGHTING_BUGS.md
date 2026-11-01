@@ -1054,6 +1054,25 @@ around bright blocks in the filtered view).
   the 5×5 kernel paint symmetric halos around bright blocks; the fixed cap
   only binds for extreme-contrast edges, so confetti smoothing is kept.
 
+### Turn 14 addendum — facing-aware stairs + bloom tightening
+
+- Regression: turn-12's slab-honest stairs reopened light flooding through
+  closed staircases (the front notch of every cell was air). Fix: eight
+  straight-stair boxes, `facing` x `half` (98/105-107 bottom, 104/108-110
+  top). Vanilla ground truth: `block/stairs` puts the tall element on +X and
+  `oak_stairs` maps facing=east to no y-rotation, so `facing` names the
+  TALL/full side (walkability agrees: tall back = uphill). Bottom stairs =
+  slab + tall-side arm on top; upside-down = top slab + tall-side arm below.
+  Corner stairs keep their facing's straight box (one arm of an inner corner
+  approximated open, corners only). The turn-12 shape-aware probe relocation
+  stays, so the corner black squares do not return.
+- Bloom: the user confirmed the square bloom scales with the BUFFER texel
+  size (halves at RTGI_RESOLUTION full, doubles at half) — i.e. the à-trous
+  kernel footprint, so luma edge-stopping is the only lever. Gaussian
+  weight from turn 13 kept, defaults tightened: RTGI_FILTER_PHI 4 → 2,
+  sigma_l ceiling 2.0 → 1.0 (bright-block edges die as exp(-(dL/1)^2);
+  same-surface noise still passes).
+
 ---
 
 *Static analysis only; no shader was executed. All line numbers refer to the tree at audit time (`6d49083`). SEUS PTGI HRR Test 2.1 GFME 1.22 RC1 was used solely to understand reference behavior (raw/accum/denoise/temporal/leak-gate/rebounce); no SEUS code is included or should be copied into this project.*

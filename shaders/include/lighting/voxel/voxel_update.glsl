@@ -52,17 +52,36 @@ uint get_voxel_shape_class(uint block_id, vec3 mid_block_attr, vec3 normal) {
     // stairs used to be slab-sniffed (their y=0.5 tread face looks exactly
     // like a bottom slab), leaving one half of every stair cell open and
     // leaking light through closed staircases.
+    // Straight-stair boxes per facing x half (block.10098/10104-10110).
+    // `facing` = the tall/full side of the stair (vanilla model ground
+    // truth, see voxel_constants): bottom stairs = slab + tall-side arm up
+    // top; upside-down stairs = top slab + tall-side arm below. This closes
+    // the riser again (turn-12 slabs reopened staircase light flooding)
+    // while leaving the front notch open, so corner probes stay valid —
+    // the turn-12 shape-aware relocation handles the rest.
     if (block_id == 98u) {
-        // Right-side-up stairs (block.10098, half=bottom): the bottom slab is
-        // the guaranteed-solid part; the upper riser half stays open (the
-        // honest step notch) so corner probes and wrap-around light behave
-        // like Minecraft's own light flow around partial blocks. The old
-        // forced CUBE kept every leak shut but walled the notch off from the
-        // probe grid — inner corners zeroed their probes and blacked out.
-        return VOXEL_SHAPE_SLAB_BOTTOM;
+        return VOXEL_SHAPE_STAIRS_B_N;
+    }
+    if (block_id == 105u) {
+        return VOXEL_SHAPE_STAIRS_B_E;
+    }
+    if (block_id == 106u) {
+        return VOXEL_SHAPE_STAIRS_B_S;
+    }
+    if (block_id == 107u) {
+        return VOXEL_SHAPE_STAIRS_B_W;
     }
     if (block_id == 104u) {
-        return VOXEL_SHAPE_SLAB_TOP; // upside-down stairs (half=top), molding
+        return VOXEL_SHAPE_STAIRS_T_N;
+    }
+    if (block_id == 108u) {
+        return VOXEL_SHAPE_STAIRS_T_E;
+    }
+    if (block_id == 109u) {
+        return VOXEL_SHAPE_STAIRS_T_S;
+    }
+    if (block_id == 110u) {
+        return VOXEL_SHAPE_STAIRS_T_W;
     }
     if (block_id == 99u) {
         return VOXEL_SHAPE_PANE_OR_FENCE; // fences: thin center post only
