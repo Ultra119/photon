@@ -187,6 +187,15 @@ VoxelMaterial get_voxel_material(uint block_id, vec3 fallback_color) {
             mat.is_translucent = true;
             break;
 
+        // Opaque tinted/diffuse surfaces (block.10097): wool blocks, cactus,
+        // mushroom stem, carpets, snow layers, beds, pressure plates.
+        case 97u:
+            mat.albedo = (max_of(fallback_color) > 0.01) ? fallback_color : vec3(0.75);
+            mat.roughness = 0.85;
+            mat.is_solid = true;
+            mat.is_translucent = false;
+            break;
+
         // Stained glass / tinted translucent (10081 - 10096)
         case 81u:
         case 82u:
