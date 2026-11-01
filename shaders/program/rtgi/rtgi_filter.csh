@@ -258,9 +258,17 @@ void main() {
                 ? mix(4.0, 1.0, var_normalized)
                 : pow(normal_dot, sigma_n);
 
-            // 3. Variance-guided luminance weight (preserves high-confidence indirect contrast)
+            // 3. Variance-guided luminance weight. Gaussian form instead of
+            // exp(-d/sigma): same noise throughput (pairwise noise diff ~1.4
+            // sigma_noise, sigma_l = PHI*sqrt(var) ~ 2x that) but the tail
+            // dies as exp(-(d/sigma)^2), so strong edges — bright window /
+            // emitter blocks against dark rooms — are stopped hard while
+            // same-surface noise still merges. The exponential form needed
+            // sigma_l far below the noise floor to stop an edge, which is
+            // exactly the static symmetric bloom (inside darkens, outside
+            // brightens) reported around bright blocks.
             float luma_diff = abs(n_m1 - center_m1);
-            float weight_luma = exp(-luma_diff / sigma_l);
+            float weight_luma = exp(-(luma_diff * luma_diff) / max(sigma_l * sigma_l, 1e-8));
 
             float weight = weight_spatial * weight_depth * weight_normal * weight_luma;
 
