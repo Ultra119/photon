@@ -25,6 +25,11 @@ const uint VOXEL_SHAPE_PANE_OR_FENCE = 4u; // Thin fence, iron bars, or glass pa
 const uint VOXEL_SHAPE_PLANT         = 5u; // Non-solid plant / flower / crop
 const uint VOXEL_SHAPE_GLASS         = 6u; // Transparent full cube
 const uint VOXEL_SHAPE_OTHER         = 7u; // Non-standard shape
+// 1/16-block cover: carpets, pressure plates, lowest snow layer, daylight
+// sensor. These blocks are shorter than half a slab; giving them a full-cell
+// or half-cell box drew a phantom full-block shadow (carpet against a wall
+// darkened the whole adjacent cell).
+const uint VOXEL_SHAPE_COVER         = 8u;
 
 float rt_clip_scale(int level) {
     return float(1 << level);

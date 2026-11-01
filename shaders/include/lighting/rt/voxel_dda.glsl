@@ -74,6 +74,9 @@ bool test_voxel_shape_hit(
         return intersect_sub_box(ray_start, inv_dir, v + vec3(0.0, 0.5, 0.0), v + vec3(1.0, 1.0, 1.0), seg_start, seg_end, voxel_entry_normal, hit_t, hit_normal);
     } else if (shape_class == VOXEL_SHAPE_PANE_OR_FENCE) {
         return intersect_sub_box(ray_start, inv_dir, v + vec3(0.375, 0.0, 0.375), v + vec3(0.625, 1.0, 0.625), seg_start, seg_end, voxel_entry_normal, hit_t, hit_normal);
+    } else if (shape_class == VOXEL_SHAPE_COVER) {
+        // 1/16-block cover box: carpets, pressure plates, snow layer.
+        return intersect_sub_box(ray_start, inv_dir, v, v + vec3(1.0, 0.0625, 1.0), seg_start, seg_end, voxel_entry_normal, hit_t, hit_normal);
     } else if (shape_class == VOXEL_SHAPE_STAIRS) {
         float t1; vec3 n1;
         bool h1 = intersect_sub_box(ray_start, inv_dir, v, v + vec3(1.0, 0.5, 1.0), seg_start, seg_end, voxel_entry_normal, t1, n1);
@@ -162,7 +165,19 @@ float trace_sun_visibility(
                 // Glass/tinted materials are non-solid in the material table
                 // and are skipped, matching the main loop's transmission.
                 if (mat.is_solid || sample_data.is_emitter) {
-                    return 0.0;
+                    // Shape-aware occlusion (sub-box), same contract as the
+                    // ray march: a 1/16 carpet cover or a thin fence post no
+                    // longer shadows its whole voxel cell for direct sun.
+                    // Coarse levels stay conservative full cubes.
+                    uint shape = (level == 0) ? sample_data.shape_class : VOXEL_SHAPE_CUBE;
+                    float shape_t;
+                    vec3 shape_n;
+                    if (test_voxel_shape_hit(
+                        shape, current_voxel, start_level, inv_dir_level,
+                        t, seg_end, -sign(dir_level), shape_t, shape_n
+                    )) {
+                        return 0.0;
+                    }
                 }
             }
         }

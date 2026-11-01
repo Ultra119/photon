@@ -43,6 +43,30 @@ bool is_voxel_terrain_stage() {
 }
 
 uint get_voxel_shape_class(uint block_id, vec3 mid_block_attr, vec3 normal) {
+    // Deterministic per-class shapes (block.10097-100101). These classes are
+    // homogeneous — every face of the cell writes the same shape — so the
+    // imageAtomicMax word can never flip-flop between geometric guesses:
+    // stairs used to be slab-sniffed (their y=0.5 tread face looks exactly
+    // like a bottom slab), leaving one half of every stair cell open and
+    // leaking light through closed staircases.
+    if (block_id == 98u) {
+        return VOXEL_SHAPE_CUBE; // stairs: full cube, orientation-independent
+    }
+    if (block_id == 99u) {
+        return VOXEL_SHAPE_PANE_OR_FENCE; // fences: thin center post only
+    }
+    if (block_id == 100u) {
+        return VOXEL_SHAPE_COVER; // carpets, plates, snow, daylight sensor
+    }
+    if (block_id == 101u) {
+        return VOXEL_SHAPE_SLAB_BOTTOM; // beds (~9/16 ≈ half block)
+    }
+    if (block_id == 103u) {
+        // Wooden slabs: geometric slab-sniffing can't tell which half the
+        // model occupies reliably (mid-block vertex test), so stay a
+        // conservative full cube — no leaks, status-quo occlusion.
+        return VOXEL_SHAPE_CUBE;
+    }
     if (block_id == 2u || block_id == 3u || block_id == 14u || block_id == 15u) {
         return VOXEL_SHAPE_PLANT;
     }
@@ -82,7 +106,10 @@ uint get_voxel_shape_class(uint block_id, vec3 mid_block_attr, vec3 normal) {
 bool should_voxelize(uint block_id) {
     bool is_transparent_block = (block_id == 1u || block_id == 18u || block_id == 28u || block_id == 30u || block_id == 80u);
     bool is_emitter = (32u <= block_id && block_id < 80u && block_id != 58u && block_id != 63u);
-    bool is_non_solid = (block_id == 2u || block_id == 3u || block_id == 14u || block_id == 15u || block_id == 58u);
+    // 102 = upper halves of two-block-tall plants / tall aquatic plants
+    // (block.10102, was misfiled under 4 = stone and became a phantom solid
+    // "colored shadow" cube in the top half of grass/flowers).
+    bool is_non_solid = (block_id == 2u || block_id == 3u || block_id == 14u || block_id == 15u || block_id == 58u || block_id == 102u);
     bool is_stained_glass = (block_id >= 81u && block_id <= 96u);
 
     return (!is_non_solid || is_emitter || is_stained_glass)
@@ -159,7 +186,7 @@ void update_rt_voxel_grid(
             ivec3 coord = rt_clip_texel(ivec3(floor(local)));
             uint payload = (level == 0)
                 ? packed_data
-                : (packed_data & ~(0x7u << 19u)); // force VOXEL_SHAPE_CUBE
+                : (packed_data & ~(0xFu << 19u)); // force VOXEL_SHAPE_CUBE (4-bit shape field)
 
             if (level == 0) {
                 imageAtomicMax(voxel_img, coord, payload);
