@@ -1025,6 +1025,35 @@ fence gates remain in the never-voxelized class 30/80 (GI passes through them
 panels before they can get honest shapes; stone slabs rely on the old
 geometric path (OTHER → full box, conservative).
 
+### Turn 12 addendum — follow-up on stairs (same day)
+
+Turn-11's forced CUBE for stairs stopped the leaks but caused two new
+symptoms the user reported: soft black squares on inner-corner stairs, and
+both steps of a staircase staying lit (plus a screen-space "square bloom"
+around bright blocks in the filtered view).
+
+- Black squares: DDGI probes whose grid position fell inside a stair CUBE
+  were relocated away; at 90° corners the surrounding solid cluster made the
+  destination search fail, the probe was zeroed, and the trilinear coverage
+  fade blacked out its footprint. Two fixes: (1) stairs are now honest half
+  slabs again — 98 = `:half=bottom` → SLAB_BOTTOM, 104 = `:half=top` →
+  SLAB_TOP; the step notch stays open, matching Minecraft's own light flow
+  around partial blocks (corner L-arms are approximated open). (2) Probe
+  relocation and its destination search are now shape-aware
+  (`voxel_shape_contains`): probes standing in the open half of any
+  partially-solid cell count as air and stay put.
+- Two steps lit: with the through-block leak gone, remaining light on the
+  upper step is wrap-around + probe transport through the genuinely open
+  notch region — the same flow vanilla block light performs around stairs.
+  Strict riser shadowing would need facing-aware stair boxes (8 shape ids);
+  left as an opt-in follow-up because the facing↔high-side convention needs
+  one in-game verification.
+- Square bloom: the à-trous luminance tolerance `PHI_COLOUR*sqrt(var)` is
+  now capped at a fixed 2.0 (not the old brightness-scaled clamp). Variance
+  spikes (camera motion, fresh history) used to erase edge stopping and let
+  the 5×5 kernel paint symmetric halos around bright blocks; the fixed cap
+  only binds for extreme-contrast edges, so confetti smoothing is kept.
+
 ---
 
 *Static analysis only; no shader was executed. All line numbers refer to the tree at audit time (`6d49083`). SEUS PTGI HRR Test 2.1 GFME 1.22 RC1 was used solely to understand reference behavior (raw/accum/denoise/temporal/leak-gate/rebounce); no SEUS code is included or should be copied into this project.*

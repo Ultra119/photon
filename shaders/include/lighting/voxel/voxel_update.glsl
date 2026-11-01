@@ -53,7 +53,16 @@ uint get_voxel_shape_class(uint block_id, vec3 mid_block_attr, vec3 normal) {
     // like a bottom slab), leaving one half of every stair cell open and
     // leaking light through closed staircases.
     if (block_id == 98u) {
-        return VOXEL_SHAPE_CUBE; // stairs: full cube, orientation-independent
+        // Right-side-up stairs (block.10098, half=bottom): the bottom slab is
+        // the guaranteed-solid part; the upper riser half stays open (the
+        // honest step notch) so corner probes and wrap-around light behave
+        // like Minecraft's own light flow around partial blocks. The old
+        // forced CUBE kept every leak shut but walled the notch off from the
+        // probe grid — inner corners zeroed their probes and blacked out.
+        return VOXEL_SHAPE_SLAB_BOTTOM;
+    }
+    if (block_id == 104u) {
+        return VOXEL_SHAPE_SLAB_TOP; // upside-down stairs (half=top), molding
     }
     if (block_id == 99u) {
         return VOXEL_SHAPE_PANE_OR_FENCE; // fences: thin center post only

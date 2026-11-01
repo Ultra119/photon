@@ -58,6 +58,29 @@ bool intersect_sub_box(
     return false;
 }
 
+// Point-in-solid test for a stored shape (mirrors test_voxel_shape_hit's
+// boxes). Used by probe relocation: a probe standing in the open half of a
+// partially-solid cell (above a bottom slab, below a top slab, beside a
+// fence post, inside a stair notch) must count as air instead of being
+// relocated away and zeroed — a zeroed probe blacks out its whole
+// trilinear footprint (the soft dark squares on inner-corner stairs).
+bool voxel_shape_contains(uint shape_class, ivec3 voxel_coord, vec3 voxel_space_pos) {
+    vec3 f = voxel_space_pos - vec3(voxel_coord);
+    if (shape_class == VOXEL_SHAPE_SLAB_BOTTOM) {
+        return f.y < 0.5;
+    } else if (shape_class == VOXEL_SHAPE_SLAB_TOP) {
+        return f.y >= 0.5;
+    } else if (shape_class == VOXEL_SHAPE_PANE_OR_FENCE) {
+        return f.x > 0.375 && f.x < 0.625 && f.z > 0.375 && f.z < 0.625;
+    } else if (shape_class == VOXEL_SHAPE_COVER) {
+        return f.y < 0.0625;
+    } else if (shape_class == VOXEL_SHAPE_STAIRS) {
+        return f.y < 0.5 || f.x < 0.5; // bottom slab + legacy upper x<0.5 box
+    }
+    // CUBE / PLANT / GLASS / OTHER: treat as occupying the full cell.
+    return true;
+}
+
 bool test_voxel_shape_hit(
     uint shape_class,
     ivec3 voxel_coord,

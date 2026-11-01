@@ -85,12 +85,14 @@ const float bspline_kernel[5] = float[5](
 );
 
 // Luminance edge-stopping constant (educational Minecraft-PTGI: 10.0).
-// phi_l = PHI_COLOUR * sqrt(variance) is deliberately UNCAPPED: the previous
+// phi_l = PHI_COLOUR * sqrt(variance), capped by a fixed ceiling at the
+// use site. Two past regressions bracket the design: the brightness-scaled
 // clamp max(center_m1 + 0.05, 0.35) made phi track the center's own
-// brightness, so any outlier differing by more than the center's luminance —
-// emitter confetti dots versus their dark surroundings, in BOTH directions —
-// was rejected by the edge-stopping weight and the filter degenerated into a
-// pass-through exactly where denoising was needed.
+// brightness, so any outlier differing by more than the center's luminance
+// was rejected and the filter became a pass-through exactly where denoising
+// was needed; a fully UNCAPPED phi instead erased edge stopping during
+// variance spikes and bloomed bright blocks. The fixed ceiling keeps
+// confetti smoothing while restoring hard-edge stopping.
 // Value exposed as RTGI_FILTER_PHI in settings.glsl (test knob).
 #define PHI_COLOUR RTGI_FILTER_PHI
 
@@ -179,8 +181,18 @@ void main() {
     #endif
     float sigma_z = max(center_dist * 0.05, 0.10) * float(step_size);
 
-    // Luminance tolerance: variance-guided, UNCAPPED (see PHI_COLOUR above).
-    float sigma_l = PHI_COLOUR * sqrt(center_var + 1e-6);
+    // Luminance tolerance: variance-guided, with a fixed ceiling. The old
+    // brightness-scaled clamp is still rejected (it made phi track the
+    // center's own luminance and killed exactly the smoothing confetti
+    // dots needed), but a pure UNCAPPED phi lets variance spikes — camera
+    // motion, fresh history, emitter contrast — blow sigma_l up until every
+    // weight_luma ~ 1, and the à-trous kernel then paints a symmetric
+    // square bloom around bright blocks (spreads equally outward and
+    // inward; constant screen-space size as the player moves). The fixed
+    // ceiling binds only for very high contrast edges (window/emitter vs
+    // dark surroundings, |dL| >> 2) while same-magnitude noise still
+    // bleeds and gets denoised.
+    float sigma_l = min(PHI_COLOUR * sqrt(center_var + 1e-6), 2.0);
 
     vec3 sum_radiance = vec3(0.0);
     float sum_sky_weight = 0.0;

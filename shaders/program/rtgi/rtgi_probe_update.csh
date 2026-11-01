@@ -71,7 +71,11 @@ void main() {
     if (is_inside_voxel_grid(vx_coord)) {
         uint vx_data = texelFetch(voxel_sampler, vx_coord, 0).r;
         VoxelSample vs = unpack_voxel_data(vx_data);
-        if (vs.block_id != 0u) {
+        // Shape-aware solid test: probes in the open half of a slab/stair/
+        // fence/cover cell are in real air and must stay put.
+        vec3 probe_voxel_pos = scene_to_voxel_space(probe_scene_pos);
+        if (vs.block_id != 0u
+            && voxel_shape_contains(vs.shape_class, vx_coord, probe_voxel_pos)) {
             // D4: destination-validated relocation. The old search walked only
             // the 6 axis neighbours at ±1.5/±2.5 blocks and never verified the
             // voxel it would LAND in, so a probe deep inside any multi-block
@@ -87,12 +91,13 @@ void main() {
                     for (int dx = -1; dx <= 1 && !found_air; ++dx) {
                         if (dx == 0 && dy == 0 && dz == 0) continue;
                         vec3 dest_pos = probe_world_pos + vec3(dx, dy, dz) * 1.5;
-                        ivec3 dest_coord = ivec3(
-                            floor(scene_to_voxel_space(dest_pos - cameraPosition))
-                        );
+                        vec3 dest_voxel = scene_to_voxel_space(dest_pos - cameraPosition);
+                        ivec3 dest_coord = ivec3(floor(dest_voxel));
                         if (is_inside_voxel_grid(dest_coord)) {
                             uint d_data = texelFetch(voxel_sampler, dest_coord, 0).r;
-                            if (unpack_voxel_data(d_data).block_id == 0u) {
+                            VoxelSample dvs = unpack_voxel_data(d_data);
+                            if (dvs.block_id == 0u
+                                || !voxel_shape_contains(dvs.shape_class, dest_coord, dest_voxel)) {
                                 probe_world_pos = dest_pos;
                                 relocation_code = float(1 + (dz + 1) * 9 + (dy + 1) * 3 + (dx + 1));
                                 found_air = true;
@@ -114,12 +119,13 @@ void main() {
                     for (int i = 0; i < 6 && !found_air; ++i) {
                         vec3 dest_pos =
                             probe_world_pos + vec3(axis_offsets[i]) * rings[ring];
-                        ivec3 dest_coord = ivec3(
-                            floor(scene_to_voxel_space(dest_pos - cameraPosition))
-                        );
+                        vec3 dest_voxel = scene_to_voxel_space(dest_pos - cameraPosition);
+                        ivec3 dest_coord = ivec3(floor(dest_voxel));
                         if (is_inside_voxel_grid(dest_coord)) {
                             uint d_data = texelFetch(voxel_sampler, dest_coord, 0).r;
-                            if (unpack_voxel_data(d_data).block_id == 0u) {
+                            VoxelSample dvs = unpack_voxel_data(d_data);
+                            if (dvs.block_id == 0u
+                                || !voxel_shape_contains(dvs.shape_class, dest_coord, dest_voxel)) {
                                 probe_world_pos = dest_pos;
                                 relocation_code = 27.0 + float(ring * 6 + i);
                                 found_air = true;
