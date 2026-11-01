@@ -172,7 +172,10 @@ VoxelMaterial get_voxel_material(uint block_id, vec3 fallback_color) {
             mat.is_translucent = true;
             break;
 
-        // Weak SSS materials (leaf litter, pink petals, cobwebs, wool)
+        // Weak SSS / flat decals (cobweb, mangrove propagule, pink petals,
+        // leaf litter, wildflowers). Wool, cactus and mushroom stem used to
+        // live here too and were never voxelized (is_non_solid) — they moved
+        // to the solid opaque class 97u.
         case 15u:
             mat.albedo = clamp(fallback_color, vec3(0.10), vec3(0.50));
             mat.roughness = 0.70;
@@ -187,12 +190,27 @@ VoxelMaterial get_voxel_material(uint block_id, vec3 fallback_color) {
             mat.is_solid = false;
             break;
 
-        // Clear glass, glass panes, snow layer, rails, carpets
+        // Clear glass, glass panes, rails, thin decor pass-through. Carpets,
+        // snow layers, beds and pressure plates used to share this glass-like
+        // class (and were never voxelized as opaque) — GI rays walked through
+        // them onto the neutral block below instead of bouncing their color.
+        // They moved to the solid opaque class 97u.
         case 80u:
             mat.albedo = vec3(0.95);
             mat.roughness = 0.04;
             mat.is_solid = false;
             mat.is_translucent = true;
+            break;
+
+        // Opaque tinted/diffuse surfaces (block.10097): wool blocks, cactus,
+        // mushroom stem, carpets, snow layers, beds, pressure plates.
+        // Ordinary diffuse hits with their stored (textured x tint) albedo,
+        // so sunlit wool/carpet now bounces its color like any solid block.
+        case 97u:
+            mat.albedo = (max_of(fallback_color) > 0.01) ? fallback_color : vec3(0.75);
+            mat.roughness = 0.85;
+            mat.is_solid = true;
+            mat.is_translucent = false;
             break;
 
         // Stained glass / tinted translucent (10081 - 10096)

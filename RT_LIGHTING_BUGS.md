@@ -693,6 +693,45 @@ clipmap/boundary/AO/gi_debug OK.
 
 ---
 
+## Turn 10: carpets (and wool) never bounced — pass-through class split
+
+Playtest after turn 9: probe spacing needed, but **carpets still don't
+bounce color; a solid colored block in the same spot does**. Audit result —
+carpets and wool were excluded from the GI scene entirely:
+
+- `block.properties` put **all 16 wool blocks, cactus, mushroom stem** in
+  `block.10015` ("weak SSS / flat decals") and **all carpets (16 + moss),
+  snow layers, beds (16), pressure plates, stonecutter, daylight sensor** in
+  `block.10080` (the glass-like pass-through class).
+- `voxel_update.glsl should_voxelize()` treats id 15 as `is_non_solid` and
+  id 80 as `is_transparent_block` → **those blocks were never written into
+  the voxel grid at all**. GI rays crossed their empty cells and terminated
+  on the neutral block behind/below (the floor under the carpet), which is
+  why no carpet/wool color ever appeared in the bounce. The palette
+  reinforced it: case 80 = glass-like (white 0.95, roughness 0.04,
+  non-solid translucent), case 15 = non-solid.
+
+Fix: new `block.10097` "opaque tinted/diffuse surfaces" class carrying the
+moved blocks; palette `case 97u` = ordinary diffuse hit with the stored
+(textured × tint) albedo, `is_solid = true`, opaque. Id 97 deliberately
+falls outside every special range, so the defaults do the rest: it is
+voxelized (`should_voxelize`), gets `VOXEL_SHAPE_CUBE`, and is stored with
+`is_translucent = false` (the stored-flag formula stops at 96). Rays now
+terminate on carpets/wool with their own color; the sun-visibility march
+also treats them as occluders (floor under a carpet shades, as in reality).
+
+Kept as intentional pass-through (thin/decor, negligible bounce): rails,
+string, tripwire, lever, buttons, chains, potted plants, dripstone, big
+dripleaf, cave vines, sea pickles, grindstone, bell, dried ghast, cobweb,
+petals, leaf litter, wildflowers, small/tall plants, SSS foliage, stained
+glass, water. `pumpkin` (misfiled in the red-sandstone class) and
+`golden_dandelion` (metals class) are harmless there — both classes are
+solid + tint-driven — left untouched.
+
+Validation: full `run_checks.sh` exit 0.
+
+---
+
 ## 0. Symptom → root-cause map
 
 | Reported symptom | Primary causes (finding IDs) |
