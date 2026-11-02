@@ -514,23 +514,42 @@ VoxelHit trace_voxel_level(
                     // conservative occupancy cubes; their payload is a
                     // representative material, not a sum of emitter power.
                     uint shape = (level == 0) ? sample_data.shape_class : VOXEL_SHAPE_CUBE;
+                    // Thin emitters (torch, lantern, end rod, glow lichen, ...)
+                    // are stored with an approximate half-cell shape sniffed
+                    // from their cross-model geometry. Gating emission
+                    // collection on that half made the glow leave the cell
+                    // only through its occupied half: floor patches whose rays
+                    // crossed the open half of the emitter cell stayed dark —
+                    // a fake slab-shaped shadow under an adjacent half-block —
+                    // while patches whose rays crossed the occupied half blew
+                    // out along hard cell-aligned bands. Collect over the
+                    // whole emitter cell (full-cell test) and still pass
+                    // through, so the emitter never terminates the ray. Cube
+                    // emitters keep their stored shape and still occlude.
+                    bool thin_emitter = (sample_data.is_emitter && shape != VOXEL_SHAPE_CUBE);
                     bool did_hit = test_voxel_shape_hit(
-                        shape, current_voxel, start_level, inv_dir_level,
+                        thin_emitter ? VOXEL_SHAPE_CUBE : shape,
+                        current_voxel, start_level, inv_dir_level,
                         t, clamped_next_t, entry_norm, hit_t, hit_norm
                     );
                     if (did_hit) {
-                        // Near-field emitter compression. Ray transport gives
+                        // Near-field emitter ramp. Ray transport gives
                         // emitter irradiance ~1/d^2, so the block containing
                         // or right under a torch blows out and the very next
                         // block falls off a cliff — far steeper than
-                        // Minecraft's per-block light-level decay. Compress
-                        // only the near field: contributions closer than
-                        // ~1 block scale down to a 35% floor; at a block or
-                        // more nothing changes. Applies to solid hits and
-                        // thin-emitter pass-through alike.
-                        mat.emission *= clamp(t_start_world + hit_t * scale, 0.35, 1.0);
-                        if (level == 0 && sample_data.is_emitter
-                            && shape != VOXEL_SHAPE_CUBE) {
+                        // Minecraft's per-block light-level decay. Ramp from
+                        // 50% at contact to full brightness at 1 block: the
+                        // hotspot flattens toward the 1-block level (gradual
+                        // falloff instead of a cliff), and every distance is
+                        // at least as bright as the previous 35%-floor
+                        // version — the emitter is never dimmed below 50%.
+                        // Beyond 1 block nothing changes. Applies to solid
+                        // hits and thin-emitter pass-through alike.
+                        mat.emission *= clamp(
+                            0.5 + 0.5 * (t_start_world + hit_t * scale),
+                            0.5, 1.0
+                        );
+                        if (thin_emitter) {
                             // S4 emitter pass-through (SEUS ID-241 semantics,
                             // re-deriving the never-wired point-light hook):
                             // thin emitters — torches, lanterns, glow lichen,

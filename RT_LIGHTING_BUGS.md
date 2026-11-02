@@ -1102,6 +1102,43 @@ around bright blocks in the filtered view).
   61 `type=top` → 10113 SLAB_TOP; `type=double` stays in the material class
   or the generic path (full cube, correct). Max id now 113.
 
+### Turn 16 addendum — typed slab coverage, full-cell emitter collection, near-field ramp
+
+- **Slab shadows persisted (user re-tested dfd1807)**: the typed lists
+  covered only 61 of the 103 vanilla slab names. `smooth_stone_slab` and
+  the entire wool/concrete families (plus the newer cinnabar/poplar/sulfur
+  blocks) were absent, so those slabs stayed unassigned → generic solid
+  111 → forced CUBE → full-cell occluder: exactly the old "not-full
+  blocks cast shadows" bug. Lists 10112/10113 regenerated against the
+  vanilla block registry (misode/mcmeta summary dump): 103 `type=bottom`
+  and 103 `type=top`, verified complete in both directions and free of
+  state conflicts with the `type=double`/material claims. Why typed ids
+  are mandatory for top slabs: the geometric sniff only writes SLAB_TOP
+  from the cut face, which backface culling hides when the camera looks
+  down at the slab — unmatched top slabs can never be rescued after the
+  fact. Decision recorded: id 111 does NOT fall through to the sniff
+  (modded stairs would get the sniffed half-open tread and reopen the
+  closed-staircase flooding class); modded slabs keep conservative cube
+  occlusion and need explicit typed lines if ever reported.
+- **Emitter half-cell gating**: thin emitters (torch, lantern, end rod,
+  glow lichen, …) carry an approximate half-cell shape sniffed from their
+  cross-model geometry, and emission collection was gated on it — light
+  could only leave the cell through its occupied half. Floor patches whose
+  rays crossed the open half collected nothing (a fake slab-shaped shadow
+  under an adjacent half-block), and patches crossing the occupied half
+  blew out along hard cell-aligned bands. `test_voxel_shape_hit` for
+  non-cube emitters now uses a full-cell test while keeping the
+  pass-through contract (emitters still never terminate the ray); cube
+  emitters keep their stored shape and occlusion.
+- **Near-field brightness**: the turn-15 0.35 floor dimmed the whole near
+  field ("you just decreased brightness of the torch; I liked when it was
+  brighter") without straightening the curve. Replaced by
+  `clamp(0.5 + 0.5*d, 0.5, 1.0)`: 50% at contact, full brightness at one
+  block, unchanged beyond. Every distance ≥ ~0.5 block is brighter than
+  the 0.35 version; at contact the whole emitter cell now serves as the
+  extended source, so the hotspot sits at roughly the one-block level
+  (gradual falloff, no cliff).
+
 ---
 
 *Static analysis only; no shader was executed. All line numbers refer to the tree at audit time (`6d49083`). SEUS PTGI HRR Test 2.1 GFME 1.22 RC1 was used solely to understand reference behavior (raw/accum/denoise/temporal/leak-gate/rebounce); no SEUS code is included or should be copied into this project.*
