@@ -538,16 +538,18 @@ VoxelHit trace_voxel_level(
                         // or right under a torch blows out and the very next
                         // block falls off a cliff — far steeper than
                         // Minecraft's per-block light-level decay. Ramp from
-                        // 50% at contact to full brightness at 1 block: the
-                        // hotspot flattens toward the 1-block level (gradual
-                        // falloff instead of a cliff), and every distance is
-                        // at least as bright as the previous 35%-floor
-                        // version — the emitter is never dimmed below 50%.
-                        // Beyond 1 block nothing changes. Applies to solid
-                        // hits and thin-emitter pass-through alike.
+                        // 65% at contact to full brightness at 1 block: the
+                        // hotspot stays close to the 1-block level (gradual
+                        // falloff instead of a cliff), every distance is at
+                        // least as bright as the previous 50%-floor version,
+                        // and block-source brightness is back up near the
+                        // pre-compression level (the emitter palette itself
+                        // carries the rest, EMISSION_ANCHOR). Beyond 1 block
+                        // nothing changes. Applies to solid hits and
+                        // thin-emitter pass-through alike.
                         mat.emission *= clamp(
-                            0.5 + 0.5 * (t_start_world + hit_t * scale),
-                            0.5, 1.0
+                            0.65 + 0.35 * (t_start_world + hit_t * scale),
+                            0.65, 1.0
                         );
                         if (thin_emitter) {
                             // S4 emitter pass-through (SEUS ID-241 semantics,

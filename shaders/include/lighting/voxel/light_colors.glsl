@@ -134,7 +134,7 @@ const float[48] voxel_light_level_table = float[48](
 // below the sunlight base scale (7.0 * SUN_I) so emitters stay believable
 // next to daylight. Overridable from settings.glsl (exposed as a test knob).
 #ifndef EMISSION_ANCHOR
-#define EMISSION_ANCHOR 6.0
+#define EMISSION_ANCHOR 8.0
 #endif
 
 // Vanilla lightmap response g(f) = f / (4 - 3f) (LightTexture curve):

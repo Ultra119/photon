@@ -2,12 +2,13 @@
 
 <h1 align = "center">Photon Shaders</h1>
 
-<p align = "center">A gameplay-focused shader pack for Minecraft</p>
+<p align = "center">A gameplay-focused shader pack for Minecraft, with voxel ray-traced global illumination (RTGI)</p>
 
 ![Screenshot](docs/images/rainbow.png)
 
 ## Acknowledgments
 
+* [sixthsurge](https://github.com/sixthsurge/photon) - Photon, the shader pack this fork is based on
 * Menu translations: 
   * [NakiriRuri](https://github.com/NakiriRuri) and [OrzMiku](https://github.com/Orzmiku) - Chinese Simplified (China; Mandarin)
   * [ChunghwaMC](https://github.com/ChunghwaMC) - Chinese Traditional (Taiwan; Mandarin)
@@ -24,28 +25,27 @@
 * [Sledgehammer Games](https://www.sledgehammergames.com/) - Bloom downsampling method used in Call of Duty Advanced Warfare (described [here](http://www.iryoku.com/next-generation-post-processing-in-call-of-duty-advanced-warfare))
 * http://momentsingrapics.de/ - Blue noise texture
 * [NASA Scientific Visualization Studio](https://svs.gsfc.nasa.gov/4851) - Galaxy image
+* SEUS PTGI and Minecraft-PTGI - studied as design references for the RTGI techniques (no code copied)
 
 ## Installation
 
-* This RTGI fork requires [Iris](https://irisshaders.dev/download) with compute shader and custom image support
-* OptiFine is not supported by this fork because the RTGI pipeline uses Iris compute shaders, custom images, and custom uniforms
-* Once Iris is installed, place the downloaded zip file in your `.minecraft/shaderpacks` folder
+* Requires [Iris](https://irisshaders.dev/download) with compute shader and custom image support; OptiFine is not supported
+* Place the downloaded zip file in your `.minecraft/shaderpacks` folder
 
 ### Downloads
 * [Releases](https://modrinth.com/shader/photon-shader/versions) (recommended)
-* [Lastest commit](https://github.com/sixthsurge/photon/archive/refs/heads/main.zip)
+* [Latest commit](https://github.com/Ultra119/photon/archive/refs/heads/main.zip)
 
 ## Features
+* Voxel ray-traced global illumination (RTGI) with irradiance probes
 * Fully revamped sky, lighting and water 
 * Detailed clouds with many layers and cloud types
 * Immersive weather system providing different skies each day
-* Hybrid screen-space + voxel ray-traced global illumination (RTGI)
-* Optional voxel-traced specular reflection fallback on supported profiles
+* Voxel-based colored lighting (enabled with Ultra profile, requires Iris)
 * Screen-space reflections
 * Volumetric fog
 * Soft shadows with variable-size penumbras
-* RTGI-based indirect lighting
-* Selectable ambient occlusion: GTAO (default), SSAO, or a cheap contact-AO term for RTGI setups
+* Detailed ambient occlusion (GTAO)
 * Camera effects: bloom, depth of field, motion blur
 * Much improved image quality with TAA, FXAA and CAS
 * Advanced temporal upscaling (disabled by default) for low end devices
@@ -58,23 +58,12 @@
 * AMD 
 * Intel 
 * **_NOT_** Apple Metal
-  * Compute shaders and custom images are required by this fork.
 ### Shader loaders
-* Modern Iris with `COMPUTE_SHADERS` and `CUSTOM_IMAGES` support
-* OptiFine is not supported
+* Iris - modern versions with `COMPUTE_SHADERS` and `CUSTOM_IMAGES` support
 ### Special mod support
 * [Distant Horizons](https://www.curseforge.com/minecraft/mc-mods/distant-horizons)
 * [Voxy](https://modrinth.com/mod/voxy)
-
-### Known limitations
-* The [Photonics](https://modrinth.com/mod/photonics) mod's injection files are
-  present so the pack loads cleanly, but its lighting is **not** wired into this
-  fork's GI chain. Running Photonics alongside RTGI would mean two independent
-  indirect estimators on the same surfaces. There is no Photonics menu entry, so
-  nothing advertises it. See [`shaders/photonics/README.md`](shaders/photonics/README.md).
-* LPV-based volumetric light shafts were removed with the LPV system. Coloured
-  light shafts (`AIR_FOG_COLORED_LIGHT_SHAFTS`) are independent of LPV and still
-  work.
+* [Photonics](https://modrinth.com/mod/photonics)
 
 ## Showcase videos
 

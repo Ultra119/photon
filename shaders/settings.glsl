@@ -76,7 +76,7 @@ const float wetnessHalflife         = 70.0;
   // at trace time (firefly control).
   #define RTGI_FILTER_PHI 10.0 // [4.0 6.0 8.0 10.0 12.0 16.0 24.0 32.0]
   #define RTGI_HISTORY_FRAMES 32 // [16 24 32 48 64 96 128 160]
-  #define RTGI_MAX_RADIANCE 8.0 // [2.0 3.0 4.0 6.0 8.0 12.0 16.0 32.0]
+  #define RTGI_MAX_RADIANCE 12.0 // [2.0 3.0 4.0 6.0 8.0 12.0 16.0 32.0]
   // World-space spacing of the irradiance probe grid (32^3 toroidal cache;
   // grid extent = 32 * spacing around the camera). Smaller spacing resolves
   // local color bleed (window/sun-patch bounce); 4.0 reaches further but
@@ -85,7 +85,7 @@ const float wetnessHalflife         = 70.0;
   // Emission radiance anchor (light-15 emitter radiance before EMISSION_STRENGTH).
   // Matches the raster blocklight_scale at level 15; keep it under
   // RTGI_MAX_RADIANCE so legitimate emitter hits do not saturate the firefly cap.
-  #define EMISSION_ANCHOR 6.0 // [2.0 3.0 4.0 5.0 6.0 8.0 10.0 12.0 16.0 24.0]
+  #define EMISSION_ANCHOR 8.0 // [2.0 3.0 4.0 5.0 6.0 8.0 10.0 12.0 16.0 24.0]
 
   // 32 rays + 0.80 hysteresis: each probe still refreshes every 16 frames,
   // but the per-update Monte-Carlo noise is halved and only 20% of the value

@@ -86,11 +86,15 @@ vec4 evaluate_rtgi_ray(
 
         // Fade the probe term in with distance: close hits are already
         // resolved by the per-pixel ray (their neighbours' direct light), so
-        // injecting raw probe estimates there only re-injects probe churn at
-        // the scale where per-pixel tracing is strongest (the "DDGI light
-        // keeps showing up and fading out" symptom). Far hits keep the full
-        // second bounce.
-        float probe_gate = smoothstep(1.0, 3.0, vx_hit.distance);
+        // injecting raw probe estimates there re-injects probe churn at the
+        // scale where per-pixel tracing is strongest (the "DDGI light keeps
+        // showing up and fading out" symptom). Far hits keep the full second
+        // bounce. The 0.45 floor keeps short-range bounce alive: a surface a
+        // block from a lit wall must still receive that wall's reflected
+        // light (lantern on a ledge bouncing off the wall onto the rock
+        // beside it), which a zero fade-in had silently killed at exactly
+        // the distances where bounce matters most.
+        float probe_gate = mix(0.45, 1.0, smoothstep(1.0, 3.0, vx_hit.distance));
 
         // The probe cache stores irradiance. Convert the cached indirect
         // irradiance at the hit surface back into outgoing radiance. Split
