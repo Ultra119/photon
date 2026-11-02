@@ -20,7 +20,15 @@ const vec3 rt_clipmap_size_f = vec3(float(RT_CLIPMAP_SIZE));
 const uint VOXEL_SHAPE_CUBE          = 0u; // Full 1x1x1 solid block
 const uint VOXEL_SHAPE_SLAB_BOTTOM   = 1u; // Bottom half-slab (y in 0.0 .. 0.5)
 const uint VOXEL_SHAPE_SLAB_TOP      = 2u; // Top half-slab (y in 0.5 .. 1.0)
-const uint VOXEL_SHAPE_STAIRS        = 3u; // Stairs
+// Straight stairs, split by facing x half (4-bit shape field: 3, 9-15)
+const uint VOXEL_SHAPE_STAIRS_B_N    = 3u;  // half=bottom, tall side north (z < 0.5)
+const uint VOXEL_SHAPE_STAIRS_B_E    = 9u;  // half=bottom, tall side east  (x > 0.5)
+const uint VOXEL_SHAPE_STAIRS_B_S    = 10u; // half=bottom, tall side south (z > 0.5)
+const uint VOXEL_SHAPE_STAIRS_B_W    = 11u; // half=bottom, tall side west  (x < 0.5)
+const uint VOXEL_SHAPE_STAIRS_T_N    = 12u; // half=top, tall side north
+const uint VOXEL_SHAPE_STAIRS_T_E    = 13u; // half=top, tall side east
+const uint VOXEL_SHAPE_STAIRS_T_S    = 14u; // half=top, tall side south
+const uint VOXEL_SHAPE_STAIRS_T_W    = 15u; // half=top, tall side west
 const uint VOXEL_SHAPE_PANE_OR_FENCE = 4u; // Thin fence, iron bars, or glass pane
 const uint VOXEL_SHAPE_PLANT         = 5u; // Non-solid plant / flower / crop
 const uint VOXEL_SHAPE_GLASS         = 6u; // Transparent full cube

@@ -66,7 +66,7 @@ const float wetnessHalflife         = 70.0;
 
   // RTGI filter and accumulation settings
   #define RTGI_FILTER_PHI 10.0 // [4.0 6.0 8.0 10.0 12.0 16.0 24.0 32.0]
-  #define RTGI_HISTORY_FRAMES 96 // [24 32 48 64 96 128 160]
+  #define RTGI_HISTORY_FRAMES 64 // [16 24 32 48 64 96 128 160]
   #define RTGI_MAX_RADIANCE 8.0 // [2.0 3.0 4.0 6.0 8.0 12.0 16.0 32.0]
   // Irradiance probe spacing
   #define RTGI_PROBE_SPACING 2.0 // [1.0 1.5 2.0 3.0 4.0]

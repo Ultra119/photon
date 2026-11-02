@@ -176,6 +176,8 @@ void main() {
         float total_confidence = 0.0;
         vec4 prev_sample = vec4(0.0);
         vec4 prev_aux = vec4(0.0);
+        // Resample position for the radiance blend
+        vec2 history_uv = prev_framebuffer_uv;
 
         for (int tap = 0; tap < 9 && !history_valid; ++tap) {
             vec2 tap_uv = prev_framebuffer_uv + search_taps[tap] / vec2(target_res);
@@ -213,6 +215,7 @@ void main() {
             if (depth_valid && normal_valid) {
                 history_valid = true;
                 total_confidence = depth_confidence * normal_confidence;
+                history_uv = tap_uv;
             }
         }
 
@@ -231,7 +234,22 @@ void main() {
             // Confidence keeps freshly-disoccluded pixels responsive.
             alpha = clamp(mix(1.0, alpha_temporal, total_confidence), 0.01, 1.0);
 
-            accumulated_radiance = mix(prev_sample.rgb, current_radiance, alpha);
+            // Bilinear history radiance at the reprojection point
+            vec2 hist_px = history_uv * vec2(target_res) - 0.5;
+            ivec2 hist_base = ivec2(floor(hist_px));
+            vec2 hist_f = fract(hist_px);
+            vec3 prev_rad = vec3(0.0);
+            for (int oy = 0; oy <= 1; ++oy) {
+                for (int ox = 0; ox <= 1; ++ox) {
+                    ivec2 c = clamp(hist_base + ivec2(ox, oy), ivec2(0), ivec2(target_res) - 1);
+                    float w = (ox == 0 ? 1.0 - hist_f.x : hist_f.x)
+                            * (oy == 0 ? 1.0 - hist_f.y : hist_f.y);
+                    prev_rad += (ping ? texelFetch(rtgi_history_sampler, c, 0).rgb
+                                      : texelFetch(rtgi_accum_sampler, c, 0).rgb) * w;
+                }
+            }
+
+            accumulated_radiance = mix(prev_rad, current_radiance, alpha);
             accumulated_sky = mix(prev_sky, current_sky_weight, alpha);
 
             // Track second moment (M2) for variance-guided filter
@@ -240,6 +258,23 @@ void main() {
 #if GI_DEBUG == GI_DEBUG_REJECT
             history_accepted = 1.0;
 #endif
+        } else {
+            // Soft disocclusion instead of a hard reset
+            ivec2 center_prev = clamp(
+                ivec2(prev_framebuffer_uv * vec2(target_res)),
+                ivec2(0), ivec2(target_res) - 1
+            );
+            vec4 soft_prev = ping ? texelFetch(rtgi_history_sampler, center_prev, 0)
+                                  : texelFetch(rtgi_accum_sampler, center_prev, 0);
+            vec4 soft_aux = ping ? texelFetch(rtgi_sky_history_sampler, center_prev, 0)
+                                 : texelFetch(rtgi_sky_accum_sampler, center_prev, 0);
+            vec2 soft_sky_age = unpack_sky_age(soft_aux.g);
+
+            accumulated_radiance = mix(soft_prev.rgb, current_radiance, 0.9);
+            accumulated_sky = mix(soft_sky_age.x, current_sky_weight, 0.9);
+            n_samples = 2.0;
+            alpha = 0.9;
+            m2 = mix(soft_aux.r, current_lum * current_lum, 0.9);
         }
     }
 

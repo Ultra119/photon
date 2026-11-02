@@ -43,14 +43,42 @@ bool is_voxel_terrain_stage() {
 }
 
 uint get_voxel_shape_class(uint block_id, vec3 mid_block_attr, vec3 normal) {
-    // Deterministic per-class shapes (block.10097-100101). These classes are
-    // homogeneous — every face of the cell writes the same shape — so the
-    // imageAtomicMax word can never flip-flop between geometric guesses:
-    // stairs used to be slab-sniffed (their y=0.5 tread face looks exactly
-    // like a bottom slab), leaving one half of every stair cell open and
-    // leaking light through closed staircases.
+    // Deterministic per-class shapes (block.10097-100101).
     if (block_id == 98u) {
-        return VOXEL_SHAPE_CUBE; // stairs: full cube, orientation-independent
+        return VOXEL_SHAPE_STAIRS_B_N;
+    }
+    if (block_id == 105u) {
+        return VOXEL_SHAPE_STAIRS_B_E;
+    }
+    if (block_id == 106u) {
+        return VOXEL_SHAPE_STAIRS_B_S;
+    }
+    if (block_id == 107u) {
+        return VOXEL_SHAPE_STAIRS_B_W;
+    }
+    if (block_id == 104u) {
+        return VOXEL_SHAPE_STAIRS_T_N;
+    }
+    if (block_id == 108u) {
+        return VOXEL_SHAPE_STAIRS_T_E;
+    }
+    if (block_id == 109u) {
+        return VOXEL_SHAPE_STAIRS_T_S;
+    }
+    if (block_id == 110u) {
+        return VOXEL_SHAPE_STAIRS_T_W;
+    }
+    if (block_id == 111u) {
+        // Generic solid for unassigned terrain (the 0u / >127u remap
+        // target): assume a full cube, matching the old stone-class
+        // behaviour.
+        return VOXEL_SHAPE_CUBE;
+    }
+    if (block_id == 112u) {
+        return VOXEL_SHAPE_SLAB_BOTTOM; // block.10112, slabs type=bottom
+    }
+    if (block_id == 113u) {
+        return VOXEL_SHAPE_SLAB_TOP; // block.10113, slabs type=top
     }
     if (block_id == 99u) {
         return VOXEL_SHAPE_PANE_OR_FENCE; // fences: thin center post only
@@ -67,7 +95,7 @@ uint get_voxel_shape_class(uint block_id, vec3 mid_block_attr, vec3 normal) {
         // conservative full cube — no leaks, status-quo occlusion.
         return VOXEL_SHAPE_CUBE;
     }
-    if (block_id == 2u || block_id == 3u || block_id == 14u || block_id == 15u) {
+    if (block_id == 2u || block_id == 3u || block_id == 4u || block_id == 14u || block_id == 15u) {
         return VOXEL_SHAPE_PLANT;
     }
     if (block_id == 80u || (block_id >= 81u && block_id <= 96u)) {
@@ -106,10 +134,8 @@ uint get_voxel_shape_class(uint block_id, vec3 mid_block_attr, vec3 normal) {
 bool should_voxelize(uint block_id) {
     bool is_transparent_block = (block_id == 1u || block_id == 18u || block_id == 28u || block_id == 30u || block_id == 80u);
     bool is_emitter = (32u <= block_id && block_id < 80u && block_id != 58u && block_id != 63u);
-    // 102 = upper halves of two-block-tall plants / tall aquatic plants
-    // (block.10102, was misfiled under 4 = stone and became a phantom solid
-    // "colored shadow" cube in the top half of grass/flowers).
-    bool is_non_solid = (block_id == 2u || block_id == 3u || block_id == 14u || block_id == 15u || block_id == 58u || block_id == 102u);
+    // 4 = upper halves of two-block-tall plants (block.10004).=
+    bool is_non_solid = (block_id == 2u || block_id == 3u || block_id == 4u || block_id == 14u || block_id == 15u || block_id == 58u);
     bool is_stained_glass = (block_id >= 81u && block_id <= 96u);
 
     return (!is_non_solid || is_emitter || is_stained_glass)
@@ -134,10 +160,11 @@ void update_rt_voxel_grid(
 #endif
     vec3 world_pos = scene_pos + cameraPosition;
 
-    // Remap 0u (default unassigned terrain like stone, dirt, deepslate) to stone ID 4u
+    // Remap 0u (default unassigned terrain like stone, dirt, deepslate) to
+    // the generic solid ID 111
 #if !defined PROGRAM_GBUFFERS_WATER
     if (block_id == 0u) {
-        block_id = 4u;
+        block_id = 111u;
     }
 #endif
 
@@ -147,7 +174,7 @@ void update_rt_voxel_grid(
 
     // Clamp block ID to valid range
     if (block_id > 127u) {
-        block_id = 4u;
+        block_id = 111u;
     }
 
     bool is_translucent = (block_id == 5u || block_id == 14u || block_id == 15u || (80u <= block_id && block_id <= 96u));
