@@ -519,6 +519,16 @@ VoxelHit trace_voxel_level(
                         t, clamped_next_t, entry_norm, hit_t, hit_norm
                     );
                     if (did_hit) {
+                        // Near-field emitter compression. Ray transport gives
+                        // emitter irradiance ~1/d^2, so the block containing
+                        // or right under a torch blows out and the very next
+                        // block falls off a cliff — far steeper than
+                        // Minecraft's per-block light-level decay. Compress
+                        // only the near field: contributions closer than
+                        // ~1 block scale down to a 35% floor; at a block or
+                        // more nothing changes. Applies to solid hits and
+                        // thin-emitter pass-through alike.
+                        mat.emission *= clamp(t_start_world + hit_t * scale, 0.35, 1.0);
                         if (level == 0 && sample_data.is_emitter
                             && shape != VOXEL_SHAPE_CUBE) {
                             // S4 emitter pass-through (SEUS ID-241 semantics,

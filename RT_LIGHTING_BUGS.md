@@ -1073,6 +1073,35 @@ around bright blocks in the filtered view).
   sigma_l ceiling 2.0 → 1.0 (bright-block edges die as exp(-(dL/1)^2);
   same-surface noise still passes).
 
+### Turn 15 addendum — grass id regression, emitter near-field, top slabs, bloom revert
+
+- **Bloom changes reverted** (user: "changed nothing"): à-trous luma weight
+  back to the original `exp(-dL/sigma)` with `sigma = PHI*sqrt(var)`
+  uncapped, `RTGI_FILTER_PHI` back to 10.0 with the original option list.
+  The temporal changes (history 32, bilinear resample, soft disocclusion)
+  stay — separate symptoms.
+- **Grass regression**: turn-11 renamed `block.10004` → `10102` to keep
+  upper plant halves out of the voxel grid, but the id IS the vertex
+  material `MATERIAL_TALL_PLANTS_UPPER` (=4): mask 102 lost wind sway and
+  the plant light handling ("top block static, doesn't let light through").
+  Restored `block.10004`; the phantom-shadow fix now works the right way —
+  id 4 added to `should_voxelize`'s non-solid list (never written), and the
+  unassigned-terrain remaps (0u, >127u) moved to a new generic solid id 111
+  (forced CUBE, default textured palette) so stone/dirt keep occluding.
+  Id 4 also joins the PLANT shape class as defense in depth.
+- **Emitter near-field**: ray transport gives ~1/d², so the block
+  containing/adjacent to a torch blows out and the next block falls off a
+  cliff — far steeper than Minecraft's per-block light decay. Emitter
+  contributions (solid hits and thin pass-through) inside ~1 block are now
+  scaled to a 35% floor (`clamp(dist, 0.35, 1.0)`); beyond a block nothing
+  changes.
+- **Top-slab shadow**: slabs had no honest shape (unlisted → generic cube;
+  listed in material lines → geometric sniff fell through to OTHER/full
+  box), so a top slab occluded the air beneath it. Vanilla slabs are now
+  partitioned by blockstate `type`: 61 `type=bottom` → 10112 SLAB_BOTTOM,
+  61 `type=top` → 10113 SLAB_TOP; `type=double` stays in the material class
+  or the generic path (full cube, correct). Max id now 113.
+
 ---
 
 *Static analysis only; no shader was executed. All line numbers refer to the tree at audit time (`6d49083`). SEUS PTGI HRR Test 2.1 GFME 1.22 RC1 was used solely to understand reference behavior (raw/accum/denoise/temporal/leak-gate/rebounce); no SEUS code is included or should be copied into this project.*

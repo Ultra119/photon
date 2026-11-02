@@ -83,6 +83,18 @@ uint get_voxel_shape_class(uint block_id, vec3 mid_block_attr, vec3 normal) {
     if (block_id == 110u) {
         return VOXEL_SHAPE_STAIRS_T_W;
     }
+    if (block_id == 111u) {
+        // Generic solid for unassigned terrain (the 0u / >127u remap
+        // target): assume a full cube, matching the old stone-class
+        // behaviour.
+        return VOXEL_SHAPE_CUBE;
+    }
+    if (block_id == 112u) {
+        return VOXEL_SHAPE_SLAB_BOTTOM; // block.10112, slabs type=bottom
+    }
+    if (block_id == 113u) {
+        return VOXEL_SHAPE_SLAB_TOP; // block.10113, slabs type=top
+    }
     if (block_id == 99u) {
         return VOXEL_SHAPE_PANE_OR_FENCE; // fences: thin center post only
     }
@@ -98,7 +110,7 @@ uint get_voxel_shape_class(uint block_id, vec3 mid_block_attr, vec3 normal) {
         // conservative full cube — no leaks, status-quo occlusion.
         return VOXEL_SHAPE_CUBE;
     }
-    if (block_id == 2u || block_id == 3u || block_id == 14u || block_id == 15u) {
+    if (block_id == 2u || block_id == 3u || block_id == 4u || block_id == 14u || block_id == 15u) {
         return VOXEL_SHAPE_PLANT;
     }
     if (block_id == 80u || (block_id >= 81u && block_id <= 96u)) {
@@ -141,10 +153,12 @@ uint get_voxel_shape_class(uint block_id, vec3 mid_block_attr, vec3 normal) {
 bool should_voxelize(uint block_id) {
     bool is_transparent_block = (block_id == 1u || block_id == 18u || block_id == 28u || block_id == 30u || block_id == 80u);
     bool is_emitter = (32u <= block_id && block_id < 80u && block_id != 58u && block_id != 63u);
-    // 102 = upper halves of two-block-tall plants / tall aquatic plants
-    // (block.10102, was misfiled under 4 = stone and became a phantom solid
-    // "colored shadow" cube in the top half of grass/flowers).
-    bool is_non_solid = (block_id == 2u || block_id == 3u || block_id == 14u || block_id == 15u || block_id == 58u || block_id == 102u);
+    // 4 = upper halves of two-block-tall plants (block.10004). The id is
+    // also the vertex material MATERIAL_TALL_PLANTS_UPPER (wind sway,
+    // plant light handling), so it must KEEP its id — the phantom solid
+    // "colored shadow" cube is fixed by never voxelizing it here instead.
+    // Unassigned terrain remaps to 111 (generic solid), not 4.
+    bool is_non_solid = (block_id == 2u || block_id == 3u || block_id == 4u || block_id == 14u || block_id == 15u || block_id == 58u);
     bool is_stained_glass = (block_id >= 81u && block_id <= 96u);
 
     return (!is_non_solid || is_emitter || is_stained_glass)
@@ -169,10 +183,12 @@ void update_rt_voxel_grid(
 #endif
     vec3 world_pos = scene_pos + cameraPosition;
 
-    // Remap 0u (default unassigned terrain like stone, dirt, deepslate) to stone ID 4u
+    // Remap 0u (default unassigned terrain like stone, dirt, deepslate) to
+    // the generic solid ID 111 — NOT 4: id 4 is the tall-plant-upper
+    // material and must stay unvoxelized.
 #if !defined PROGRAM_GBUFFERS_WATER
     if (block_id == 0u) {
-        block_id = 4u;
+        block_id = 111u;
     }
 #endif
 
@@ -180,10 +196,11 @@ void update_rt_voxel_grid(
     if (19u <= block_id && block_id < 23u) block_id = 46u;
     if (23u <= block_id && block_id < 27u) block_id = 58u;
 
-    // The packed voxel payload has a 7-bit block ID. Current IDs stop at 96;
-    // map anything unexpected to stone instead of wrapping into emitter IDs.
+    // The packed voxel payload has a 7-bit block ID. Current IDs stop at 113;
+    // map anything unexpected to generic solid 111 instead of wrapping into
+    // emitter IDs (and never to 4 — that is the tall-plant-upper material).
     if (block_id > 127u) {
-        block_id = 4u;
+        block_id = 111u;
     }
 
     bool is_translucent = (block_id == 5u || block_id == 14u || block_id == 15u || (80u <= block_id && block_id <= 96u));

@@ -207,10 +207,11 @@ VoxelMaterial get_voxel_material(uint block_id, vec3 fallback_color) {
         // stored (textured x tint) albedo, so sunlit wool bounces its color
         // like any solid block. The partial-block classes 98+105-107
         // (bottom stairs by facing), 104+108-110 (top stairs), 99 (fences),
-        // 100 (carpet/plates/snow covers), 101 (beds), 102 (upper plant
-        // halves, never voxelized) and 103 (wooden slabs) hit the default
-        // material below: textured albedo, solid, opaque — their
-        // occlusion shape comes from get_voxel_shape_class.
+        // 100 (carpet/plates/snow covers), 101 (beds), 103 (wood doubles),
+        // 111 (generic unassigned solid), 112/113 (slabs bottom/top) hit
+        // the default material below: textured albedo, solid, opaque —
+        // their occlusion shape comes from get_voxel_shape_class. (Id 4 =
+        // upper plant halves is never voxelized at all.)
         case 97u:
             mat.albedo = (max_of(fallback_color) > 0.01) ? fallback_color : vec3(0.75);
             mat.roughness = 0.85;

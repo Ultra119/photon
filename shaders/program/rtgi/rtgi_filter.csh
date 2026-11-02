@@ -85,14 +85,13 @@ const float bspline_kernel[5] = float[5](
 );
 
 // Luminance edge-stopping constant (educational Minecraft-PTGI: 10.0).
-// phi_l = PHI_COLOUR * sqrt(variance), capped by a fixed ceiling at the
-// use site. Two past regressions bracket the design: the brightness-scaled
-// clamp max(center_m1 + 0.05, 0.35) made phi track the center's own
-// brightness, so any outlier differing by more than the center's luminance
-// was rejected and the filter became a pass-through exactly where denoising
-// was needed; a fully UNCAPPED phi instead erased edge stopping during
-// variance spikes and bloomed bright blocks. The fixed ceiling keeps
-// confetti smoothing while restoring hard-edge stopping.
+// phi_l = PHI_COLOUR * sqrt(variance), deliberately UNCAPPED: the previous
+// brightness-scaled clamp max(center_m1 + 0.05, 0.35) made phi track the
+// center's own brightness, so any outlier differing by more than the
+// center's luminance was rejected and the filter degenerated into a
+// pass-through exactly where denoising was needed. (A Gaussian weight and
+// a fixed ceiling were tried here for the square-bloom report and reverted
+// per user: they changed nothing observable.)
 // Value exposed as RTGI_FILTER_PHI in settings.glsl (test knob).
 #define PHI_COLOUR RTGI_FILTER_PHI
 
@@ -181,19 +180,8 @@ void main() {
     #endif
     float sigma_z = max(center_dist * 0.05, 0.10) * float(step_size);
 
-    // Luminance tolerance: variance-guided, with a fixed ceiling. The old
-    // brightness-scaled clamp is still rejected (it made phi track the
-    // center's own luminance and killed exactly the smoothing confetti
-    // dots needed), but a pure UNCAPPED phi lets variance spikes — camera
-    // motion, fresh history, emitter contrast — blow sigma_l up until every
-    // weight_luma ~ 1, and the à-trous kernel then paints a symmetric
-    // square bloom around bright blocks (spreads equally outward and
-    // inward; the footprint scales with the BUFFER texel size, so it
-    // halves at RTGI_RESOLUTION full and doubles at half — the reported
-    // behaviour). Ceiling 1.0: a bright-block edge of a few radiance units
-    // dies as exp(-(dL/1)^2), while same-surface noise (dL ~ 1.4*sigma_n)
-    // still passes when PHI*sqrt(var) sits at the floor.
-    float sigma_l = min(PHI_COLOUR * sqrt(center_var + 1e-6), 1.0);
+    // Luminance tolerance: variance-guided, UNCAPPED (see PHI_COLOUR above).
+    float sigma_l = PHI_COLOUR * sqrt(center_var + 1e-6);
 
     vec3 sum_radiance = vec3(0.0);
     float sum_sky_weight = 0.0;
@@ -259,17 +247,9 @@ void main() {
                 ? mix(4.0, 1.0, var_normalized)
                 : pow(normal_dot, sigma_n);
 
-            // 3. Variance-guided luminance weight. Gaussian form instead of
-            // exp(-d/sigma): same noise throughput (pairwise noise diff ~1.4
-            // sigma_noise, sigma_l = PHI*sqrt(var) ~ 2x that) but the tail
-            // dies as exp(-(d/sigma)^2), so strong edges — bright window /
-            // emitter blocks against dark rooms — are stopped hard while
-            // same-surface noise still merges. The exponential form needed
-            // sigma_l far below the noise floor to stop an edge, which is
-            // exactly the static symmetric bloom (inside darkens, outside
-            // brightens) reported around bright blocks.
+            // 3. Variance-guided luminance weight (preserves high-confidence indirect contrast)
             float luma_diff = abs(n_m1 - center_m1);
-            float weight_luma = exp(-(luma_diff * luma_diff) / max(sigma_l * sigma_l, 1e-8));
+            float weight_luma = exp(-luma_diff / sigma_l);
 
             float weight = weight_spatial * weight_depth * weight_normal * weight_luma;
 
