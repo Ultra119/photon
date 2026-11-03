@@ -168,7 +168,7 @@ vec4 sample_ddgi_irradiance(
                 // and ceiling receivers, so trilinear blending drags its
                 // colour through the wall — the room-corner "backlight" leak.
                 // Only meaningfully weighted probes pay for the test.
-                if (weight > 0.02) {
+                if (weight > 0.10) {
                     float seg_len = length(to_probe);
                     if (seg_len > 1e-3
                         && trace_any_hit(

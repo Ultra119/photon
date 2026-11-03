@@ -264,8 +264,9 @@ float trace_sun_visibility(
         // against the surface the march started from.
         if (i > 0) {
             uint packed = texelFetch(voxel_grid, rt_clip_texel(current_voxel), 0).r;
-            VoxelSample sample_data = unpack_voxel_data(packed);
-            if (sample_data.block_id != 0u) {
+            if (packed != 0u) {
+                VoxelSample sample_data = unpack_voxel_data(packed);
+                if (sample_data.block_id != 0u) {
                 VoxelMaterial mat =
                     get_voxel_material(sample_data.block_id, sample_data.color);
                 // Glass/tinted materials are non-solid in the material table
@@ -286,6 +287,7 @@ float trace_sun_visibility(
                     }
                 }
             }
+        }
         }
 
         float next_t = min(min(t_max.x, t_max.y), t_max.z);
@@ -491,8 +493,9 @@ VoxelHit trace_voxel_level(
 
         if (current_voxel != origin_voxel && current_voxel != origin_voxel_ray) {
             uint packed = texelFetch(voxel_grid, rt_clip_texel(current_voxel), 0).r;
-            VoxelSample sample_data = unpack_voxel_data(packed);
-            if (sample_data.block_id != 0u) {
+            if (packed != 0u) {
+                VoxelSample sample_data = unpack_voxel_data(packed);
+                if (sample_data.block_id != 0u) {
                 VoxelMaterial mat = get_voxel_material(sample_data.block_id, sample_data.color);
                 if (level > 0) {
                     // Coarse clipmap cells are occupancy only. imageAtomicMax
@@ -579,6 +582,7 @@ VoxelHit trace_voxel_level(
                     }
                 }
             }
+        }
         }
 
         if (t_max.x < t_max.y) {
@@ -680,7 +684,7 @@ bool trace_any_hit(
     vec3 mask = vec3(0.0);
     float t = 0.0;
 
-    const int MAX_STEPS = voxel_dda_max_steps;
+    int MAX_STEPS = min(voxel_dda_max_steps, int(ceil(max_dist * 1.8)) + 2);
     for (int i = 0; i < MAX_STEPS; ++i) {
         if (!is_inside_voxel_grid(current_voxel) || t > max_dist) {
             break;

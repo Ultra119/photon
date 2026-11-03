@@ -117,6 +117,6 @@ ivec3 clamp_to_voxel_grid(ivec3 pos) {
 const float rt_scene_max_distance =
     float(RT_CLIPMAP_SIZE) * float(1 << (RT_COVERAGE_LEVELS - 1)) * 0.5 * 1.73205080757;
 
-const int voxel_dda_max_steps = RT_CLIPMAP_SIZE * 3 + 8;
+const int voxel_dda_max_steps = (RT_CLIPMAP_SIZE * 7) / 4 + 4;
 
 #endif // INCLUDE_LIGHTING_VOXEL_CONSTANTS

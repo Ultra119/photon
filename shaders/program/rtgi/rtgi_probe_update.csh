@@ -14,7 +14,7 @@
 #include "/include/global.glsl"
 
 layout(local_size_x = 256) in;
-const ivec3 workGroups = ivec3(8, 1, 1); // 2048 probes/frame, 16-frame full cycle
+const ivec3 workGroups = ivec3(4, 1, 1); // 1024 probes/frame, 32-frame full cycle
 
 layout(rgba16f) uniform image3D ddgi_irradiance_img;
 layout(rgba16f) uniform image3D ddgi_direction_img;
