@@ -219,6 +219,7 @@ void main() {
     float sample_count = current_spp;
     float alpha = 1.0;
     float reset_reason = PT_RESET_FIRST; // no history was available at all
+    float rejection = 0.0;
     vec3 accumulated_radiance = current_radiance;
     float accumulated_sky = current_sky_weight;
     // M2 moment seed: center luminance squared plus the local raw variance so
@@ -348,31 +349,72 @@ void main() {
             // --- P2 adaptive responsiveness --------------------------------
             //
             // Kappa drives rejection from a stored lightmap value; Photon has
-            // no free aux channel to store one, but it does track M2, so it
-            // can ask the sharper question instead: how far is this frame's
-            // sample from the history mean, measured in the history's OWN
-            // sample noise? M1 is the EMA of sample luminance and
-            // var = M2 - M1^2 is the variance of ONE sample, so a z near 1 is
-            // ordinary Monte-Carlo noise and a z of several means the light
-            // itself changed.
+            // no free aux channel to store one, so it compares two estimates
+            // it already has: the spatially averaged current frame (3x3 mean)
+            // against the temporal history mean, in units of the local sample
+            // noise. prev_var = M2 - M1^2 is the variance of ONE stored
+            // sample, but it is only used to bound the history side; the test
+            // itself is driven by the spatial sigma, which is measured from
+            // nine samples instead of one.
             //
             // This raises alpha rather than clipping the history VALUE, which
             // is why it is not the variance clip this pack deliberately does
             // not have: nothing moves toward the new sample except by
             // blending, so the estimate cannot pump in brightness the way a
             // clamped history does.
-            float prev_m1 = dot(prev_rad, luminance_weights);
+            //
+            // M1 comes from the same point-sampled tap as M2, NOT from the
+            // bilinear radiance fetch used for the blend. Mixing the two put
+            // an interpolated mean into a point-sampled second moment, and at
+            // any edge that drove var = M2 - M1^2 to zero -- and z with it
+            // straight through the ceiling.
+            float prev_m1 = dot(prev_sample.rgb, luminance_weights);
             float prev_var = max(prev_aux.r - prev_m1 * prev_m1, 0.0);
-            float z_score = abs(current_lum - prev_m1)
-                / (sqrt(prev_var) + RTGI_ADAPT_SIGMA_EPS);
 
-            float rejection = smoothstep(RTGI_ADAPT_LO, RTGI_ADAPT_HI, z_score)
-                * RTGI_ADAPT_STRENGTH;
-            bool rejected = rejection > 0.05;
+            // The "current" side of the test is the 3x3 neighbourhood MEAN,
+            // not this pixel's single raw sample. At one ray per pixel a single
+            // sample carries a standard deviation comparable to the signal, so
+            // no threshold separates "the light changed" from "Monte-Carlo"
+            // when the test is handed one sample -- which is what the first
+            // version did, and it put clumps and raw dots all over the image
+            // at every usable strength. Nine independent samples are three
+            // times quieter, which is the whole margin.
+            //
+            // The neighbourhood already spans surfaces at geometric edges, and
+            // that makes this test self-limiting there: `raw_sigma` inflates
+            // with the same mismatch, so the denominator grows with it.
+            float spatial_lum = dot(raw_m1, luminance_weights);
+            float spatial_sigma = sqrt(max(
+                dot(raw_sigma * raw_sigma, luminance_weights * luminance_weights),
+                0.0
+            ));
+            float z_score = abs(spatial_lum - prev_m1)
+                / (spatial_sigma * (1.0 / 3.0) + RTGI_ADAPT_SIGMA_EPS);
 
             bool accumulating = static_state.camera_static
                 && static_state.projection_static
                 && raw_finite;
+
+            // The test cannot tell "the light changed" from "this pixel is no
+            // longer measuring the same surface", so it is only asked when the
+            // reprojection is trusted and the history is long enough to have a
+            // mean worth testing against. On a pan the reprojected history and
+            // the current raw sample disagree by construction; firing there is
+            // how an adaptive term turns into the motion alpha this pack
+            // removed on purpose.
+            bool adapt_allowed = accumulating
+                && total_confidence >= RTGI_ADAPT_MIN_CONFIDENCE
+                && prev_count >= RTGI_ADAPT_MIN_SAMPLES;
+
+            // Assigned, not declared: the converged flag at the end of main()
+            // reads the outer `rejection`, and a shadowed local would leave it
+            // at zero for every pixel that took this branch.
+            rejection = adapt_allowed
+                ? smoothstep(RTGI_ADAPT_LO, RTGI_ADAPT_HI, z_score)
+                    * RTGI_ADAPT_STRENGTH
+                : 0.0;
+            bool rejected = rejection > 0.05;
+
             sample_count = accumulating
                 ? min(prev_count + current_spp, float(RTGI_SPP_CAP))
                 : max(prev_count, current_spp);
@@ -392,19 +434,14 @@ void main() {
             alpha_temporal = max(alpha_temporal, min_alpha);
             alpha_temporal = max(alpha_temporal, rejection);
 
-            // A rejected history is partly stale, and 1/alpha IS the effective
-            // history length, so shorten the count to match instead of leaving
-            // a pixel that claims 128 samples of evidence while blending as if
-            // it had three. The floor above deliberately does NOT shorten the
-            // count: it is a steady-state responsiveness guarantee, not a
-            // statement about how much evidence is behind the estimate.
-            if (rejected) {
-                sample_count = clamp(
-                    current_spp / alpha_temporal,
-                    current_spp,
-                    float(RTGI_SPP_CAP)
-                );
-            }
+            // The count is deliberately NOT shortened by a rejection. An
+            // earlier version set it to spp/alpha, which is self-consistent
+            // and wrong in practice: one z spike dropped a converged pixel
+            // from 128 samples to 3, and at 1 sample per frame it then took
+            // about two seconds to climb back -- the "recovers 1-2 seconds
+            // after the camera stops" behaviour, and the clumps that stayed.
+            // The count is accumulated evidence; the floor and the rejection
+            // are responsiveness overlays on top of it.
 
             reset_reason = !accumulating
                 ? (static_state.projection_static
@@ -512,6 +549,9 @@ void main() {
     float reactive = 1.0 - clamp01(
         (sample_count - current_spp) / max(float(RTGI_SPP_CAP) - current_spp, 1.0)
     );
-    float converged = step(float(RTGI_SPP_CAP) - 0.5, sample_count);
+    // A pixel that just rejected its history is not converged, whatever its
+    // sample count says.
+    float converged = step(float(RTGI_SPP_CAP) - 0.5, sample_count)
+        * (1.0 - step(0.05, rejection));
     write_state(texel, reset_reason, reactive, valid_path_fraction, converged);
 }

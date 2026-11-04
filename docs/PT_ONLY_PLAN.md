@@ -386,12 +386,71 @@ within 10% of the new value):
 | 0.75 | 9 |
 | 1.00 | 3 |
 
+**First in-game run (2026-11-04): the adaptive rejection as first shipped was
+worse than off, at every strength.** Reported: at 0.5 persistent low-frequency
+clumps (dark in the highlights, light in the shadows); at 0.75 raw
+high-frequency dark dots; at 1.0 bright dots as well; at 0 stable. At 1.0 any
+camera motion suppressed denoising entirely — raw dots everywhere, recovering
+1–2 s after the camera stopped, with the light stable only within ~1.5 blocks
+of a source. `GI_DEBUG_RESET` showed dots flashing over everything plus
+screen-fixed pink/purple horizontal bands.
+
+Four defects, all in the adaptive work (the cap and the floor were not
+implicated):
+
+1. **The test statistic was a single raw sample.** At one ray per pixel the
+   sample's own sigma is comparable to the signal, so no threshold separates
+   "the light changed" from "Monte-Carlo". Measured on the CPU model
+   (4000 frames, Gaussian with a 5% heavy tail, sigma 0.25 on a 0.60 signal):
+   the shipped version was **9.8× noisier** than adaptive-off at full strength.
+   Fixed by testing the **3×3 neighbourhood mean** instead (nine independent
+   samples, three times quieter) and dividing by the neighbourhood's sigma over
+   three. That is also self-limiting at geometric edges, where the
+   neighbourhood spans surfaces and inflates the same sigma it is divided by.
+2. **No gate on motion.** On a pan the reprojected history and the current
+   frame disagree by construction, so z was enormous and the field was dumped —
+   exactly the motion alpha this pack removed on purpose. Now gated on the
+   static-state detector, on reprojection confidence ≥ 0.9, and on a history of
+   at least 16 samples (which also breaks the
+   reject → short history → reject feedback loop).
+3. **A rejection shortened the sample count** (`count = spp/alpha`). One z
+   spike dropped a converged pixel from 128 samples to 3, and at one sample per
+   frame that took about two seconds to rebuild — the observed recovery time,
+   and why the clumps stayed. Reverted: the count is accumulated evidence; the
+   floor and the rejection are responsiveness overlays on top of it, and the
+   `converged` flag now accounts for a rejection instead.
+4. **The reset debug view read a packed reason code bilinearly.** Averaging
+   code 3 with code 9 reports a reason that was never written, which painted
+   the screen-fixed bands between two real colours. Now point-sampled with
+   `texelFetch`, like every other packed field in the pack.
+
+Measured after the fix (same model, 3×3 statistic, sigma 0.25, signal 0.60,
+step 0.30 → 1.20, within 10% of the new value):
+
+| statistic | thresholds | noise vs off | false rejects | frames to a step |
+|---|---|---:|---:|---:|
+| single raw sample (shipped first) | 2 / 6 σ | **×9.8** | 27 / 4000 | 17 at strength 1.0 |
+| 3×3 mean | 1.5 / 6 σ | ×1.12 | 5 / 1200 | 20 at strength 1.0 |
+| **3×3 mean (shipped)** | **2 / 8 σ** | **×1.00** | **0 / 1200** | 272 off · 156 @0.25 · 130 @0.5 · 57 @1.0 |
+| 3×3 mean | 4 / 12 σ | ×1.00 | 0 / 1200 | 272 off · 215 @0.25 · 187 @0.5 · 170 @1.0 |
+
+So the honest trade: the first version's 17-frame response cost 9.8× the noise;
+2/8 buys a 2.1× response at 0.5 and 4.8× at 1.0 for no measurable noise at all.
+`RTGI_ADAPT_STRENGTH` defaults to 0.5.
+
+The measurement is a CPU *model* of the recurrence, so a shader edit can leave
+it green while shipping something else. `pt_state_test.py` therefore also
+asserts the wiring in the source: the 3×3 mean, the sigma/3, all three gates,
+no count shortening, and the point-sampled debug read. All three regressions
+were verified to fail it.
+
 Deferred, with the reason: **the 7×7 spatial preaccumulation fallback**. It is
 the most expensive of the four tasks (49 taps on every invalid-history pixel),
 and P3 redesigns spatial filtering anyway, so building it now means building it
 twice. It gets its own gate and its own before/after captures.
 
-A/B to run before closing P2:
+A/B to run before closing P2 (the first three already ran once, against the
+defective statistic, and need repeating against this one):
 
 1. Stand still in a torch-lit interior and place a torch: with
    `RTGI_ADAPT_STRENGTH 0` the bounce crawls in over seconds; at 0.5 it should

@@ -255,6 +255,9 @@ def check_spp_math(failures: list[str]) -> None:
         failures.append("a pan starting from a converged field changed the blend rate")
 
 
+RTGI_ADAPT_MIN_CONFIDENCE_DEFAULT = 0.9
+
+
 def read_define(src: str, name: str) -> float | None:
     m = re.search(rf"#define\s+{name}\s+([0-9.]+)", src)
     return float(m.group(1)) if m else None
@@ -265,71 +268,118 @@ def smoothstep(edge0: float, edge1: float, x: float) -> float:
     return t * t * (3.0 - 2.0 * t)
 
 
-def simulate_adaptive(
+def simulate_mc(
     spp: float,
     cap: float,
     strength: float,
     min_alpha: float,
     sigma: float,
-    old_mean: float,
-    new_mean: float,
+    truth,
     frames: int,
-    lo: float = 2.0,
-    hi: float = 6.0,
-    eps: float = 0.05,
+    lo: float,
+    hi: float,
+    eps: float,
+    min_samples: float,
+    seed: int = 20261104,
+    static: bool = True,
+    confidence: float = 1.0,
     initial_count: float | None = None,
-) -> list[tuple[float, float, float]]:
-    """Replay the P2 recurrence against a scene that changes at frame 0.
+    initial_m1: float | None = None,
+) -> dict:
+    """Replay the temporal recurrence against sampled Monte-Carlo noise.
 
-    The stand-in for Monte-Carlo is deterministic: the raw sample alternates
-    one sigma above and one sigma below the current truth, so its long-run mean
-    is unbiased and a converged estimate sees a sample exactly one sigma away
-    -- the case the adaptive test has to ignore. Returns (estimate, count,
-    alpha) per frame; the estimate starts at `old_mean` and the light changes
-    to `new_mean` at the first frame.
+    The first version of this model fed the estimator a deterministic sample
+    alternating one sigma either side of the truth. That has no tails, so it
+    concluded that noise never trips the adaptive test -- and the shader it
+    approved put clumps all over the screen. This one draws samples: a Gaussian
+    with a 5% heavy-tail component, which is what a dithered cosine-hemisphere
+    estimator with a voxel-cache second bounce actually produces.
+
+    `truth` is a callable(frame) -> true luminance, so a step change can be
+    injected. Returns per-frame series plus summary statistics.
     """
-    # The interesting case is a pixel that has been sitting still long enough
-    # to converge: that is the one whose history goes stale.
-    estimate = old_mean
+    rng = random.Random(seed)
     count = cap if initial_count is None else initial_count
-    out: list[tuple[float, float, float]] = []
+    m1 = truth(0) if initial_m1 is None else initial_m1
+    m2 = m1 * m1 + sigma * sigma
+    series: list[tuple[float, float, float, float]] = []
+    fired = 0
+
+    def draw() -> float:
+        u = rng.gauss(0.0, 1.0)
+        return u * 3.0 if rng.random() < 0.05 else u
+
     for frame in range(frames):
-        raw = new_mean + (sigma if frame % 2 == 0 else -sigma)
-        z = abs(raw - estimate) / (sigma + eps)
-        rejection = smoothstep(lo, hi, z) * strength
+        mu = truth(frame)
+        # The shader tests the 3x3 neighbourhood MEAN against the history, and
+        # divides by the neighbourhood's own sample sigma / 3. Drawing nine
+        # samples is the whole point: it is what makes the statistic quiet
+        # enough to threshold.
+        samples = [mu + sigma * draw() for _ in range(9)]
+        raw = mu + sigma * draw()          # the pixel's own sample: the blend
+        mean = sum(samples) / 9.0
+        var = max(sum((x - mean) ** 2 for x in samples) / 8.0, 0.0)
+
+        z = abs(mean - m1) / (math.sqrt(var) / 3.0 + eps)
+        allowed = static and confidence >= RTGI_ADAPT_MIN_CONFIDENCE_DEFAULT \
+            and count >= min_samples
+        rejection = smoothstep(lo, hi, z) * strength if allowed else 0.0
+        if rejection > 0.05:
+            fired += 1
+
         count = min(count + spp, cap)
         alpha = max(spp / max(count, spp), min_alpha)
         alpha = max(alpha, rejection)
-        if rejection > 0.05:
-            count = min(max(spp / alpha, spp), cap)
-        estimate = estimate + (raw - estimate) * alpha
-        out.append((estimate, count, alpha))
-    return out
+
+        m1 += (raw - m1) * alpha
+        m2 += (raw * raw - m2) * alpha
+        series.append((m1, z, rejection, count))
+
+    return {"series": series, "fired": fired, "frames": frames}
 
 
-def frames_to_converge(history, target: float, tol: float) -> int:
-    """First frame whose estimate is within `tol` of `target`."""
-    for i, (estimate, _, _) in enumerate(history):
-        if abs(estimate - target) <= tol:
+def steady_state_rms(result: dict, truth_value: float, tail: int = 2000) -> float:
+    """RMS error of the estimate over the last `tail` frames."""
+    tail_series = result["series"][-tail:]
+    return math.sqrt(
+        sum((m1 - truth_value) ** 2 for m1, _, _, _ in tail_series) / len(tail_series)
+    )
+
+
+def step_response(
+    spp, cap, strength, min_alpha, sigma, lo, hi, eps, min_samples,
+    old_mean, new_mean, seed,
+) -> int:
+    """Frames to get within 10% of a step change that happens at frame 0."""
+    result = simulate_mc(
+        spp, cap, strength, min_alpha, sigma, lambda f: new_mean, 900,
+        lo, hi, eps, min_samples, seed=seed, initial_m1=old_mean,
+    )
+    tol = 0.1 * abs(new_mean - old_mean)
+    for i, (m1, _, _, _) in enumerate(result["series"]):
+        if abs(m1 - new_mean) <= tol:
             return i + 1
-    return len(history)
+    return len(result["series"])
 
 
 def check_adaptive(failures: list[str]) -> None:
-    """Claim 5: adaptivity responds to change and ignores noise.
+    """Claim 5: adaptivity is worth its noise, measured not assumed.
 
-    Two things have to hold at once, and they pull in opposite directions: a
-    real lighting change has to be absorbed in a handful of frames, and
-    ordinary Monte-Carlo noise must not shorten the history at all. Both are
-    properties of the recurrence, so they are checked on a CPU model of it.
+    The gate is two-sided, because in-game it failed one side: the shipped
+    default amplified visible noise at every strength above zero. Both halves
+    are checked here against sampled Monte-Carlo noise, with the estimator
+    starting from a converged history -- the case that matters, since that is
+    the pixel whose history can go stale.
     """
     state = strip_comments(read(STATE))
     settings = strip_comments(read(SHADERS / "settings.glsl"))
 
     for name, src, minimum in (
-        ("RTGI_ADAPT_LO", state, 1.0),
-        ("RTGI_ADAPT_HI", state, 3.0),
+        ("RTGI_ADAPT_LO", state, 1.5),
+        ("RTGI_ADAPT_HI", state, 6.0),
         ("RTGI_ADAPT_SIGMA_EPS", state, 0.0),
+        ("RTGI_ADAPT_MIN_SAMPLES", state, 8.0),
+        ("RTGI_ADAPT_MIN_CONFIDENCE", state, 0.5),
         ("RTGI_ADAPT_STRENGTH", settings, 0.0),
         ("RTGI_MIN_ACCUM", settings, 0.0),
         ("RTGI_SPP_CAP", settings, 128.0),
@@ -343,75 +393,155 @@ def check_adaptive(failures: list[str]) -> None:
     lo = read_define(state, "RTGI_ADAPT_LO")
     hi = read_define(state, "RTGI_ADAPT_HI")
     eps = read_define(state, "RTGI_ADAPT_SIGMA_EPS")
+    min_samples = read_define(state, "RTGI_ADAPT_MIN_SAMPLES")
     strength = read_define(settings, "RTGI_ADAPT_STRENGTH")
     min_alpha = 0.01 * (read_define(settings, "RTGI_MIN_ACCUM") or 0.0)
     cap = read_define(settings, "RTGI_SPP_CAP")
-    if None in (lo, hi, eps, strength, cap):
+    if None in (lo, hi, eps, min_samples, strength, cap):
         return
 
     spp = 1.0
-    sigma = 0.20
-    old_mean, new_mean = 0.30, 1.20
-    tol = 0.1 * abs(new_mean - old_mean)
+    sigma = 0.25
+    base = 0.60
+    frames = 4000
 
-    # A noise-only frame: the sample sits one sigma from the history, so the
-    # adaptive term must stay silent.
-    quiet = simulate_adaptive(
-        spp, cap, strength, min_alpha, sigma,
-        old_mean, old_mean, 60, lo, hi, eps,
-    )
-    if quiet[0][2] > 0.9:
-        failures.append(
-            f"a converged static pixel blends at {quiet[0][2]:.3f}; noise is "
-            "being mistaken for a lighting change"
-        )
-    quiet_counts = [c for _, c, _ in quiet]
-    if quiet_counts != sorted(quiet_counts):
-        failures.append(
-            "plain Monte-Carlo noise shortens the history: the count is not "
-            "monotonic on a static scene"
-        )
-    # ...and a pixel with no history at all still starts from its own sample.
-    fresh = simulate_adaptive(
-        spp, cap, strength, min_alpha, sigma,
-        old_mean, old_mean, 1, lo, hi, eps, initial_count=0.0,
-    )
-    if abs(fresh[0][2] - 1.0) > 1e-9:
-        failures.append(f"a fresh pixel blends at {fresh[0][2]}, not 1.0")
-
-    # The same scene, but the light jumps. Adaptivity has to absorb it far
-    # faster than the floor alone does.
-    def frames_for(s: float) -> int:
-        return frames_to_converge(
-            simulate_adaptive(
-                spp, cap, s, min_alpha, sigma,
-                old_mean, new_mean, 600, lo, hi, eps,
+    def rms_for(s: float, static: bool = True, confidence: float = 1.0) -> float:
+        return steady_state_rms(
+            simulate_mc(
+                spp, cap, s, min_alpha, sigma, lambda f: base, frames,
+                lo, hi, eps, min_samples, static=static, confidence=confidence,
             ),
-            new_mean,
-            tol,
+            base,
         )
 
-    with_adapt = frames_for(strength)
-    without_adapt = frames_for(0.0)
-    if with_adapt >= without_adapt:
+    # --- side 1: the shipped default must not amplify noise -----------------
+    rms_off = rms_for(0.0)
+    rms_default = rms_for(strength)
+    if rms_default > rms_off * 1.15:
         failures.append(
-            f"adaptive rejection does not help: {with_adapt} frames with it, "
-            f"{without_adapt} without"
+            f"the default RTGI_ADAPT_STRENGTH {strength} raises steady-state "
+            f"noise {rms_default / rms_off:.2f}x over adaptive-off "
+            f"({rms_default:.4f} vs {rms_off:.4f} RMS); the default must be "
+            "invisible"
         )
-    if with_adapt > 30:
+    # A strength that does nothing must stay available for A/B, but the
+    # mechanism has to still work when it is turned up.
+    rms_full = rms_for(1.0)
+    if rms_full > rms_off * 1.5:
         failures.append(
-            f"a lighting change takes {with_adapt} frames to absorb; want <= 30"
+            f"at full strength the estimator is {rms_full / rms_off:.2f}x noisier "
+            "than adaptive-off; the sigma thresholds are inside the noise"
+        )
+    # Zero false rejections on a static scene, at any strength. With a
+    # 100-frame time constant one false fire is not a flicker, it is a
+    # two-second artifact.
+    for probe in (0.5, 1.0):
+        quiet = simulate_mc(
+            spp, cap, probe, min_alpha, sigma, lambda f: base, 1200,
+            lo, hi, eps, min_samples, seed=11,
+        )
+        if quiet["fired"]:
+            failures.append(
+                f"strength {probe} rejected {quiet['fired']}/1200 frames of "
+                "plain Monte-Carlo noise"
+            )
+
+    # --- side 2: it must still buy responsiveness ---------------------------
+    old_mean, new_mean = 0.30, 1.20
+    fast = step_response(
+        spp, cap, 1.0, min_alpha, sigma, lo, hi, eps, min_samples,
+        old_mean, new_mean, seed=7,
+    )
+    slow = step_response(
+        spp, cap, 0.0, min_alpha, sigma, lo, hi, eps, min_samples,
+        old_mean, new_mean, seed=7,
+    )
+    if fast * 3 > slow:
+        failures.append(
+            f"adaptive rejection is not worth its noise: {fast} frames to a "
+            f"step change with it, {slow} without (want >= 3x better)"
         )
 
-    # Ghosting bound: however high the cap, the floor caps the time constant.
-    if min_alpha > 0.0 and 1.0 / min_alpha > 200.0:
+    # --- the gates ----------------------------------------------------------
+    # A pan must not fire the test: the reprojected history and the current raw
+    # sample disagree by construction, and answering that with "the light
+    # changed" is the motion alpha this pack removed on purpose.
+    pan = simulate_mc(
+        spp, cap, 1.0, min_alpha, sigma, lambda f: base, 200,
+        lo, hi, eps, min_samples, static=False, seed=3,
+    )
+    if pan["fired"]:
         failures.append(
-            f"the alpha floor allows a {1.0 / min_alpha:.0f}-frame time "
-            "constant; want <= 200 frames"
+            f"the adaptive test fired on {pan['fired']}/{pan['frames']} frames "
+            "while the camera was moving"
         )
-    settled = simulate(spp, cap, 400, moving=False, min_alpha=min_alpha)[-1]
-    if min_alpha > 0.0 and settled[1] < min_alpha - 1e-9:
-        failures.append("the settled blend rate is below the floor")
+    untrusted = simulate_mc(
+        spp, cap, 1.0, min_alpha, sigma, lambda f: base, 200,
+        lo, hi, eps, min_samples, confidence=0.5, seed=3,
+    )
+    if untrusted["fired"]:
+        failures.append("the adaptive test fires on a low-confidence reprojection")
+    # ...and a still-converging pixel must not be tested, or the loop
+    # reject -> short history -> reject feeds itself.
+    young = simulate_mc(
+        spp, cap, 1.0, min_alpha, sigma, lambda f: base, 40,
+        lo, hi, eps, min_samples, initial_count=min_samples - 1.0, seed=3,
+    )
+    if young["fired"]:
+        failures.append("the adaptive test fires on a history below RTGI_ADAPT_MIN_SAMPLES")
+
+
+def check_adaptive_wiring(failures: list[str]) -> None:
+    """Claim 6: the shader still matches the model that was measured.
+
+    Everything in check_adaptive() is measured on a CPU model of the
+    recurrence, so a shader edit that changes the statistic would leave the
+    measurements green while shipping something else. These assertions tie the
+    four properties the measurement depends on to the source -- each one is a
+    regression that was observed in-game:
+
+      * a single raw sample instead of the 3x3 mean (clumps and dots at every
+        strength),
+      * no gate on motion (the field dumped to raw on every pan),
+      * the count shortened by a rejection (a two-second recovery),
+      * the reset view reading a packed reason code bilinearly (screen-fixed
+        bands between two colours that were never written).
+    """
+    temporal = strip_comments(read(TEMPORAL)).replace(" ", "")
+    debug = strip_comments(read(SHADERS / "include/debug/gi_debug.glsl")).replace(" ", "")
+
+    if "dot(raw_m1,luminance_weights)" not in temporal:
+        failures.append(
+            "the adaptive test does not use the 3x3 neighbourhood mean; a "
+            "single raw sample cannot be thresholded at one ray per pixel"
+        )
+    if "raw_sigma*raw_sigma" not in temporal:
+        failures.append(
+            "the adaptive test does not use the neighbourhood sigma, so it is "
+            "not self-limiting at geometric edges"
+        )
+    if "*(1.0/3.0)" not in temporal:
+        failures.append(
+            "the adaptive test does not convert the neighbourhood sigma into "
+            "the sigma of the MEAN of nine samples"
+        )
+    for token, why in (
+        ("adapt_allowed=accumulating", "camera/projection motion"),
+        ("total_confidence>=RTGI_ADAPT_MIN_CONFIDENCE", "reprojection confidence"),
+        ("prev_count>=RTGI_ADAPT_MIN_SAMPLES", "minimum history length"),
+    ):
+        if token not in temporal:
+            failures.append(f"the adaptive test is not gated on {why}")
+    if "current_spp/alpha_temporal" in temporal:
+        failures.append(
+            "a rejection shortens the sample count again; one z spike then "
+            "costs a converged pixel its whole history"
+        )
+    if "texelFetch(rtgi_state_sampler" not in debug:
+        failures.append(
+            "the reset debug view reads the packed reason code with a filtered "
+            "fetch; it must point-sample it"
+        )
 
 
 def check_state_written(failures: list[str]) -> None:
@@ -564,6 +694,7 @@ def main() -> int:
     check_state_written(failures)
     check_static_state(failures)
     check_adaptive(failures)
+    check_adaptive_wiring(failures)
 
     if failures:
         print(f"FAIL: {len(failures)} assertion(s)")

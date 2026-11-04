@@ -300,7 +300,17 @@ vec3 gi_debug_view(ivec2 texel, vec2 uv, vec3 fallback) {
     // PT_RESET_* reason, so the whole invalidation story of a frame is visible
     // at once: a camera pan shows CAMERA everywhere, a resize shows FIRST, a
     // healthy still frame goes NONE within a couple of dozen frames.
-    vec4 state_sample = texture(rtgi_state_sampler, rtgi_uv);
+    // Point-sampled, like every other packed field in this pack: the .r
+    // channel is a reason CODE, and a bilinear read of it averages 3 with 9
+    // and reports a reason that was never written -- which is what painted the
+    // screen-fixed pink/purple bands between two real reasons.
+    ivec2 state_size = textureSize(rtgi_state_sampler, 0);
+    ivec2 state_texel = clamp(
+        ivec2(rtgi_uv * vec2(state_size)),
+        ivec2(0),
+        state_size - 1
+    );
+    vec4 state_sample = texelFetch(rtgi_state_sampler, state_texel, 0);
     float reason = pt_state_reset(state_sample);
     if (reason < 0.5) {
         return vec3(0.05, 0.10, 0.15);          // NONE: history kept

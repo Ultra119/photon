@@ -59,15 +59,44 @@
 
 // --- P2 adaptive rejection thresholds --------------------------------------
 //
-// These three are statistics, not art: they say how many of the history's own
-// sample standard deviations away a new sample has to be before the history is
-// treated as stale. They are deliberately NOT exported as shader options --
-// tuning them by eye is how an adaptive term turns into a noise amplifier.
-// RTGI_ADAPT_STRENGTH in settings.glsl is the one dial, and 0 turns it off.
-#define RTGI_ADAPT_LO         2.0 // sigma: below this, ordinary MC noise
-#define RTGI_ADAPT_HI         6.0 // sigma: at or above this, full rejection
+// These are statistics, not art, and they are deliberately NOT exported as
+// shader options: tuning them by eye is how an adaptive term turns into a
+// noise amplifier. RTGI_ADAPT_STRENGTH in settings.glsl is the one dial, and 0
+// turns the whole thing off.
+//
+// The sigma below is the noise of the 3x3 neighbourhood MEAN, which is three
+// times quieter than a single sample -- so 2/8 here is 6/24 in single-sample
+// units. That matters: the first version tested a single raw sample, and with
+// one sample per frame the sample's own sigma is comparable to the signal, so
+// no threshold can separate "the light changed" from "Monte-Carlo". Measured
+// on the CPU model in pt_state_test.py, with 4000 frames of sampled noise
+// (Gaussian, 5% heavy tail, sigma 0.25 on a 0.60 signal):
+//
+//   single raw sample, 2/6 sigma:   noise x9.8 at full strength  (what shipped
+//                                   first, and what put clumps and dots all
+//                                   over the image in-game)
+//   3x3 mean, 1.5/6 sigma:          noise x1.12, 5 false fires per 1200 frames
+//   3x3 mean, 2/8 sigma:            noise x1.00, 0 false fires  <-- shipped
+//   3x3 mean, 4/12 sigma:           noise x1.00, 0 false fires, but only a
+//                                   1.6x responsiveness gain
+//
+// 2/8 keeps the whole responsiveness win that is available without paying for
+// it: 272 frames to absorb a step change disabled, 156 at strength 0.25, 130
+// at 0.5, 57 at 1.0.
+#define RTGI_ADAPT_LO         2.0 // sigma of the 3x3 mean: below this, noise
+#define RTGI_ADAPT_HI         8.0 // sigma of the 3x3 mean: full rejection
 #define RTGI_ADAPT_SIGMA_EPS 0.05 // luminance: keeps a zero-variance history
                                   // (a pitch-dark corner) from dividing by 0
+
+// Gates on the test itself. All three exist because the statistic cannot tell
+// "the light changed" from "this pixel is not measuring the same thing any
+// more", and answering the second question with the first answer is exactly
+// the motion alpha that dumps the accumulated field into raw dots on a pan.
+#define RTGI_ADAPT_MIN_SAMPLES   16.0 // a shorter history is still converging,
+                                      // so its own mean is noise: do not test
+                                      // against it (it also stops the
+                                      // reject -> short history -> reject loop)
+#define RTGI_ADAPT_MIN_CONFIDENCE 0.9 // reprojection must be trusted
 
 // --- packing ----------------------------------------------------------------
 

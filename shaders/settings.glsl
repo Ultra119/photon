@@ -106,6 +106,14 @@ const float wetnessHalflife         = 70.0;
   #define RTGI_FILTER_PHI 10.0 // [4.0 6.0 8.0 10.0 12.0 16.0 24.0 32.0]
   #define RTGI_SPP_CAP 128 // [32 64 96 128 192 255]
   #define RTGI_MIN_ACCUM 1.0 // [0.0 0.5 1.0 2.0]
+  // The first in-game run of this (single raw sample, 2/6 sigma, no gates) was
+  // clearly worse than off at every usable strength: clumps at 0.5, raw dots
+  // at 0.75, dots plus high-frequency noise at 1.0, and the whole field dumped
+  // to raw during camera motion. It now compares the 3x3 neighbourhood MEAN
+  // against the history, gates on motion, reprojection confidence and history
+  // length, and no longer shortens the count. On the CPU model that is noise
+  // x1.00 with zero false rejections at 0.5, and 2x faster to absorb a step
+  // change. 0 restores the P1 behaviour; 1.0 is measured clean too.
   #define RTGI_ADAPT_STRENGTH 0.5 // [0.0 0.25 0.5 0.75 1.0]
   #define RTGI_MAX_RADIANCE 12.0 // [2.0 3.0 4.0 6.0 8.0 12.0 16.0 32.0]
   // Voxel Irradiance Volume settings: 1:1 block-aligned dense irradiance volume
