@@ -519,6 +519,58 @@ def _yaw_pitch(yaw: float, pitch: float):
     )
 
 
+def check_voxel_cache_switch(failures: list[str]) -> None:
+    """Claim 10: VOXEL_CACHE_ENABLED is a switch, not a comment.
+
+    It was defined, set by every profile, and read by nobody: the volume's four
+    programs ran unconditionally at 1.240 ms, 23% of the frame, and the option
+    in the menu did nothing. Toggling it off must stop the passes AND stop the
+    consumer, or the images freeze whatever they last held into the second
+    bounce.
+    """
+    properties = (ROOT / "shaders/shaders.properties").read_text(encoding="utf-8")
+    settings = strip_comments(read(SHADERS / "settings.glsl"))
+
+    if "#define VOXEL_CACHE_ENABLED" not in settings:
+        failures.append(
+            "VOXEL_CACHE_ENABLED is not defined in settings.glsl, so the voxel "
+            "irradiance volume has no option to hang from"
+        )
+
+    gated = 0
+    for world in ("world0", "world-1", "world1"):
+        for letter in "abcd":
+            key = f"program.{world}/deferred_{letter}.enabled"
+            if key not in properties:
+                failures.append(
+                    f"{key} is missing: the volume's programs then fall back to "
+                    "Iris's default (enabled) and the switch does nothing"
+                )
+            elif f"{key} = VOXEL_CACHE_ENABLED" not in properties.replace("  ", " "):
+                failures.append(
+                    f"{key} is not gated on VOXEL_CACHE_ENABLED, so that part of "
+                    "the volume runs whether or not it is switched on"
+                )
+            else:
+                gated += 1
+    if gated != 12:
+        failures.append(
+            f"only {gated}/12 voxel cache programs are gated on the switch"
+        )
+
+    # The macro has to be read as well as written, or it is a comment.
+    consumers = [
+        path
+        for path in (SHADERS / "include").rglob("*.glsl")
+        if "VOXEL_CACHE_ENABLED" in strip_comments(path.read_text(encoding="utf-8"))
+    ]
+    if not consumers:
+        failures.append(
+            "VOXEL_CACHE_ENABLED is defined and set by every profile but read "
+            "by no shader: the option is a comment and the volume runs always"
+        )
+
+
 def check_voxel_cache_history(failures: list[str]) -> None:
     """Claim 9: the irradiance volume must notice a light going out.
 
@@ -1070,6 +1122,7 @@ def main() -> int:
     check_spatial_fallback(failures)
     check_motion_invariance(failures)
     check_voxel_cache_history(failures)
+    check_voxel_cache_switch(failures)
 
     if failures:
         print(f"FAIL: {len(failures)} assertion(s)")

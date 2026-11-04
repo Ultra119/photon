@@ -74,11 +74,18 @@ vec4 evaluate_rtgi_ray(
     if (vx_hit.hit) {
         hit_source = RTGI_HIT_VOXEL;
 
+        // With the volume switched off its images stop being written and would
+        // freeze whatever they last held into the second bounce, so the
+        // consumer honours the same switch as the passes that fill it.
+#if defined VOXEL_CACHE_ENABLED
         vec4 cache_irr = sample_voxel_cache_irradiance(
             vx_hit.hit_pos,
             vx_hit.hit_normal,
             cameraPosition
         );
+#else
+        vec4 cache_irr = vec4(0.0);
+#endif
 
         float cache_gate = mix(0.45, 1.0, smoothstep(1.0, 3.0, vx_hit.distance));
 

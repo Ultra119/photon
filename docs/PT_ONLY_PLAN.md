@@ -543,6 +543,57 @@ and were **not** changed: the screen-space floor (`RTGI_MIN_ACCUM`, 0.01 →
 3.8 s to 10%) and auto-exposure, which brightens the residual as the scene
 darkens. If the burn-in survives this change, it is one of those two.
 
+**Fourth in-game run (2026-11-04): the irradiance volume is black indoors, and
+the torch has no bounce.** `GI_DEBUG_VOXEL_LIGHT` is *not* black — walls are
+grey and only emissive blocks are coloured — so the voxel clipmap is fine and
+the volume's own input is the problem. It is:
+
+`voxel_dda.glsl`, the one place the RT path turns a surface hit into outgoing
+radiance:
+
+```glsl
+// Solid voxels never inject analytic block ambient. Emission is
+// intrinsic radiance and is not divided by pi.
+vec3 emission_radiance = mat.emission;
+vec3 bounce_radiance = bounce_albedo * sun_irradiance * voxel_bounce_rcp_pi;
+result.radiance = emission_radiance + bounce_radiance;
+```
+
+`block_light` and `sky_light` are **never referenced anywhere under
+`include/lighting/rt/`**. So a surface hit returns emission plus *sun* bounce
+and nothing else, and in a closed room at night `sun_vis = 0` and the emission
+is zero unless the ray happens to hit the torch itself. Consequences, all
+matching observations:
+
+- **The Voxel Irradiance Volume holds almost nothing indoors**, because it is
+  fed by these same rays. That is why `GI_DEBUG_PROBE` is black. (The magenta
+  at the render distance edge is not a bug — it is the "outside the fine
+  clipmap volume" marker.)
+- **`VOXEL_CACHE_MULTIBOUNCE` has been contributing approximately nothing
+  indoors**, since it reads that volume.
+- **Torch light has no indirect bounce at all.** The torch's *direct* light is
+  analytic in the deferred pass and instant, which is why placing one looks
+  right; the light it throws onto a wall is never re-radiated, because the
+  wall's outgoing radiance as far as the RT path is concerned is zero. That is
+  the "the room fills with light evenly" and the "very few bright spots on the
+  walls": the spots are the rare rays that hit the emitter directly, and they
+  are sparse enough that the à-trous averages them away.
+
+This is a deliberate line in the code, not an oversight, and closing it is a
+lighting-model change (P6), in two steps that both have to land:
+
+1. populate `block_light` / `sky_light` during voxelization — right now the
+   walls read as grey, i.e. zero, in `GI_DEBUG_VOXEL_LIGHT`;
+2. add a block-light irradiance term to `voxel_dda.glsl`'s outgoing radiance,
+   as `albedo * block_light_irradiance / pi`, alongside the existing sun term.
+
+Until then the volume is close to inert indoors and costs 1.240 ms (23% of the
+frame, `docs/pt_perf_baseline.md`). `VOXEL_CACHE_ENABLED` is now a real switch
+— it used to be defined, set by every profile, and read by nobody, so the four
+passes ran unconditionally. Turning it off recovers that time and loses
+essentially nothing indoors; outdoors the volume does hold real sun/sky
+irradiance, so it is not inert there and it stays on by default.
+
 **The 7×7 spatial preaccumulation fallback shipped after all** — it was
 deferred at first as "the most expensive task, and P3 redesigns spatial
 filtering anyway", but it is also the one that answers the last open gate item
