@@ -123,7 +123,7 @@ produce — every later visual gate in `PT_ONLY_PLAN.md` compares against them.
 | Second bounce | world-space voxel irradiance volume (`VOXEL_CACHE_*`), L1 SH, filtered and reprojected |
 | Contact AO | `d3_ao.fsh`, quarter-res voxel any-hit, direct light only |
 | Reflections | one world-space voxel bounce, no dedicated history or denoiser |
-| Temporal | `rtgi_temporal.csh`, `RTGI_SPP_CAP=32` **samples** (was `RTGI_HISTORY_FRAMES=32` frames), `alpha = spp/max(count, spp)` (identical to `1/n` at 1 ray/px), soft disocclusion, no variance clip, `PT_RESET_*` reason codes + `rtgi_state_img` |
+| Temporal | `rtgi_temporal.csh`, `RTGI_SPP_CAP=128` samples (max 255; was `RTGI_HISTORY_FRAMES=32` frames), `alpha = max(spp/count, 0.01*RTGI_MIN_ACCUM, adaptive_rejection)`, z-score adaptive rejection from M2 (`smoothstep(2,6)` sigma), count kept consistent with 1/alpha, soft disocclusion, no variance clip, 10 `PT_RESET_*` reason codes + `rtgi_state_img` |
 | Spatial | `rtgi_filter.csh`, four à-trous passes, strides 1/2/4/8, variance-guided luma weight with `RTGI_FILTER_PHI=10` |
 | Known visual defect | user-reported square bloom around bright regions, tracking the à-trous footprint at ±16 buffer texels; three weight-tuning attempts were reverted. **P3 must redesign the kernel/stride, not re-tune φ** |
 

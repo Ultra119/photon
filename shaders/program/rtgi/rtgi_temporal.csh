@@ -321,36 +321,16 @@ void main() {
             // (rather than resetting) keeps the tuned pan behaviour: the blend
             // rate stays exactly where it was instead of dumping the field
             // back to raw dots.
-            bool accumulating = static_state.camera_static
-                && static_state.projection_static
-                && raw_finite;
-            sample_count = accumulating
-                ? min(prev_count + current_spp, float(RTGI_SPP_CAP))
-                : max(prev_count, current_spp);
-
-            // alpha = this frame's samples / total samples. At one ray per
-            // pixel this is the previous pure 1/n; at eight rays per pixel it
-            // correctly reflects eight new samples instead of one, so the cap
-            // means 32 samples of evidence and not 32 frames of wall clock.
-            float alpha_temporal = current_spp / max(sample_count, current_spp);
-
-            reset_reason = accumulating
-                ? PT_RESET_NONE
-                : (static_state.projection_static
-                    ? PT_RESET_CAMERA
-                    : PT_RESET_PROJECTION);
-
-            // Confidence keeps freshly-disoccluded pixels responsive.
-            alpha = clamp(mix(1.0, alpha_temporal, total_confidence), 0.01, 1.0);
-
-            // Bilinear history radiance at the reprojection point. Point
-            // sampling made the accumulated noise pattern swim in texel
-            // steps under dolly — the "squares" that slide across the wall
-            // and pull toward each other as the player moves closer or
-            // farther. Radiance is float data, safe to interpolate; the
-            // packed sky/age bytes, octahedral normal and stored distance in
-            // aux stay point-sampled at the tested tap (bilinear filtering
-            // would corrupt them and every disocclusion test with it).
+            // Bilinear history radiance at the reprojection point. Fetched
+            // before the blend because the P2 adaptive test needs the history
+            // MEAN, not just its sample count. Point sampling made the
+            // accumulated noise pattern swim in texel steps under dolly -- the
+            // "squares" that slide across the wall and pull toward each other
+            // as the player moves closer or farther. Radiance is float data,
+            // safe to interpolate; the packed sky/count bytes, octahedral
+            // normal and stored distance in aux stay point-sampled at the
+            // tested tap (bilinear filtering would corrupt them and every
+            // disocclusion test with it).
             vec2 hist_px = history_uv * vec2(target_res) - 0.5;
             ivec2 hist_base = ivec2(floor(hist_px));
             vec2 hist_f = fract(hist_px);
@@ -364,6 +344,78 @@ void main() {
                                       : texelFetch(rtgi_accum_sampler, c, 0).rgb) * w;
                 }
             }
+
+            // --- P2 adaptive responsiveness --------------------------------
+            //
+            // Kappa drives rejection from a stored lightmap value; Photon has
+            // no free aux channel to store one, but it does track M2, so it
+            // can ask the sharper question instead: how far is this frame's
+            // sample from the history mean, measured in the history's OWN
+            // sample noise? M1 is the EMA of sample luminance and
+            // var = M2 - M1^2 is the variance of ONE sample, so a z near 1 is
+            // ordinary Monte-Carlo noise and a z of several means the light
+            // itself changed.
+            //
+            // This raises alpha rather than clipping the history VALUE, which
+            // is why it is not the variance clip this pack deliberately does
+            // not have: nothing moves toward the new sample except by
+            // blending, so the estimate cannot pump in brightness the way a
+            // clamped history does.
+            float prev_m1 = dot(prev_rad, luminance_weights);
+            float prev_var = max(prev_aux.r - prev_m1 * prev_m1, 0.0);
+            float z_score = abs(current_lum - prev_m1)
+                / (sqrt(prev_var) + RTGI_ADAPT_SIGMA_EPS);
+
+            float rejection = smoothstep(RTGI_ADAPT_LO, RTGI_ADAPT_HI, z_score)
+                * RTGI_ADAPT_STRENGTH;
+            bool rejected = rejection > 0.05;
+
+            bool accumulating = static_state.camera_static
+                && static_state.projection_static
+                && raw_finite;
+            sample_count = accumulating
+                ? min(prev_count + current_spp, float(RTGI_SPP_CAP))
+                : max(prev_count, current_spp);
+
+            // alpha = this frame's samples / total samples. At one ray per
+            // pixel this is the previous pure 1/n; at eight rays per pixel it
+            // correctly reflects eight new samples instead of one, so the cap
+            // means N samples of evidence and not N frames of wall clock.
+            float alpha_temporal = current_spp / max(sample_count, current_spp);
+
+            // Kappa-class floor (minAccumMult): the blend rate never decays
+            // past this, so a fully converged pixel still tracks a changing
+            // scene instead of being pinned at 1/RTGI_SPP_CAP forever. It is
+            // also what bounds ghosting: however high the cap, no history can
+            // be older than 1/min_alpha frames.
+            float min_alpha = 0.01 * RTGI_MIN_ACCUM;
+            alpha_temporal = max(alpha_temporal, min_alpha);
+            alpha_temporal = max(alpha_temporal, rejection);
+
+            // A rejected history is partly stale, and 1/alpha IS the effective
+            // history length, so shorten the count to match instead of leaving
+            // a pixel that claims 128 samples of evidence while blending as if
+            // it had three. The floor above deliberately does NOT shorten the
+            // count: it is a steady-state responsiveness guarantee, not a
+            // statement about how much evidence is behind the estimate.
+            if (rejected) {
+                sample_count = clamp(
+                    current_spp / alpha_temporal,
+                    current_spp,
+                    float(RTGI_SPP_CAP)
+                );
+            }
+
+            reset_reason = !accumulating
+                ? (static_state.projection_static
+                    ? PT_RESET_CAMERA
+                    : PT_RESET_PROJECTION)
+                : (rejected ? PT_RESET_ADAPTIVE : PT_RESET_NONE);
+
+            // Confidence keeps freshly-disoccluded pixels responsive. The
+            // rejection survives the mix: a pixel whose geometry is fine but
+            // whose lighting changed still has to react.
+            alpha = clamp(mix(1.0, alpha_temporal, total_confidence), min_alpha, 1.0);
 
             accumulated_radiance = mix(prev_rad, current_radiance, alpha);
             accumulated_sky = mix(prev_sky, current_sky_weight, alpha);

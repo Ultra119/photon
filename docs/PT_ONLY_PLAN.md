@@ -336,6 +336,76 @@ Gate:
 - Ghosting is bounded and has a debug view.
 - First-frame / invalid-history fallback removes most raw noise without edge smearing.
 
+**Status 2026-11-04: three of four tasks shipped; the spatial fallback deferred.**
+
+Shipped:
+
+- **Cap 32 → 128 samples, ceiling 255.** The aux channel was repacked for it:
+  `pack_sky_count()` now spends 8 bits on the sample count (0..255) and 3 on
+  the sky fraction instead of 7 and 4. The largest packed value is still 2047,
+  inside the fp16 exact-integer range. The sky fraction is the channel that
+  paid; it has no lighting consumer today (the leak gate is applied per ray in
+  `rt_gi.glsl`), and P4 has to buy the bit back if it starts driving shading.
+- **`RTGI_MIN_ACCUM` — the Kappa `minAccumMult` floor.** The blend rate never
+  decays below `0.01 * RTGI_MIN_ACCUM`, so a pixel sitting at the cap still
+  tracks a changing scene, and ghosting is bounded at `1 / (0.01 * mult)`
+  frames no matter how high the cap is. `0` restores the P0 behaviour (a full
+  history stops adapting).
+- **`RTGI_ADAPT_STRENGTH` — adaptive rejection, formulated for this pack.**
+  Kappa drives rejection from a stored lightmap value; Photon has no free aux
+  channel to store one, but it does track M2, so it asks the sharper question:
+  how far is this frame's sample from the history mean, measured in the
+  history's **own sample sigma** (`z = |raw - M1| / sqrt(M2 - M1^2)`). A z near
+  1 is ordinary Monte-Carlo noise; a z of several means the light changed.
+  `smoothstep(2, 6)` in sigma units, scaled by the strength, `0` disables it.
+  It **raises alpha** rather than clipping the history value, which is exactly
+  why it is not the variance clip this pack deliberately does not have: nothing
+  moves toward the new sample except by blending, so the estimate cannot pump
+  in brightness the way a clamped history does.
+- **The count is now consistent with the blend rate.** When a rejection fires,
+  `sample_count` is set to `spp / alpha` (clamped), because 1/alpha *is* the
+  effective history length. An earlier version merely halved the count and left
+  a 1.4 s tail: the pixel kept a count of 86 while blending at 0.0116. The
+  floor deliberately does not shorten the count — it is a steady-state
+  responsiveness guarantee, not a statement about evidence.
+- **`PT_RESET_ADAPTIVE`**, the tenth reset reason, with its own colour in
+  `GI_DEBUG_RESET`, so "the lighting changed here" is visible per pixel.
+- `pt_state_test.py` models the whole recurrence on the CPU and asserts both
+  directions: a converged static pixel blends at the floor and its count never
+  shortens (noise must not shorten history), while a lighting jump is absorbed
+  in far fewer frames than the floor alone manages.
+
+Measured on that model (1 ray/px, cap 128, sigma 0.2, light 0.30 → 1.20,
+within 10% of the new value):
+
+| `RTGI_ADAPT_STRENGTH` | frames to absorb the change |
+|---|---:|
+| 0.0 (disabled, P1 behaviour) | 229 |
+| 0.25 | 45 |
+| **0.5 (default)** | **17** |
+| 0.75 | 9 |
+| 1.00 | 3 |
+
+Deferred, with the reason: **the 7×7 spatial preaccumulation fallback**. It is
+the most expensive of the four tasks (49 taps on every invalid-history pixel),
+and P3 redesigns spatial filtering anyway, so building it now means building it
+twice. It gets its own gate and its own before/after captures.
+
+A/B to run before closing P2:
+
+1. Stand still in a torch-lit interior and place a torch: with
+   `RTGI_ADAPT_STRENGTH 0` the bounce crawls in over seconds; at 0.5 it should
+   settle in a few frames. `GI_DEBUG_RESET` should flash `ADAPTIVE` (amber) on
+   exactly the pixels whose light changed.
+2. Pan fast, then stop: no raw dots (that is the floor, not the cap, holding
+   the history), and `GI_DEBUG_SPP` should climb to full again.
+3. `RTGI_MIN_ACCUM 0` with `RTGI_SPP_CAP 255`: the cleanest static image the
+   pack can produce, at the cost of a scene that stops responding — useful as
+   the "how much convergence is available" reference.
+4. Watch for the failure mode on purpose: `RTGI_ADAPT_STRENGTH 1.0` in a dark,
+   noisy scene. If noise starts to shimmer, the z thresholds (2σ/6σ) are too
+   tight for that scene and should be widened, not the strength lowered.
+
 ### P3 — Spatial denoise redesign, not re-tuning
 
 **Goal:** remove the square bloom footprint and get Kappa-class edge preservation.

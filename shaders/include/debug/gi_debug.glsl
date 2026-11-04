@@ -296,7 +296,7 @@ vec3 gi_debug_view(ivec2 texel, vec2 uv, vec3 fallback) {
     float spp_t = clamp01(spp / max(float(RTGI_SPP_CAP), 1.0));
     return mix(vec3(0.0, 0.15, 0.45), vec3(1.0, 0.85, 0.20), spp_t);
 #elif GI_DEBUG == GI_DEBUG_RESET
-    // Why the temporal pass reset this pixel. Nine distinct colours, one per
+    // Why the temporal pass reset this pixel. Ten distinct colours, one per
     // PT_RESET_* reason, so the whole invalidation story of a frame is visible
     // at once: a camera pan shows CAMERA everywhere, a resize shows FIRST, a
     // healthy still frame goes NONE within a couple of dozen frames.
@@ -318,8 +318,10 @@ vec3 gi_debug_view(ivec2 texel, vec2 uv, vec3 fallback) {
         return vec3(0.10, 0.90, 0.60);          // PROJECTION changed
     } else if (reason < 7.5) {
         return vec3(1.00, 0.00, 1.00);          // NON_FINITE guard tripped
+    } else if (reason < 8.5) {
+        return vec3(0.85, 0.85, 0.85);          // FIRST: no usable history
     }
-    return vec3(0.85, 0.85, 0.85);              // FIRST: no usable history
+    return vec3(1.00, 0.65, 0.00);              // ADAPTIVE: stale history dropped
 #elif GI_DEBUG == GI_DEBUG_HIT
     return gi_debug_hit_mask(
         vec4(gi_debug_smooth_3x3(rtgi_hit_sampler, rtgi_uv), 1.0)

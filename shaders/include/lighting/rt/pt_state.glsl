@@ -31,11 +31,14 @@
 //
 // Packing budget: a half float stores integers exactly up to 2048, so every
 // packed field below is laid out to stay inside that. pack_sky_count spends
-// 7 bits on the sample count (0..127) and 4 on the sky fraction (16 levels).
-// The sky fraction currently has no lighting consumer — the cave leak gate is
-// applied per ray in rt_gi.glsl, not at composition — so 4 bits is enough for
-// the preserved sky/local split; P4 (SH) must revisit it if it starts driving
-// shading from this channel.
+// 8 bits on the sample count (0..255) and 3 on the sky fraction (8 levels),
+// which is what lets P2 raise the accumulation cap from 32 to 255 samples.
+//
+// The sky fraction pays for that: 4 bits before P2, 3 now. It still has no
+// lighting consumer — the cave leak gate is applied per ray in rt_gi.glsl, not
+// at composition — but P4 (SH) has to buy the bit back (from the octahedral
+// normal, which is the only other field with precision to spare) if it starts
+// driving shading from this channel.
 
 // Reset reasons. Ordered by how expensive the recovery is: NONE keeps a
 // converged field, the disocclusion reasons keep part of it, DETECTOR_* and
@@ -49,22 +52,36 @@
 #define PT_RESET_PROJECTION  6.0 // static-state detector: FOV/projection changed
 #define PT_RESET_NON_FINITE  7.0 // guard: raw sample was NaN/Inf or negative
 #define PT_RESET_FIRST       8.0 // no usable history yet (resize, first frame)
+#define PT_RESET_ADAPTIVE    9.0 // P2: the adaptive test rejected stale history
 
 // Number of reasons above; also the debug view's colour count.
-#define PT_RESET_COUNT       9.0
+#define PT_RESET_COUNT      10.0
+
+// --- P2 adaptive rejection thresholds --------------------------------------
+//
+// These three are statistics, not art: they say how many of the history's own
+// sample standard deviations away a new sample has to be before the history is
+// treated as stale. They are deliberately NOT exported as shader options --
+// tuning them by eye is how an adaptive term turns into a noise amplifier.
+// RTGI_ADAPT_STRENGTH in settings.glsl is the one dial, and 0 turns it off.
+#define RTGI_ADAPT_LO         2.0 // sigma: below this, ordinary MC noise
+#define RTGI_ADAPT_HI         6.0 // sigma: at or above this, full rejection
+#define RTGI_ADAPT_SIGMA_EPS 0.05 // luminance: keeps a zero-variance history
+                                  // (a pitch-dark corner) from dividing by 0
 
 // --- packing ----------------------------------------------------------------
 
-// 7-bit sample count + 4-bit sky fraction in one exactly-representable half.
+// 8-bit sample count (0..255) + 3-bit sky fraction (0..7), packed into one
+// exactly-representable half: the largest value is 7 + 255*8 = 2047.
 float pack_sky_count(float sky, float count) {
-    float sky_i = round(clamp01(sky) * 15.0);
-    float count_i = clamp(round(count), 0.0, 127.0);
-    return sky_i + count_i * 16.0;
+    float sky_i = round(clamp01(sky) * 7.0);
+    float count_i = clamp(round(count), 0.0, 255.0);
+    return sky_i + count_i * 8.0;
 }
 
 vec2 unpack_sky_count(float packed) {
-    float count = floor(packed * (1.0 / 16.0));
-    float sky = (packed - count * 16.0) * (1.0 / 15.0);
+    float count = floor(packed * (1.0 / 8.0));
+    float sky = (packed - count * 8.0) * (1.0 / 7.0);
     return vec2(sky, count);
 }
 

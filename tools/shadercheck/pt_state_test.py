@@ -143,6 +143,7 @@ def simulate(
     frames: int,
     moving: bool,
     initial_count: float = 0.0,
+    min_alpha: float = 0.01,
 ) -> list[tuple[float, float]]:
     """Replay the temporal pass's count/alpha recurrence. Returns (count, alpha).
 
@@ -160,7 +161,8 @@ def simulate(
             count = max(count, spp)
         else:
             count = min(count + spp, cap)
-        alpha = spp / max(count, spp)
+        # Kappa-class floor: the blend rate never decays past this.
+        alpha = max(spp / max(count, spp), min_alpha)
         out.append((count, alpha))
     return out
 
@@ -251,6 +253,165 @@ def check_spp_math(failures: list[str]) -> None:
     panning = simulate(1.0, cap, 60, moving=True, initial_count=settled[0])
     if any(abs(a - settled[1]) > 1e-9 for _, a in panning):
         failures.append("a pan starting from a converged field changed the blend rate")
+
+
+def read_define(src: str, name: str) -> float | None:
+    m = re.search(rf"#define\s+{name}\s+([0-9.]+)", src)
+    return float(m.group(1)) if m else None
+
+
+def smoothstep(edge0: float, edge1: float, x: float) -> float:
+    t = clamp((x - edge0) / (edge1 - edge0), 0.0, 1.0)
+    return t * t * (3.0 - 2.0 * t)
+
+
+def simulate_adaptive(
+    spp: float,
+    cap: float,
+    strength: float,
+    min_alpha: float,
+    sigma: float,
+    old_mean: float,
+    new_mean: float,
+    frames: int,
+    lo: float = 2.0,
+    hi: float = 6.0,
+    eps: float = 0.05,
+    initial_count: float | None = None,
+) -> list[tuple[float, float, float]]:
+    """Replay the P2 recurrence against a scene that changes at frame 0.
+
+    The stand-in for Monte-Carlo is deterministic: the raw sample alternates
+    one sigma above and one sigma below the current truth, so its long-run mean
+    is unbiased and a converged estimate sees a sample exactly one sigma away
+    -- the case the adaptive test has to ignore. Returns (estimate, count,
+    alpha) per frame; the estimate starts at `old_mean` and the light changes
+    to `new_mean` at the first frame.
+    """
+    # The interesting case is a pixel that has been sitting still long enough
+    # to converge: that is the one whose history goes stale.
+    estimate = old_mean
+    count = cap if initial_count is None else initial_count
+    out: list[tuple[float, float, float]] = []
+    for frame in range(frames):
+        raw = new_mean + (sigma if frame % 2 == 0 else -sigma)
+        z = abs(raw - estimate) / (sigma + eps)
+        rejection = smoothstep(lo, hi, z) * strength
+        count = min(count + spp, cap)
+        alpha = max(spp / max(count, spp), min_alpha)
+        alpha = max(alpha, rejection)
+        if rejection > 0.05:
+            count = min(max(spp / alpha, spp), cap)
+        estimate = estimate + (raw - estimate) * alpha
+        out.append((estimate, count, alpha))
+    return out
+
+
+def frames_to_converge(history, target: float, tol: float) -> int:
+    """First frame whose estimate is within `tol` of `target`."""
+    for i, (estimate, _, _) in enumerate(history):
+        if abs(estimate - target) <= tol:
+            return i + 1
+    return len(history)
+
+
+def check_adaptive(failures: list[str]) -> None:
+    """Claim 5: adaptivity responds to change and ignores noise.
+
+    Two things have to hold at once, and they pull in opposite directions: a
+    real lighting change has to be absorbed in a handful of frames, and
+    ordinary Monte-Carlo noise must not shorten the history at all. Both are
+    properties of the recurrence, so they are checked on a CPU model of it.
+    """
+    state = strip_comments(read(STATE))
+    settings = strip_comments(read(SHADERS / "settings.glsl"))
+
+    for name, src, minimum in (
+        ("RTGI_ADAPT_LO", state, 1.0),
+        ("RTGI_ADAPT_HI", state, 3.0),
+        ("RTGI_ADAPT_SIGMA_EPS", state, 0.0),
+        ("RTGI_ADAPT_STRENGTH", settings, 0.0),
+        ("RTGI_MIN_ACCUM", settings, 0.0),
+        ("RTGI_SPP_CAP", settings, 128.0),
+    ):
+        value = read_define(src, name)
+        if value is None:
+            failures.append(f"{name} is not defined")
+        elif value < minimum:
+            failures.append(f"{name} is {value}, want >= {minimum}")
+
+    lo = read_define(state, "RTGI_ADAPT_LO")
+    hi = read_define(state, "RTGI_ADAPT_HI")
+    eps = read_define(state, "RTGI_ADAPT_SIGMA_EPS")
+    strength = read_define(settings, "RTGI_ADAPT_STRENGTH")
+    min_alpha = 0.01 * (read_define(settings, "RTGI_MIN_ACCUM") or 0.0)
+    cap = read_define(settings, "RTGI_SPP_CAP")
+    if None in (lo, hi, eps, strength, cap):
+        return
+
+    spp = 1.0
+    sigma = 0.20
+    old_mean, new_mean = 0.30, 1.20
+    tol = 0.1 * abs(new_mean - old_mean)
+
+    # A noise-only frame: the sample sits one sigma from the history, so the
+    # adaptive term must stay silent.
+    quiet = simulate_adaptive(
+        spp, cap, strength, min_alpha, sigma,
+        old_mean, old_mean, 60, lo, hi, eps,
+    )
+    if quiet[0][2] > 0.9:
+        failures.append(
+            f"a converged static pixel blends at {quiet[0][2]:.3f}; noise is "
+            "being mistaken for a lighting change"
+        )
+    quiet_counts = [c for _, c, _ in quiet]
+    if quiet_counts != sorted(quiet_counts):
+        failures.append(
+            "plain Monte-Carlo noise shortens the history: the count is not "
+            "monotonic on a static scene"
+        )
+    # ...and a pixel with no history at all still starts from its own sample.
+    fresh = simulate_adaptive(
+        spp, cap, strength, min_alpha, sigma,
+        old_mean, old_mean, 1, lo, hi, eps, initial_count=0.0,
+    )
+    if abs(fresh[0][2] - 1.0) > 1e-9:
+        failures.append(f"a fresh pixel blends at {fresh[0][2]}, not 1.0")
+
+    # The same scene, but the light jumps. Adaptivity has to absorb it far
+    # faster than the floor alone does.
+    def frames_for(s: float) -> int:
+        return frames_to_converge(
+            simulate_adaptive(
+                spp, cap, s, min_alpha, sigma,
+                old_mean, new_mean, 600, lo, hi, eps,
+            ),
+            new_mean,
+            tol,
+        )
+
+    with_adapt = frames_for(strength)
+    without_adapt = frames_for(0.0)
+    if with_adapt >= without_adapt:
+        failures.append(
+            f"adaptive rejection does not help: {with_adapt} frames with it, "
+            f"{without_adapt} without"
+        )
+    if with_adapt > 30:
+        failures.append(
+            f"a lighting change takes {with_adapt} frames to absorb; want <= 30"
+        )
+
+    # Ghosting bound: however high the cap, the floor caps the time constant.
+    if min_alpha > 0.0 and 1.0 / min_alpha > 200.0:
+        failures.append(
+            f"the alpha floor allows a {1.0 / min_alpha:.0f}-frame time "
+            "constant; want <= 200 frames"
+        )
+    settled = simulate(spp, cap, 400, moving=False, min_alpha=min_alpha)[-1]
+    if min_alpha > 0.0 and settled[1] < min_alpha - 1e-9:
+        failures.append("the settled blend rate is below the floor")
 
 
 def check_state_written(failures: list[str]) -> None:
@@ -402,6 +563,7 @@ def main() -> int:
     check_spp_math(failures)
     check_state_written(failures)
     check_static_state(failures)
+    check_adaptive(failures)
 
     if failures:
         print(f"FAIL: {len(failures)} assertion(s)")
@@ -409,8 +571,8 @@ def main() -> int:
             print(f"  - {f}")
         return 1
     print(
-        "P1 state contract OK (packing, sample accounting, state writes, "
-        "static-state thresholds)"
+        "PT state contract OK (packing, sample accounting, state writes, "
+        "static-state thresholds, adaptive rejection)"
     )
     return 0
 

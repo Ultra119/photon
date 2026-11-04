@@ -785,6 +785,10 @@ option.RTGI_FILTER_PHI                                               = Atrous Co
 option.RTGI_FILTER_PHI.comment                                       = Luminance edge-stopping scale (phi = value * sqrt(variance)) of the temporal filter. Higher softens detail and widens light bleed; lower keeps detail noisier.
 option.RTGI_SPP_CAP                                                  = Temporal Sample Cap
 option.RTGI_SPP_CAP.comment                                          = Maximum number of traced samples the temporal accumulation may average per pixel, not frames: a tier that traces 8 rays per pixel per frame reaches the cap in an eighth of the time. Lower adapts faster to change, higher converges to a cleaner but staler image.
+option.RTGI_MIN_ACCUM                                                = Minimum Accumulation
+option.RTGI_MIN_ACCUM.comment                                        = Floor on how slowly the accumulation may blend, as a multiplier on 1/100. It bounds ghosting however high the sample cap is and lets a converged pixel still track a changing scene. 0 removes the floor, so a full history stops adapting.
+option.RTGI_ADAPT_STRENGTH                                           = Adaptive Rejection
+option.RTGI_ADAPT_STRENGTH.comment                                   = How much of a stale history is dropped when a new sample lands several of the history's own sample deviations away from its mean. Makes the lighting react to placed torches and block edits instead of lagging for hundreds of frames. 0 disables it.
 option.RTGI_MAX_RADIANCE                                             = Ray Radiance Cap
 option.RTGI_MAX_RADIANCE.comment                                     = Per-ray radiance clamp applied during voxel tracing (firefly control). Keep at or above EMISSION_ANCHOR so bright emitters are not dimmed.
 option.EMISSION_ANCHOR                                               = Emission Radiance Anchor

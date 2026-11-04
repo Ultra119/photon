@@ -89,11 +89,24 @@ const float wetnessHalflife         = 70.0;
   // the pixel's accumulated count and blends with spp / new_count. A tier that
   // traces 8 rays per pixel per frame therefore reaches the cap in an eighth of
   // the wall-clock time a 1-ray tier needs, and every tier stops at the same
-  // amount of accumulated evidence. The ceiling of 127 is the packing limit of
-  // the aux channel (7 bits, see /include/lighting/rt/pt_state.glsl); P2 raises
-  // the cap together with the packing if it wants 256.
+  // amount of accumulated evidence. The ceiling of 255 is the packing limit of
+  // the aux channel (8 bits, see /include/lighting/rt/pt_state.glsl).
+  //
+  // RTGI_MIN_ACCUM is the Kappa `minAccumMult` floor: the blend rate never
+  // decays below 0.01 * RTGI_MIN_ACCUM, so a pixel sitting at the cap still
+  // tracks a changing scene, and ghosting is bounded at 1/(0.01 * mult)
+  // frames however high the cap is. 0 disables the floor (the blend then stops
+  // at 1/cap, as P0 did).
+  //
+  // RTGI_ADAPT_STRENGTH scales the adaptive rejection: how much of a stale
+  // history the temporal pass drops when this frame's sample lands several of
+  // the history's own sample sigmas away from its mean. 0 disables it and
+  // restores the P1 behaviour. The thresholds it uses are statistics, not art,
+  // and live in pt_state.glsl; only the strength is exposed.
   #define RTGI_FILTER_PHI 10.0 // [4.0 6.0 8.0 10.0 12.0 16.0 24.0 32.0]
-  #define RTGI_SPP_CAP 32 // [16 24 32 48 64 96 127]
+  #define RTGI_SPP_CAP 128 // [32 64 96 128 192 255]
+  #define RTGI_MIN_ACCUM 1.0 // [0.0 0.5 1.0 2.0]
+  #define RTGI_ADAPT_STRENGTH 0.5 // [0.0 0.25 0.5 0.75 1.0]
   #define RTGI_MAX_RADIANCE 12.0 // [2.0 3.0 4.0 6.0 8.0 12.0 16.0 32.0]
   // Voxel Irradiance Volume settings: 1:1 block-aligned dense irradiance volume
   // matching Level 0 clipmaps with directional L1 Spherical Harmonics.
