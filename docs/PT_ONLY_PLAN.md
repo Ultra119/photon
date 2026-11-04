@@ -741,11 +741,13 @@ defective statistic, and need repeating against this one):
 
 **Goal:** remove the square bloom footprint and get Kappa-class edge preservation.
 
-**Status 2026-11-04: increment 1 shipped — wide→narrow strides and the
-converged-pixel bypass. Start here; the rest of the task list is below.**
+**Status 2026-11-05: increment 2 shipped — the converged-pixel bypass is now
+gated on the standard error of the mean instead of the sample count. Start
+here; the rest of the task list is below.**
 
-Two structural changes, no weight touched (`RTGI_FILTER_PHI` is still 10.0,
-the B-spline weights and every sigma are unchanged):
+**Increment 1 — strides and the bypass.** Two structural changes, no weight
+touched (`RTGI_FILTER_PHI` is still 10.0, the B-spline weights and every sigma
+are unchanged):
 
 - **Strides now run 8 → 4 → 2 → 1, wide to narrow.** Every pass in an à-trous
   pyramid blurs, and the *last* pass is the one whose footprint the final image
@@ -753,31 +755,102 @@ the B-spline weights and every sigma are unchanged):
   player saw was the output of a ±30-texel blur. Total support is unchanged
   (±2·(8+4+2+1) = ±30), so the reorder is free: `deferred3_a…d` measured
   0.683 ms, 12.7 % of the frame (`docs/pt_perf_baseline.md`), and the tap count
-  is identical.
-- **The wide passes now fade out as a pixel converges.** The luminance
-  edge-stop is `sigma_l = PHI · sqrt(variance)`, and the variance collapses as
-  the pixel converges while the signal does not. At the cap, with `PHI = 10`
-  and the M2 EMA's ~2× over-report, a converged pixel's `sigma_l` is **larger
-  than the signal itself**:
+  is identical. Edge-stopping is recomputed from the running centre every pass,
+  so the chain is *not* order-independent: the wide passes now see the raw,
+  noisy temporal centre and their edge-stops bite, whereas before the stride-8
+  pass ran last on an already-smoothed centre with nothing left to reject.
+- **The wide passes fade out for a converged pixel.** `sigma_l =
+  PHI · sqrt(variance)`, and the variance fed to it is the **per-sample**
+  variance: M2 is an EMA of sample luminance squared, so it converges to
+  `E[X²]` and `variance = M2 − M1²` converges to `Var(X)`, which does *not*
+  shrink as samples accumulate. Measured on a 96×96 CPU model of the temporal
+  recurrence: reported sd **1.03** against a true per-sample sd of **1.10**. At
+  the cap that leaves `sigma_l` about `sqrt(128) ≈ 11×` wider than the noise
+  actually present in the estimate:
 
-  | per-sample sigma | reported variance | `sigma_l` | signal | neighbour 0.10 away |
-  |---:|---:|---:|---:|---:|
-  | 0.30 | 0.0014 | 0.375 | 0.30 | accepted, weight **0.77** |
-  | 0.60 | 0.0056 | 0.750 | 0.60 | accepted, weight **0.88** |
+  | per-sample sd | reported sd | `sigma_l` | neighbour 0.10 away |
+  |---:|---:|---:|---:|
+  | 0.30 | 0.29 | 2.91 | accepted, weight **0.97** |
+  | 0.60 | 0.58 | 5.82 | accepted, weight **0.98** |
 
   So for any converged pixel the luminance stop does nothing at all and the two
   wide passes run as unguarded box blurs — that is the flat, evenly lit room
-  and the square glow. The bypass blends back toward the unfiltered centre with
-  `smoothstep(cap/4, cap, count)`, so a pixel below a quarter of the cap still
-  gets the full wide blur it needs and nothing pops as it crosses the
-  threshold. The narrow passes still run and take the edge off the residual
-  noise.
+  and the square glow. (An earlier table here claimed the variance *collapses*
+  as the pixel converges. That was wrong; the conclusion survives, the
+  mechanism did not, and the incident is recorded at the end of this section.)
 
-  Note this is the same phenomenon as the resample blur fixed just before it:
-  the à-trous was the *dominant* blur, which is why sharpening the history
-  resample to Catmull-Rom was measured as no visible change in game. That
-  change was correct — the accumulated resample blur is real — it just was not
-  the binding constraint.
+**Increment 2 — what "converged" means.** Increment 1 gated the bypass on
+`smoothstep(cap/4, cap, count)`. In game that traded the flat room for visible
+noise, worst around lava: stray super-bright spots that flicker, plus a noise
+floor that did not scale with local brightness. Both are one cause.
+
+A light-15 emitter is `EMISSION_ANCHOR = 8.0`, and `RTGI_MAX_RADIANCE = 12.0`
+sits *deliberately above* it so legitimate emitter hits do not saturate the
+firefly cap. So one lava hit arrives **unclamped at ~8 against an ambient GI of
+~0.3**. Among 128 samples it shifts the mean by ~0.06 — and then lands again.
+For that term the effective sample count is **near 1 at any cap**, and
+averaging it away across the footprint is exactly the work the wide passes were
+doing. The count reads "converged" while the estimate is still moving.
+
+That is also why the noise floor was flat rather than brightness-scaled: a
+firefly's magnitude is set by the emitter, not by the local signal, so dark and
+bright pixels are perturbed by the same absolute amount.
+
+The fix is to gate on the **standard error of the mean**, `sd / sqrt(N)`, made
+relative by the signal — the count's claim *and* the estimator's own verdict:
+
+```glsl
+float count_ramp  = smoothstep(cap * 0.25, cap, accum_count);
+float relative_se = center_std / (sqrt(max(accum_count, 1.0)) * (center_m1 + 0.02));
+float se_gate     = 1.0 - smoothstep(0.05, 0.15, relative_se);
+float convergence = count_ramp * se_gate;
+```
+
+Measured on the CPU model with a compact lava pool (solid angle 0.05) and a
+clean region with none, 200 frames static:
+
+| variant | clean rmse | clean detail | clean grain | lava flicker | lava excursion |
+|---|---:|---:|---:|---:|---:|
+| pre-P3 (1-2-4-8, no bypass) | 0.0415 | 0.40 | 0.0293 | 0.0010 | −0.171 |
+| increment 1 (count gate) | 0.0271 | 0.27 | 0.0261 | **0.0046** | **−0.001** |
+| increment 2 (count × SE) | 0.0271 | 0.28 | 0.0260 | **0.0013** | −0.164 |
+
+Increment 2 is **identical to increment 1 on clean pixels** and returns the
+emitter region to baseline flicker. Increment 1 was the only configuration
+whose extreme excursion was *bright* rather than dark — it kept the firefly —
+and carried 4.6× the temporal flicker near the emitter. Under motion (8 frames
+of history) increment 2 is also the best of the three on the emitter region
+(flicker 0.0269 vs 0.0336 for increment 1 and 0.0369 for pre-P3).
+
+Measured gate strength, which is why the bypass cannot fire on a fresh pixel:
+
+| N | 1–32 | 64 | 128 |
+|---|---:|---:|---:|
+| clean | 0.000 | 0.257 | 1.000 |
+| near emitter | 0.000 | 0.007 | 0.000 |
+
+**Measured and rejected:** redefining `sigma_l` as `PHI · SE` rather than
+`PHI · sd`. It is by far the best static result on clean pixels (rmse 0.0169 vs
+0.0271, detail 0.60 vs 0.28, grain 0.0158 vs 0.0260) and it still returns the
+emitter region to baseline flicker, but it is **worse under motion** on the
+emitter region (rmse 0.3282 vs 0.2818, flicker 0.0453 vs 0.0269). M2
+under-reports the variance while it is still filling — reported sd 0.366
+against a true 1.096 at N = 8 — so `SE` is doubly wrong exactly when history is
+short. It also redefines the edge-stop, which P3 holds fixed. Left out.
+
+**What increment 2 does not fix.** Near a small bright emitter the wide passes
+now stay on, because at 1 ray/frame and a cap of 128 the emitter term genuinely
+cannot converge: spatial reuse *is* its estimator. The square glow is therefore
+still present in exactly the case it was reported for. Removing it needs the
+emitter term sampled properly (**P6, emitter importance sampling**) or split
+into its own channel and blurred independently. Both are out of scope here.
+
+**Two non-binding fixes, and why they matter.** Catmull-Rom history resampling
+and the increment-1 bypass were both correct and both measured, and neither was
+the binding constraint when it shipped. Lesson recorded: a measurement proves a
+defect is real, not that it is dominant. Confirm the *symptom* moved before
+treating the mechanism as settled.
+
 
 Tasks:
 

@@ -19,15 +19,17 @@ const vec2 workGroupsRender = vec2(0.5, 0.5);
 #endif
 layout(local_size_x = 16, local_size_y = 16) in;
 
-// Four-pass à-trous pyramid in SVGF order (narrow to wide), mirroring the
-// 1-2-4-8 ladder of the educational Minecraft-PTGI pack:
-//   pass 1: stride 1, temporal output -> inter
-//   pass 2: stride 2, inter          -> filtered
-//   pass 3: stride 4, filtered       -> inter
-//   pass 4: stride 8, inter          -> filtered (consumed by deferred4)
-// The previous two-pass (2, 1) chain had an effective radius of ~4 texels —
-// far too small to dissolve emitter confetti into a light field. Wrappers
-// (deferred3_a..d) select the pass.
+// Four-pass a-trous pyramid (SVGF-style), wide to narrow:
+//   pass 1: stride 8, temporal output -> inter
+//   pass 2: stride 4, inter          -> filtered
+//   pass 3: stride 2, filtered       -> inter
+//   pass 4: stride 1, inter          -> filtered (consumed by deferred4)
+// Edge-stopping is recomputed from the running centre every pass, so the chain
+// is NOT order-independent: the wide passes see the raw, noisy temporal centre
+// and their edge-stops bite, while the last pass is a stride-1 polish. Running
+// the ladder narrow-to-wide instead puts the stride-8 pass last, on an
+// already-smoothed centre whose edge-stop has nothing left to reject -- the
+// flat, evenly lit room. Wrappers (deferred3_a..d) select the pass.
 #ifndef RTGI_FILTER_PASS
 #define RTGI_FILTER_PASS 1
 #endif
@@ -277,31 +279,54 @@ void main() {
 
     // P3: converged-pixel bypass, on the wide passes only.
     //
-    // The luminance edge-stop is sigma_l = PHI * sqrt(variance), and the
-    // variance shrinks as the pixel converges while the signal does not. At
-    // the cap, PHI = 10 and a converged pixel's reported variance of
-    // 2*sigma^2/cap give sigma_l = 0.375 for a signal of 0.30 -- larger than
-    // the signal, so exp(-luma_diff / sigma_l) is near 1 for every neighbour
-    // in the footprint and the stop does nothing at all. Measured: a
-    // neighbour whose true luminance differs by 0.10 is accepted with weight
-    // 0.77. The two wide passes then run as unguarded box blurs over +-24
-    // texels, and that is the flat, evenly lit room and the square glow.
+    // sigma_l = PHI * sqrt(variance), and the variance here is the PER-SAMPLE
+    // variance: M2 is an EMA of sample luminance squared, so it converges to
+    // E[X^2] and variance = M2 - M1^2 converges to Var(X) -- a fixed property
+    // of the estimator that does NOT shrink as samples accumulate. Measured on
+    // a 96x96 CPU model of this recurrence: reported sd 1.03 against a true
+    // per-sample sd of 1.10. At the cap with PHI = 10 that leaves sigma_l
+    // about sqrt(128) = 11x wider than the noise actually present in the
+    // estimate, so exp(-luma_diff / sigma_l) is near 1 for every neighbour in
+    // the footprint, the two wide passes run as unguarded box blurs, and that
+    // is the flat, evenly lit room.
     //
-    // So the wide passes are faded out as the pixel converges, rather than
-    // cut off at the cap -- a hard threshold would make pixels pop as they
-    // cross it. A pixel below a quarter of the cap still gets the full wide
-    // blur, which is what it needs; at the cap it keeps its own value. The
-    // narrow passes still run and take the edge off the residual noise.
+    // So a converged pixel keeps its own value instead. But "converged" is not
+    // the sample count. A light-15 emitter is EMISSION_ANCHOR = 8.0, and
+    // RTGI_MAX_RADIANCE = 12.0 sits deliberately ABOVE it so that legitimate
+    // emitter hits do not saturate the firefly cap -- so one lava hit arrives
+    // unclamped at ~8 against an ambient GI of ~0.3, and among 128 samples it
+    // shifts the mean by ~0.06 and then lands again. For that term the
+    // effective sample count is near 1 at any cap, and averaging it away is
+    // exactly the work the wide passes were doing. Gating the bypass on the
+    // count alone therefore switched the blur off on precisely the pixels that
+    // still needed it: measured 4.6x the temporal flicker near an emitter, and
+    // the only configuration whose extreme excursion is BRIGHT rather than
+    // dark -- the stray super-bright spots.
+    //
+    // The right measure is the standard error of the MEAN, sd / sqrt(N), made
+    // relative by the signal: the count's claim AND the estimator's own
+    // verdict. Below SE_LO the estimate is good enough to stop paying for the
+    // wide passes; above SE_HI it is not, whatever the count says. Measured
+    // gate strength at the cap: 1.00 for a clean pixel, 0.00 near an emitter,
+    // and fully shut through N = 32, so a fresh pixel is never handed to the
+    // bypass. Faded, not cut off, so nothing pops.
     //
     // This is not a weight retune: PHI, the B-spline weights and every sigma
-    // are untouched. What changed is that a converged pixel is no longer
-    // handed to a filter whose guidance it has already outgrown.
+    // are untouched. What changed is which pixels count as converged.
     #if RTGI_FILTER_PASS == 1 || RTGI_FILTER_PASS == 2
-    float convergence = smoothstep(
+    const float RTGI_FILTER_SE_LO = 0.05;
+    const float RTGI_FILTER_SE_HI = 0.15;
+    float accum_count = unpack_sky_count(center_aux.g).y;
+    float count_ramp = smoothstep(
         float(RTGI_SPP_CAP) * 0.25,
         float(RTGI_SPP_CAP),
-        unpack_sky_count(center_aux.g).y
+        accum_count
     );
+    float relative_se = center_std
+        / (sqrt(max(accum_count, 1.0)) * (center_m1 + 0.02));
+    float se_gate = 1.0
+        - smoothstep(RTGI_FILTER_SE_LO, RTGI_FILTER_SE_HI, relative_se);
+    float convergence = count_ramp * se_gate;
     filtered = mix(filtered, center_radiance, convergence);
     filtered_sky = mix(filtered_sky, center_sky_weight, convergence);
     #endif
