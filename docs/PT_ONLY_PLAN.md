@@ -741,6 +741,44 @@ defective statistic, and need repeating against this one):
 
 **Goal:** remove the square bloom footprint and get Kappa-class edge preservation.
 
+**Status 2026-11-04: increment 1 shipped — wide→narrow strides and the
+converged-pixel bypass. Start here; the rest of the task list is below.**
+
+Two structural changes, no weight touched (`RTGI_FILTER_PHI` is still 10.0,
+the B-spline weights and every sigma are unchanged):
+
+- **Strides now run 8 → 4 → 2 → 1, wide to narrow.** Every pass in an à-trous
+  pyramid blurs, and the *last* pass is the one whose footprint the final image
+  inherits. Narrow→wide put the widest, sparsest kernel last, so the image the
+  player saw was the output of a ±30-texel blur. Total support is unchanged
+  (±2·(8+4+2+1) = ±30), so the reorder is free: `deferred3_a…d` measured
+  0.683 ms, 12.7 % of the frame (`docs/pt_perf_baseline.md`), and the tap count
+  is identical.
+- **The wide passes now fade out as a pixel converges.** The luminance
+  edge-stop is `sigma_l = PHI · sqrt(variance)`, and the variance collapses as
+  the pixel converges while the signal does not. At the cap, with `PHI = 10`
+  and the M2 EMA's ~2× over-report, a converged pixel's `sigma_l` is **larger
+  than the signal itself**:
+
+  | per-sample sigma | reported variance | `sigma_l` | signal | neighbour 0.10 away |
+  |---:|---:|---:|---:|---:|
+  | 0.30 | 0.0014 | 0.375 | 0.30 | accepted, weight **0.77** |
+  | 0.60 | 0.0056 | 0.750 | 0.60 | accepted, weight **0.88** |
+
+  So for any converged pixel the luminance stop does nothing at all and the two
+  wide passes run as unguarded box blurs — that is the flat, evenly lit room
+  and the square glow. The bypass blends back toward the unfiltered centre with
+  `smoothstep(cap/4, cap, count)`, so a pixel below a quarter of the cap still
+  gets the full wide blur it needs and nothing pops as it crosses the
+  threshold. The narrow passes still run and take the edge off the residual
+  noise.
+
+  Note this is the same phenomenon as the resample blur fixed just before it:
+  the à-trous was the *dominant* blur, which is why sharpening the history
+  resample to Catmull-Rom was measured as no visible change in game. That
+  change was correct — the accumulated resample blur is real — it just was not
+  the binding constraint.
+
 Tasks:
 
 - **Do not tune `RTGI_FILTER_PHI`, Gaussian weights or σ caps again.** The re-audit proved weight tuning does not change the footprint.

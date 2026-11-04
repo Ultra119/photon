@@ -169,17 +169,27 @@ void main() {
     float var_normalized = clamp01(center_std / (center_m1 + 0.02));
     float sigma_n = mix(128.0, 8.0, var_normalized);
 
-    // Pass strides: 1 -> 2 -> 4 -> 8 (narrow to wide). The depth tolerance
-    // scales with the stride so a wide pass does not leak across surfaces
-    // that are still distinct at that spacing.
+    // P3: strides run 8 -> 4 -> 2 -> 1, wide to narrow.
+    //
+    // Every pass in an a-trous pyramid blurs, and the LAST pass is the one
+    // whose footprint the final image inherits. With narrow -> wide the last
+    // pass was stride 8, so the image the player sees was the output of the
+    // widest, sparsest kernel in the stack: a flat, evenly lit room and a
+    // square glow around anything bright. Wide -> narrow spends the wide
+    // passes on the noisy input, where a large footprint is what you want,
+    // and leaves the sharpening to the end. The total support is the same
+    // (+-2*(8+4+2+1) texels), so this costs nothing.
+    //
+    // The depth tolerance still scales with the stride so a wide pass does
+    // not leak across surfaces that are only distinct at that spacing.
     #if RTGI_FILTER_PASS == 1
-    const int step_size = 1;
-    #elif RTGI_FILTER_PASS == 2
-    const int step_size = 2;
-    #elif RTGI_FILTER_PASS == 3
-    const int step_size = 4;
-    #else
     const int step_size = 8;
+    #elif RTGI_FILTER_PASS == 2
+    const int step_size = 4;
+    #elif RTGI_FILTER_PASS == 3
+    const int step_size = 2;
+    #else
+    const int step_size = 1;
     #endif
     float sigma_z = max(center_dist * 0.05, 0.10) * float(step_size);
 
@@ -264,6 +274,37 @@ void main() {
 
     vec3 filtered = (sum_weights > 1e-4) ? (sum_radiance / sum_weights) : center_radiance;
     float filtered_sky = (sum_weights > 1e-4) ? (sum_sky_weight / sum_weights) : center_sky_weight;
+
+    // P3: converged-pixel bypass, on the wide passes only.
+    //
+    // The luminance edge-stop is sigma_l = PHI * sqrt(variance), and the
+    // variance shrinks as the pixel converges while the signal does not. At
+    // the cap, PHI = 10 and a converged pixel's reported variance of
+    // 2*sigma^2/cap give sigma_l = 0.375 for a signal of 0.30 -- larger than
+    // the signal, so exp(-luma_diff / sigma_l) is near 1 for every neighbour
+    // in the footprint and the stop does nothing at all. Measured: a
+    // neighbour whose true luminance differs by 0.10 is accepted with weight
+    // 0.77. The two wide passes then run as unguarded box blurs over +-24
+    // texels, and that is the flat, evenly lit room and the square glow.
+    //
+    // So the wide passes are faded out as the pixel converges, rather than
+    // cut off at the cap -- a hard threshold would make pixels pop as they
+    // cross it. A pixel below a quarter of the cap still gets the full wide
+    // blur, which is what it needs; at the cap it keeps its own value. The
+    // narrow passes still run and take the edge off the residual noise.
+    //
+    // This is not a weight retune: PHI, the B-spline weights and every sigma
+    // are untouched. What changed is that a converged pixel is no longer
+    // handed to a filter whose guidance it has already outgrown.
+    #if RTGI_FILTER_PASS == 1 || RTGI_FILTER_PASS == 2
+    float convergence = smoothstep(
+        float(RTGI_SPP_CAP) * 0.25,
+        float(RTGI_SPP_CAP),
+        unpack_sky_count(center_aux.g).y
+    );
+    filtered = mix(filtered, center_radiance, convergence);
+    filtered_sky = mix(filtered_sky, center_sky_weight, convergence);
+    #endif
 
     #if RTGI_FILTER_PASS == 1 || RTGI_FILTER_PASS == 3
     imageStore(rtgi_filter_inter_img, texel, vec4(filtered, clamp01(filtered_sky)));

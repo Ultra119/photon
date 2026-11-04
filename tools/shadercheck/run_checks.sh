@@ -42,3 +42,5 @@ echo "== gi debug view wiring =="
 python3 tools/shadercheck/gi_debug_test.py
 echo "== PT reconstruction state contract (P1) =="
 python3 tools/shadercheck/pt_state_test.py
+echo "== RTGI spatial filter contract (P3) =="
+python3 tools/shadercheck/rtgi_filter_test.py
