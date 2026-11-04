@@ -246,6 +246,40 @@ Shipped (`e45b545` → this commit):
   preprocesses `shaders.properties` per `GI_DEBUG` value instead of counting
   declared names), because the debug images are mutually exclusive.
 
+**First in-game run (2026-11-04), and the bug it exposed.** With both views on:
+
+- `GI_DEBUG_SPP`: static blocks warm to yellow, sky stays blue at zero, and
+  disoccluded edges (grass, moving blocks) go blue — all correct.
+- `GI_DEBUG_RESET`: during a pan, blocks report `CAMERA` (blue), with
+  `OFFSCREEN` (purple) on the strip revealed at the screen edge and `DEPTH`
+  (red) along building outlines — also correct, and the first time the
+  invalidation story of a frame has been visible at all.
+- **Bug:** after a pan stopped, the sample count often froze at an
+  intermediate value instead of climbing to the cap, and the reset view
+  flickered between `CAMERA` and `NONE` on a motionless camera. Rotating the
+  view two or three degrees cleared it.
+
+Cause: the static-state detector's rotation test was
+`1.0 - dot(normalize(v), normalize(v)) < 1e-7`, and that expression does not
+return zero for a camera at rest — it returns a float32 rounding error.
+Measured over 40k camera orientations (`tools/shadercheck/pt_state_test.py`
+repeats the measurement): 67.0% return exactly 0, 29.1% return a small
+negative value, and **3.9% return a positive value up to 1.79e-7**, which
+fails the test. At those orientations a perfectly still camera was reported as
+moving, so the sample count was held forever — and moving the camera a couple
+of degrees changed the rounding, which is why jiggling "fixed" it.
+
+Fix: two guards instead of one. (1) Bit-exact equality of the previous and
+current camera position, modelview and projection — at rest Iris hands the pack
+the matrices it built last frame, so this is the normal path and rounding
+cannot touch it. (2) Tolerances an order of magnitude above the measured
+noise: 1e-3 blocks of translation (clears the float32 spacing of
+`cameraPosition` out to ±8192 blocks), 1e-6 for `1 - dot` (5.6× the worst
+measured error, ≈0.08°/frame ≈ 1.7 px at 1080p), 1e-6 for the projection
+terms. The test asserts both the margins and that a "static" frame cannot pan
+more than 3 px, so the threshold cannot be quietly loosened or tightened into
+the noise again.
+
 Deviations from the task list, and why:
 
 - **No scene-revision or lighting-revision signal.** Iris exposes no block-edit
@@ -263,6 +297,13 @@ Deviations from the task list, and why:
   so far. The reactive mask is defined today as "how much history this pixel
   dropped", which is what P3's converged-pixel bypass needs; P5 adds the
   material-driven water/wetness term on top.
+
+Behaviour that is by design, confirmed in-game: while the camera moves, newly
+revealed surfaces stay blue in `GI_DEBUG_SPP` until the camera stops, because a
+reprojected sample is the same light re-measured rather than new evidence. The
+count is *held* during motion rather than reset, so a pan neither dumps the
+field to raw dots nor invents samples; it resumes climbing the moment the
+camera settles.
 
 Outstanding before the gate can be closed:
 

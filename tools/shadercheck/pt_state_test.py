@@ -23,7 +23,9 @@ from __future__ import annotations
 
 import math
 import pathlib
+import random
 import re
+import struct
 import sys
 
 HERE = pathlib.Path(__file__).resolve().parent
@@ -36,6 +38,11 @@ TRACE = SHADERS / "program/rtgi/rtgi_trace.csh"
 
 # fp16 stores every integer up to 2048 exactly.
 FP16_EXACT_MAX = 2048
+
+
+def f32(x: float) -> float:
+    """Round to float32, the precision shaders use for these uniforms."""
+    return struct.unpack("f", struct.pack("f", x))[0]
 
 
 def glsl_round(x: float) -> float:
@@ -294,18 +301,117 @@ def check_state_written(failures: list[str]) -> None:
         failures.append("rtgi_trace.csh does not write its valid-path fraction")
 
 
+def check_static_state(failures: list[str]) -> None:
+    """Claim 4: the static-state detector's thresholds are above float32 noise.
+
+    The first version compared `1 - dot(normalize(v), normalize(v))` against
+    1e-7. That expression does not return 0 for a camera at rest -- it returns
+    a float32 rounding error -- so at some camera orientations a perfectly
+    still camera was reported as moving and the sample count froze forever.
+    The thresholds therefore have to be justified by measurement, and this
+    check repeats the measurement instead of trusting a comment.
+    """
+    src = strip_comments(read(STATE))
+
+    eps: dict[str, float] = {}
+    for name in ("TRANSLATION", "ROTATION", "PROJECTION"):
+        m = re.search(
+            rf"#define PT_STATIC_{name}_EPS\s+([0-9.eE+-]+)", src
+        )
+        if m:
+            eps[name] = float(m.group(1))
+        else:
+            failures.append(f"PT_STATIC_{name}_EPS not defined in pt_state.glsl")
+    if len(eps) != 3:
+        return
+
+    if "pt_mat4_equal(model_view, previous_model_view)" not in src:
+        failures.append(
+            "the detector has no bit-exact matrix path; a tolerance alone is "
+            "always one rounding error away from freezing the accumulator"
+        )
+    if "all(equal(camera_position, previous_camera_position))" not in src:
+        failures.append("the detector has no bit-exact camera-position path")
+    if re.search(r"rotation_delta < 1e-7", src):
+        failures.append("the rotation threshold is still inside the float32 noise")
+
+    # --- the measurement ------------------------------------------------
+    # float32 self-dot of a normalised vector, over the whole orientation
+    # space the camera can occupy.
+    rng = random.Random(11)
+    samples = 40000
+    worst_positive = 0.0
+    positive = 0
+    for _ in range(samples):
+        yaw = rng.uniform(-math.pi, math.pi)
+        pitch = rng.uniform(-1.5, 1.5)
+        v = (
+            f32(f32(-math.sin(yaw)) * f32(math.cos(pitch))),
+            f32(-math.sin(pitch)),
+            f32(f32(-math.cos(yaw)) * f32(math.cos(pitch))),
+        )
+        length = f32(
+            math.sqrt(
+                f32(f32(v[0] * v[0]) + f32(f32(v[1] * v[1]) + f32(v[2] * v[2])))
+            )
+        )
+        n = tuple(f32(c / length) for c in v)
+        d = f32(f32(f32(n[0] * n[0]) + f32(n[1] * n[1])) + f32(n[2] * n[2]))
+        err = f32(1.0 - d)
+        if err > 0.0:
+            positive += 1
+            worst_positive = max(worst_positive, err)
+
+    if worst_positive >= eps["ROTATION"]:
+        failures.append(
+            f"rotation eps {eps['ROTATION']:.3e} is inside the float32 self-dot "
+            f"noise (worst measured {worst_positive:.3e}); the accumulator "
+            f"freezes at some camera orientations"
+        )
+    margin = eps["ROTATION"] / worst_positive if worst_positive else math.inf
+    if margin < 4.0:
+        failures.append(
+            f"rotation eps is only {margin:.1f}x the measured noise; want >= 4x"
+        )
+
+    # What the tolerance means on screen: a "static" frame may still pan this
+    # far, so it has to stay well under a texel-ish distance.
+    angle = math.sqrt(2.0 * eps["ROTATION"])            # radians per frame
+    pixels = angle * (1920.0 / math.radians(90.0))      # at 1080p, 90 deg FOV
+    if pixels > 3.0:
+        failures.append(
+            f"rotation eps allows {pixels:.1f} px/frame of pan to count as "
+            "static; want < 3 px"
+        )
+
+    # The translation tolerance has to clear the float32 spacing of
+    # cameraPosition, or a still camera far from the origin reads as moving.
+    for distance in (1024.0, 4096.0, 8192.0):
+        spacing = math.ulp(f32(distance))
+        if eps["TRANSLATION"] <= spacing:
+            failures.append(
+                f"translation eps {eps['TRANSLATION']:.1e} is below the float32 "
+                f"spacing of cameraPosition at {distance:.0f} blocks "
+                f"({spacing:.1e})"
+            )
+
+
 def main() -> int:
     failures: list[str] = []
     check_packing(failures)
     check_spp_math(failures)
     check_state_written(failures)
+    check_static_state(failures)
 
     if failures:
         print(f"FAIL: {len(failures)} assertion(s)")
         for f in failures:
             print(f"  - {f}")
         return 1
-    print("P1 state contract OK (packing, sample accounting, state writes)")
+    print(
+        "P1 state contract OK (packing, sample accounting, state writes, "
+        "static-state thresholds)"
+    )
     return 0
 
 

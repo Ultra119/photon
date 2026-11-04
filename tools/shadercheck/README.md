@@ -12,12 +12,23 @@ The harness accepts any `glslang` or `glslangValidator` binary. If you do not
 have one installed:
 
 ```sh
-git clone --depth 1 https://github.com/KhronosGroup/glslang.git
+bash tools/shadercheck/bootstrap_glslang.sh        # prints the export line
+export GLSLANG=/tmp/glslang-build/glslang-15.0.0/build/StandAlone/glslang
+```
+
+or, by hand:
+
+```sh
+git clone --depth 1 --branch 15.0.0 https://github.com/KhronosGroup/glslang.git
 python3 -m pip install --user cmake
 cmake -S glslang -B glslang/build -DCMAKE_BUILD_TYPE=Release -DENABLE_OPT=OFF
-cmake --build glslang/build --target glslang-standalone -j4
+cmake --build glslang/build --target glslang --parallel 4
 export GLSLANG="$PWD/glslang/build/StandAlone/glslang"
 ```
+
+The version is pinned to 15.0.0 and the target is `glslang` (not
+`glslang-standalone`): the binary has to accept `-S <stage>` and `-E`, which is
+what `check.py` and `gi_debug_test.py` invoke.
 
 ## Run
 

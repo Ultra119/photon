@@ -96,10 +96,53 @@ bool pt_state_converged(vec4 state) { return state.a > 0.5; }
 // the edited pixels, which the depth disocclusion test already catches; an
 // emitter edit changes only radiance, so it is absorbed by the blend. Both
 // cases are visible as the matching reason code in the reset debug view.
+//
+// # Thresholds: measure, do not guess
+//
+// The first version of this detector used `rotation_delta < 1e-7`, which is
+// inside the rounding error of the expression it guards. For a camera at rest
+// the two matrices are the same numbers, so `dot(normalize(v), normalize(v))`
+// is a float32 self-dot: over 40k sampled camera orientations 67% of them
+// returned exactly 1.0, 29.1% returned slightly MORE than 1.0, and 3.9%
+// returned slightly LESS, by up to 1.79e-7. The 3.9% therefore failed the
+// test: at those orientations the sample count was frozen forever even though
+// nothing was moving, which is exactly the "sometimes it stays in an
+// intermediate state until I jiggle the camera a couple of degrees" report.
+//
+// Two guards instead of one:
+//
+//   1. Bit-exact equality of the previous and current matrices. At rest Iris
+//      hands the pack the matrices it built last frame, so this is the normal
+//      path and rounding cannot touch it.
+//   2. A tolerance an order of magnitude above the measured noise, for the
+//      frames where the matrices are merely very close.
+
+// Blocks per frame. 1 mm/frame is 6 cm/s, well below anything a player can
+// hold, and it clears the float32 spacing of cameraPosition out to +/-8192
+// blocks (9.5e-4 there), which covers every coordinate reached in normal play.
+#define PT_STATIC_TRANSLATION_EPS 1e-3
+
+// `1 - dot` of the two view-forward vectors. 1e-6 is 5.6x the worst measured
+// self-dot error (1.79e-7) and corresponds to 0.08 degrees per frame, about
+// 1.7 pixels at 1080p and 90 degrees of FOV. A pan slower than that still
+// counts as static, which is deliberate: the reprojection moves the history
+// by well under a texel there, so treating it as new evidence costs nothing.
+#define PT_STATIC_ROTATION_EPS 1e-6
+
+// The two projection terms that carry FOV and aspect (both around 1.0, so the
+// same absolute tolerance applies).
+#define PT_STATIC_PROJECTION_EPS 1e-6
+
 struct PtStaticState {
     bool camera_static;
     bool projection_static;
 };
+
+// GLSL's equal() does not take matrices, so compare the columns.
+bool pt_mat4_equal(mat4 a, mat4 b) {
+    return all(equal(a[0], b[0])) && all(equal(a[1], b[1]))
+        && all(equal(a[2], b[2])) && all(equal(a[3], b[3]));
+}
 
 PtStaticState pt_static_state(
     vec3 camera_position,
@@ -109,7 +152,12 @@ PtStaticState pt_static_state(
     mat4 projection,
     mat4 previous_projection
 ) {
-    // Translation: sub-millimetre in blocks.
+    // Bit-exact path: nothing about the camera changed at all.
+    bool identical = all(equal(camera_position, previous_camera_position))
+        && pt_mat4_equal(model_view, previous_model_view)
+        && pt_mat4_equal(projection, previous_projection);
+
+    // Translation, in blocks.
     float translation = length(camera_position - previous_camera_position);
 
     // Rotation: compare the view basis, not the translation that also lives in
@@ -123,8 +171,11 @@ PtStaticState pt_static_state(
         + abs(projection[1][1] - previous_projection[1][1]);
 
     PtStaticState state;
-    state.camera_static = translation < 1e-4 && rotation_delta < 1e-7;
-    state.projection_static = projection_delta < 1e-6;
+    state.camera_static = identical
+        || (translation < PT_STATIC_TRANSLATION_EPS
+            && rotation_delta < PT_STATIC_ROTATION_EPS);
+    state.projection_static = identical
+        || (projection_delta < PT_STATIC_PROJECTION_EPS);
     return state;
 }
 
