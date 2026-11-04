@@ -369,26 +369,25 @@ void shade_voxel_hit(
     }
     result.albedo = bounce_albedo;
 
-    vec3 sky_bounce = vec3(0.0);
-    if (sky_irradiance.r + sky_irradiance.g + sky_irradiance.b > 0.0) {
-        vec3 sky_start = hit_face_scene + hit_norm * 0.05;
-        float sky_vis = trace_sun_visibility(voxel_grid, level, sky_start, vec3(0.0, 1.0, 0.0));
-        sky_bounce = bounce_albedo * sky_irradiance * sky_vis * voxel_bounce_rcp_pi;
-    }
+    // Skylight bounce is naturally gathered by the Voxel Irradiance Volume
+    // through rays escaping openings to the sky dome with true geometrical solid
+    // angles. The legacy 1D vertical (0,1,0) march erroneously injected 100% of
+    // full outdoor hemispherical sky irradiance onto any surface under a narrow
+    // slit or window, causing massive artificial color bounce on unlit floors.
 
     // Solid voxels never inject analytic block ambient. Emission is
     // intrinsic radiance and is not divided by pi.
     vec3 emission_radiance = mat.emission;
 
     vec3 bounce_radiance = bounce_albedo * sun_irradiance * voxel_bounce_rcp_pi;
-    vec3 sky_lit = bounce_radiance + sky_bounce;
+    vec3 sky_lit = bounce_radiance;
     vec3 local_lit = emission_radiance;
     float sky_lum = dot(sky_lit, luminance_weights);
     float local_lum = dot(local_lit, luminance_weights);
     result.sky_weight = clamp01(sky_lum / max(sky_lum + local_lum, eps));
     // Outgoing radiance at the hit is unattenuated; callers multiply by the
     // accumulated transmittance exactly once (including across clip levels).
-    result.radiance = emission_radiance + bounce_radiance + sky_bounce;
+    result.radiance = emission_radiance + bounce_radiance;
 }
 
 // Trace one clipmap level. Distances are world blocks from the original ray
