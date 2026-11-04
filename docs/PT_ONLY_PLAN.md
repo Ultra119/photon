@@ -594,6 +594,44 @@ passes ran unconditionally. Turning it off recovers that time and loses
 essentially nothing indoors; outdoors the volume does hold real sun/sky
 irradiance, so it is not inert there and it stays on by default.
 
+**Fifth pass (2026-11-04): the strip at the edge of the screen that takes
+seconds to settle after the smallest camera movement.** Not an accumulation
+problem — a *reporting* one. After a soft reset the estimate is 90% one raw
+sample, so its variance is `0.9²` of a single sample's. The M2 EMA cannot say
+that: it reports `0.9 · 0.1 · (new − old)²`, which shrinks towards zero the
+**more** completely the history was discarded, so the noisiest pixel on screen
+is the one the à-trous is told is cleanest.
+
+Measured (40 000 trials, per-sample sigma 0.30, history 128 samples):
+
+| | variance | std |
+|---|---:|---:|
+| reported by the M2 EMA | 0.0082 | 0.091 |
+| true variance of the blend | 0.0729 | 0.270 |
+| | **8.9× under-reported** | 3.0× |
+
+`sigma_l = PHI · sqrt(var)` and `sigma_n = mix(128, 8, std / (m1 + 0.02))` are
+then both ~3× too tight, so the filter barely touches the pixel and it has to
+wait for 1/N accumulation. It also explains why a **first frame** looks better
+than a pan: the first-frame path seeds `m2` from the local spatial variance and
+gets it right, while every soft reset during motion overwrote that seed with
+the EMA.
+
+Fixed by reporting the variance of the blend itself,
+`Var(aX + bY) = a²Var(X) + b²Var(Y)`, the same treatment the spatial fallback
+branch already used.
+
+Two related notes, not changed:
+
+- **The reactive mask is written and never read.** `pt_state_reactive()` has no
+  callers; the à-trous has no idea which pixels were reset this frame beyond
+  what the variance tells it. The variance fix covers the same ground, so the
+  channel stays dead for now rather than adding a second, overlapping signal.
+- **The M2 EMA over-reports by ~2× on a converged pixel** (its
+  `α(1−α)·d²` term is maximal mid-transition). That is the conservative
+  direction — the filter blurs a pixel that is adapting, which hides the
+  transition — so it was left alone.
+
 **The 7×7 spatial preaccumulation fallback shipped after all** — it was
 deferred at first as "the most expensive task, and P3 redesigns spatial
 filtering anyway", but it is also the one that answers the last open gate item

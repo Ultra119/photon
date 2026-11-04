@@ -519,6 +519,53 @@ def _yaw_pitch(yaw: float, pitch: float):
     )
 
 
+def check_reset_variance(failures: list[str]) -> None:
+    """Claim 11: a reset pixel must report the noise it actually has.
+
+    After a soft reset the estimate is 90% one raw sample, so its variance is
+    0.81 of a single sample's. The M2 EMA reports 0.9 * 0.1 * (new - old)^2
+    instead, which vanishes as the reset gets more complete -- the noisiest
+    pixel on screen is the one the filter is told is cleanest. The a-trous
+    then leaves it alone, and the revealed strip has to wait for 1/N
+    accumulation: the screen edge that takes seconds to settle.
+    """
+    temporal = "".join(strip_comments(read(TEMPORAL)).split())
+
+    if "mix(soft_aux.r,current_lum*current_lum,0.9)" in temporal:
+        failures.append(
+            "the soft reset drives M2 with the raw EMA; that reports "
+            "0.9*0.1*(new-old)^2, which is ~9x less than the variance the "
+            "blend actually has"
+        )
+    for token in ("0.9*0.9*raw_sample_var", "0.1*0.1*soft_var", "reset_m1*reset_m1+reset_var"):
+        if token not in temporal:
+            failures.append(
+                f"the soft reset does not report the blend's own variance "
+                f"(missing {token})"
+            )
+
+    # The measurement that motivates it, so it cannot be argued away.
+    rng = random.Random(7)
+    sigma, mu, n = 0.30, 0.60, 128.0
+    reported = 0.0
+    truth = 0.0
+    trials = 20000
+    for _ in range(trials):
+        m1 = mu + sigma / math.sqrt(n) * rng.gauss(0.0, 1.0)
+        m2 = m1 * m1 + sigma * sigma / n
+        a = 0.9
+        x = mu + sigma * rng.gauss(0.0, 1.0)
+        new_m1 = (1.0 - a) * m1 + a * x
+        reported += (1.0 - a) * m2 + a * x * x - new_m1 * new_m1
+        truth += a * a * sigma * sigma + (1.0 - a) * (1.0 - a) * sigma * sigma / n
+    under = truth / reported
+    if under < 4.0:
+        failures.append(
+            f"the soft reset only under-reports variance {under:.1f}x, so the "
+            "measurement does not justify replacing the EMA"
+        )
+
+
 def check_voxel_cache_switch(failures: list[str]) -> None:
     """Claim 10: VOXEL_CACHE_ENABLED is a switch, not a comment.
 
@@ -1123,6 +1170,7 @@ def main() -> int:
     check_motion_invariance(failures)
     check_voxel_cache_history(failures)
     check_voxel_cache_switch(failures)
+    check_reset_variance(failures)
 
     if failures:
         print(f"FAIL: {len(failures)} assertion(s)")

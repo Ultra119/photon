@@ -703,7 +703,30 @@ void main() {
                 // count restarts just above one fresh sample.
                 sample_count = current_spp / 0.9;
                 alpha = 0.9;
-                m2 = mix(soft_aux.r, current_lum * current_lum, 0.9);
+
+                // The blend leaves this estimate 90% one raw sample, so its
+                // noise is 0.9^2 of a single sample's variance -- and the M2
+                // EMA cannot say that. It reports 0.9 * 0.1 * (new - old)^2,
+                // which shrinks towards zero the MORE completely the history
+                // was discarded: the noisiest pixel on screen is the one the
+                // filter is told is cleanest. Measured 8.9x under-reported,
+                // which makes sigma_l and the variance-guided normal exponent
+                // 3x too tight, so the a-trous barely touches it and the pixel
+                // has to wait for 1/N accumulation instead. That is the strip
+                // at the edge of the screen that takes seconds to settle after
+                // the smallest camera movement -- and why a first frame, which
+                // seeds M2 from the local spatial variance and gets it right,
+                // looks better than a pan.
+                //
+                // Report the variance of the blend itself, matching what the
+                // spatial fallback branch does: Var(aX + bY) = a^2 Var(X) +
+                // b^2 Var(Y) for independent X and Y.
+                float soft_lum = dot(soft_prev.rgb, luminance_weights);
+                float soft_var = max(soft_aux.r - soft_lum * soft_lum, 0.0);
+                float raw_sample_var = dot(raw_sigma * raw_sigma, luminance_weights);
+                float reset_var = 0.9 * 0.9 * raw_sample_var + 0.1 * 0.1 * soft_var;
+                float reset_m1 = dot(accumulated_radiance, luminance_weights);
+                m2 = reset_m1 * reset_m1 + reset_var;
 
                 // Distinguish the two ways a reprojection can fail: the
                 // previous texel simply is not there (off-screen), or the
