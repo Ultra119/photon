@@ -109,8 +109,6 @@ option.WEATHER_WIND_VARIATION_SPEED        = 风度偏差变化速度
 
 # Lighting settings
 
-option.HANDHELD_LIGHTING               = 手持光源
-option.HANDHELD_LIGHTING.comment       = 可在世界投射光线的手持光源物品. 如果启用了彩色光源, 则手持光源也会投射近似于它们照明颜色的光照.
 option.HANDHELD_LIGHTING_INTENSITY     = 手持光源强度
 option.HANDHELD_LIGHTING_INTENSITY.comment = 调节手持光源的亮度.
 option.CLOUD_SHADOWS                   = 云影
@@ -162,8 +160,6 @@ option.MOON_G                          = 月光 - 绿色
 option.MOON_B                          = 月光 - 蓝色
 option.MOON_I                          = 月光强度
 option.SKYLIGHT_I                      = 天空光强度
-option.BOUNCED_LIGHT_I                 = 阳光反射强度
-option.CAVE_LIGHTING_I                 = 洞穴亮度
 option.LIGHTNING_FLASH                 = 闪电
 option.NETHER_USE_BIOME_COLOR          = 群系颜色
 option.NETHER_I                        = 环境光强度
@@ -481,22 +477,6 @@ suffix.POM_DISTANCE                    = m
 value.TEXTURE_FORMAT.TEXTURE_FORMAT_LAB = labPBR
 value.TEXTURE_FORMAT.TEXTURE_FORMAT_OLD = Old PBR
 
-option.ENVIRONMENT_REFLECTIONS         = 环境反射
-option.ENVIRONMENT_REFLECTIONS.comment = 屏幕空间反射. 使水和光滑的方块表面反射他们对应的环境. 较大性能影响.
-option.SKY_REFLECTIONS                 = 天空反射
-option.SKY_REFLECTIONS.comment         = 使水和光滑方块表面反射天空.
-option.SSR_ROUGHNESS_SUPPORT           = 粗糙反射支持
-option.SSR_ROUGHNESS_SUPPORT.comment   = 使在粗糙表面的反射确实显得粗糙. 较大性能影响.
-option.SSR_RAY_COUNT                   = 追踪采样数
-option.SSR_RAY_COUNT.comment           = 粗糙反射的追踪光路数. 更多光路意味着更少噪点但会使性能变糟糕.
-option.SSR_INTERSECTION_STEPS_SMOOTH   = 求交步进次数 - 平滑
-option.SSR_INTERSECTION_STEPS_SMOOTH.comment = 以性能为代价调节平滑反射的精确度.
-option.SSR_INTERSECTION_STEPS_ROUGH    = 求交步进次数 - 粗糙
-option.SSR_INTERSECTION_STEPS_ROUGH.comment = 以性能为代价调节粗糙反射的精确度.
-option.SSR_REFINEMENT_STEPS            = 细化步进次数
-option.SSR_REFINEMENT_STEPS.comment    = 以性能为代价调节所有反射的精确度.
-option.SSR_ROUGHNESS_THRESHOLD         = 粗糙度阈值
-option.SSR_ROUGHNESS_THRESHOLD.comment = 调节表面需要多光滑才能出现反射.
 
 # Water settings
 

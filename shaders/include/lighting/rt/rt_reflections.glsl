@@ -4,7 +4,7 @@
 /*
 --------------------------------------------------------------------------------
 
-  Photon Shader: RT Mode
+  Photon Shader: PT
   include/lighting/rt/rt_reflections.glsl:
   World-space voxel ray-traced specular reflection transport.
 
@@ -27,10 +27,10 @@
 // Voxel hit shading used to require the raster shadow map (removed in the
 // Wave-3 cascade fix: sun visibility is a voxel march now). Every program
 // that can reach this path already binds the clipmap voxel textures, so voxel
-// reflections work in the Nether and with SHADOW disabled too. Under
-// LIGHTING_MODE_PT the voxel scene is not allocated, so reflections fall back
-// to environment-only (sky map) — the placeholder PT stays valid to select.
-#define RT_REFLECTION_CAN_TRACE_VOXEL (LIGHTING_MODE == LIGHTING_MODE_RT)
+// reflections work in the Nether and with SHADOW disabled too. The PT-only
+// fork always allocates the voxel scene, so this is a temporary guard only;
+// it is folded away once every LIGHTING_MODE site is migrated.
+#define RT_REFLECTION_CAN_TRACE_VOXEL (LIGHTING_MODE == LIGHTING_MODE_PT)
 
 // Directional environment radiance for a reflection ray that escapes the voxel
 // scene. This is the sky map, not a screen-space or history buffer.

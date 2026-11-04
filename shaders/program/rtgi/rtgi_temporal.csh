@@ -1,7 +1,7 @@
 /*
 --------------------------------------------------------------------------------
 
-  Photon Shader: Native Voxel RTGI + SSGI Hybrid
+  Photon Shader: Native Voxel RTGI
   program/rtgi/rtgi_temporal.csh:
   SVGF Temporal Reconstruction with 3-Way Disocclusion & Moment Tracking
 

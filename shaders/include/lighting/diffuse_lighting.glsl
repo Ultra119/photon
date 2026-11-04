@@ -13,22 +13,21 @@
 #undef CLOUD_SHADOWS
 #endif
 
-// RT Mode has one indirect-lighting contract:
+// The PT-only fork has one indirect-lighting contract:
 // - deferred4 consumes the filtered opaque RTGI radiance buffer;
 // - forward-lit surfaces (water, glass, translucent) consume the world-space
-//   irradiance probe cache at their own depth — but now through the same
-//   query-time occlusion test the RT trace uses, so they can no longer read
-//   probes through walls (L1). There is no analytic sky/block/cave fallback.
-// LIGHTING_MODE_PT (profile placeholder) has none of these resources
-// allocated: its indirect path is direct-only (see get_diffuse_lighting).
-#if LIGHTING_MODE == LIGHTING_MODE_RT
+//   irradiance cache at their own depth — through the same query-time
+//   occlusion test the PT trace uses, so they can no longer read the cache
+//   through walls (L1). There is no analytic sky/block/cave fallback and no
+//   GI-off path.
+#if LIGHTING_MODE == LIGHTING_MODE_PT
 #include "/include/lighting/rt/voxel_cache.glsl"
 #if defined PROGRAM_DEFERRED4
 #define DIFFUSE_USE_RTGI
 uniform sampler2D rtgi_filtered_sampler;
 #include "/include/lighting/voxel/voxel_constants.glsl"
 #endif
-#endif // LIGHTING_MODE_RT
+#endif // LIGHTING_MODE_PT
 
 const float sss_density = 14.0;
 const float sss_scale = 5.0 * SSS_INTENSITY;
@@ -196,13 +195,9 @@ vec3 get_diffuse_lighting(
 #endif
 #endif
 
-    // Indirect lighting: RT only.
-#if LIGHTING_MODE != LIGHTING_MODE_RT
-    // PT placeholder (profile-selectable): the quality-first path is not
-    // implemented yet, so indirect lighting is direct-only — a stable GI-off
-    // A/B baseline rather than sampling unallocated RTGI/probe resources.
-    indirect_lighting = vec3(0.0);
-#elif defined DIFFUSE_USE_RTGI
+    // Indirect lighting: PT only. There is no analytic fallback and no GI-off
+    // profile any more, so the two consumers below are the whole contract.
+#if defined DIFFUSE_USE_RTGI
     vec2 rtgi_coord = taau_framebuffer_uv(uv);
     vec4 rtgi_sample = sample_rtgi_smooth(rtgi_filtered_sampler, rtgi_coord);
     // RTGI stores mean incoming radiance; convert to irradiance for the

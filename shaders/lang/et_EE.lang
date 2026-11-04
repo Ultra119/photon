@@ -109,8 +109,6 @@ option.WEATHER_WIND_VARIATION_SPEED        = Tuulisuse muutumise kiirus
 
 # Lighting settings
 
-option.HANDHELD_LIGHTING               = Käeshoitav valgustus
-option.HANDHELD_LIGHTING.comment       = Käeshoitavad esemed valgustavad maailma. Kui värviline valgustus on lubatud, on ka käeshoitav valgustus samade värvidega
 option.HANDHELD_LIGHTING_INTENSITY     = Käeshoitava valguse heledus
 option.HANDHELD_LIGHTING_INTENSITY.comment = Reguleerib käeshoitavate valgusallikate heledust
 option.CLOUD_SHADOWS                   = Pilvevarjud
@@ -160,8 +158,6 @@ option.MOON_G                          = Roheline
 option.MOON_B                          = Sinine
 option.MOON_I                          = Kuuvalguse intensiivsus
 option.SKYLIGHT_I                      = Taevalguse intensiivsus
-option.BOUNCED_LIGHT_I                 = Peegeldunud päikesevalguse intensiivsus
-option.CAVE_LIGHTING_I                 = Koopa heleduse tase
 option.LIGHTNING_FLASH                 = Välgusähvatus
 option.NETHER_USE_BIOME_COLOR          = Kasuta biomivärvi
 option.NETHER_I                        = Ümbritsev intensiivsus
@@ -478,22 +474,6 @@ suffix.POM_DISTANCE                    = m
 value.TEXTURE_FORMAT.TEXTURE_FORMAT_LAB = labPBR
 value.TEXTURE_FORMAT.TEXTURE_FORMAT_OLD = Old PBR
 
-option.ENVIRONMENT_REFLECTIONS         = Keskkonna peegeldused
-option.ENVIRONMENT_REFLECTIONS.comment = Ekraanisisesed peegeldused. Vesi ja läikivad plokid peegeldavad ümbritsevat. Suur jõudluskulu
-option.SKY_REFLECTIONS                 = Taeva peegeldused
-option.SKY_REFLECTIONS.comment         = Vesi ja läikivad plokid peegeldavad taevast
-option.SSR_ROUGHNESS_SUPPORT           = Kareduse tugi
-option.SSR_ROUGHNESS_SUPPORT.comment   = Peegeldused karedate pindade peavad olema kareduse tõttu udused. Suur jõudluskulu
-option.SSR_RAY_COUNT                   = Kiirte arv
-option.SSR_RAY_COUNT.comment           = Kiirte arv karedate pindade peegeldamiseks. Rohkem kiiri = vähem müra, aga halvem jõudlus
-option.SSR_INTERSECTION_STEPS_SMOOTH   = Ülemineku sammud – sujuv
-option.SSR_INTERSECTION_STEPS_SMOOTH.comment = Määrab sujuvate peegelduste täpsust jõudluse arvelt
-option.SSR_INTERSECTION_STEPS_ROUGH    = Ülemineku sammud – kare
-option.SSR_INTERSECTION_STEPS_ROUGH.comment = Määrab karedate peegelduste täpsust jõudluse arvelt
-option.SSR_REFINEMENT_STEPS            = Täpsustussammud
-option.SSR_REFINEMENT_STEPS.comment    = Reguleerib kõikide peegelduste täpsust jõudluse arvelt
-option.SSR_ROUGHNESS_THRESHOLD         = Kareduse lävi
-option.SSR_ROUGHNESS_THRESHOLD.comment = Määrab, kui sile pind peab olema, et peegeldused ilmuksid
 
 # Water settings
 

@@ -106,8 +106,6 @@ option.WEATHER_WIND_VARIATION_SPEED        = Velocità Variazione Vento
 
 # Lighting settings
 
-option.HANDHELD_LIGHTING               = Illuminazione in mano
-option.HANDHELD_LIGHTING.comment       = Illuminazione dell'ambiente con oggetti luminosi in mano. Se Luci Colorate è attivo l'Illuminazione in mano sarà colorata in base all'oggetto
 option.HANDHELD_LIGHTING_INTENSITY     = Intensità Illuminazione in mano
 option.HANDHELD_LIGHTING_INTENSITY.comment = Modifica la luminosità degli oggetti con Illuminazione in mano attivata
 option.CLOUD_SHADOWS                   = Ombre Nuvole
@@ -157,8 +155,6 @@ option.MOON_G                          = Verde
 option.MOON_B                          = Blu
 option.MOON_I                          = Intensità Luce Lunare
 option.SKYLIGHT_I                      = Intensità Luce Cielo
-option.BOUNCED_LIGHT_I                 = Intensità Luce Solare Riflessa
-option.CAVE_LIGHTING_I                 = Luminosità Caverne
 option.LIGHTNING_FLASH                 = Flash Fulmini
 option.NETHER_USE_BIOME_COLOR          = Usa Colore Bioma
 option.NETHER_I                        = Intensità Ambiente
@@ -480,22 +476,6 @@ suffix.POM_DISTANCE                    = m
 value.TEXTURE_FORMAT.TEXTURE_FORMAT_LAB = labPBR
 value.TEXTURE_FORMAT.TEXTURE_FORMAT_OLD = Vecchio PBR
 
-option.ENVIRONMENT_REFLECTIONS         = Riflessioni ambientali
-option.ENVIRONMENT_REFLECTIONS.comment = Riflessi Screen-space. Rende acqua e blocchi lucidi in grado di riflettere l'ambiente. Grande impatto sulle performance
-option.SKY_REFLECTIONS                 = Riflessi Cielo
-option.SKY_REFLECTIONS.comment         = Rende acqua e blocchi lucidi in grado di riflettere il cielo
-option.SSR_ROUGHNESS_SUPPORT           = Supporto Rugosità
-option.SSR_ROUGHNESS_SUPPORT.comment   = Aggiunge riflessi rugosi sui materiali ruvidi. Grande impatto sulle performance
-option.SSR_RAY_COUNT                   = Quantità Raggi
-option.SSR_RAY_COUNT.comment           = Quantità di raggi sulle superfici ruvide. Più raggi significa migliore qualità ma anche meno performance
-option.SSR_INTERSECTION_STEPS_SMOOTH   = Passaggi di intersezioni - Liscio
-option.SSR_INTERSECTION_STEPS_SMOOTH.comment = Modifica la qualità dei riflessi lisci, alle spese delle performance
-option.SSR_INTERSECTION_STEPS_ROUGH    = Passaggi di intersezioni - Ruvido
-option.SSR_INTERSECTION_STEPS_ROUGH.comment = Modifica la qualità dei riflessi ruvidi, alle spese delle performance
-option.SSR_REFINEMENT_STEPS            = Passaggi di Raffinatezza
-option.SSR_REFINEMENT_STEPS.comment    = Modifica la qualità di tutti i riflessi, alle spese delle performance
-option.SSR_ROUGHNESS_THRESHOLD         = Soglia di Rugosità
-option.SSR_ROUGHNESS_THRESHOLD.comment = Determina quanto liscia deve essere una superfice per generare riflessi
 
 # Water settings
 

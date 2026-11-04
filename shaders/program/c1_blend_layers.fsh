@@ -54,8 +54,8 @@ uniform sampler2D colortex12; // clouds data
 uniform sampler2D colortex13; // rendered translucent layer
 uniform sampler2D colortex17; // stained glass optical filter data
 
-#if defined SHADOW || LIGHTING_MODE == LIGHTING_MODE_RT
-#if defined AIR_FOG_COLORED_LIGHT_SHAFTS || LIGHTING_MODE == LIGHTING_MODE_RT
+#if defined SHADOW || LIGHTING_MODE == LIGHTING_MODE_PT
+#if defined AIR_FOG_COLORED_LIGHT_SHAFTS || LIGHTING_MODE == LIGHTING_MODE_PT
 uniform sampler2D shadowcolor0;
 uniform sampler2D shadowtex0;
 #endif

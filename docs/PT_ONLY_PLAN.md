@@ -55,7 +55,7 @@ Remote `arena/ce39d2b2-photon` contains `4dd4391 Reduce stock probe-update and r
 - Hot voxel loops early-out on `packed != 0u` before unpacking.
 - DDGI query occlusion threshold 0.02 → 0.10.
 
-**Branch note:** Arena tracks this session on `arena/9ea823e0-photon` at `a89d422`. There is no remote `arena/9ea823e0-photon` ref. The performance commit was fetched as `FETCH_HEAD` for reference only; it was **not merged, cherry-picked or reset into the active branch** in this turn. Phase P0 below includes an explicit decision on whether to port it.
+**Branch note (updated 2026-11-04, P0):** the active branch is `arena/d99fd523-photon` at `f1df4b7`. The user instructed this session to **skip** the "decide whether to cherry-pick `4dd4391`" item, so plan option 3 applies: `4dd4391` remains an **external performance reference only** and was never fetched into, merged into or cherry-picked onto the active branch. See [`docs/pt_baseline.md`](pt_baseline.md) §1.
 
 ### 2.3 Known state of the current reconstruction
 
@@ -159,11 +159,15 @@ Do not combine P1, P3 and P6 into one unreviewable change. Each gate must have a
 
 ### P0 — PT-only contract, baseline and branch decision
 
+**Status: DONE on 2026-11-04** (branch `arena/d99fd523-photon` @ `f1df4b7`; static baseline green).
+Records: [`docs/pt_baseline.md`](pt_baseline.md) (branch decision, static baseline, FPS) and
+[`docs/pt_image_budget.md`](pt_image_budget.md) (per-tier image allocation).
+
 **Goal:** stop maintaining two renderer concepts and freeze a reproducible starting point.
 
 Tasks:
 
-- Decide whether to cherry-pick or port `4dd4391` into `arena/9ea823e0-photon`; record the active branch and commit in every later gate.
+- ~~Decide whether to cherry-pick or port `4dd4391` into the active branch~~ — **skipped by user instruction.** Option 3 applies: the commit stays an external performance reference only. Record the active branch and commit in every later gate: `arena/d99fd523-photon` @ `f1df4b7`.
 - Record matched captures and frame times for Photon stock x1.0, Kappa and the reduced-workload Photon build.
 - Remove `LIGHTING_MODE_RT`, `OFF`, `HYBRID`, `RAYTRACED_GI` on/off and RT/PT profile split from public settings, language strings and docs.
 - Keep a single temporary `LIGHTING_MODE_PT` compile guard until all pass/resource guards are migrated; then delete the enum too.
@@ -173,10 +177,12 @@ Tasks:
 
 Gate:
 
-- Only PT profiles exist.
-- No public RT/OFF/HYBRID/SSR/SSGI mode tokens remain.
-- Lint and compile matrix pass for all three dimensions.
-- Baseline captures, FPS and image budget are recorded.
+- Only PT profiles exist. ✅ Five tiers (`low`/`medium`/`high`/`ultra`/`extreme`); every `rt_*` / `pt_*` profile deleted.
+- No public RT/OFF/HYBRID/SSR/SSGI mode tokens remain. ✅ `LIGHTING_MODE_RT` is gone from every shader, property and language file; the mode is not a menu switch; dead `RAYTRACED_GI` / `RTGI_TRACER` / `RTGI_SSGI_*` strings were removed from all nine translations.
+- Lint and compile matrix pass for all three dimensions. ✅ `run_checks.sh` exits 0 (357 compute/fragment + 1053 wrapper/option cases, 0 failures), with three pre-existing failures fixed on the way (see baseline §2).
+- Baseline captures, FPS and image budget are recorded. ⚠️ Image budget and FPS are recorded ([`pt_image_budget.md`](pt_image_budget.md), [`pt_baseline.md`](pt_baseline.md) §3); **matched captures are still outstanding** — they need a GPU and are the first P1 action item.
+
+**What P0 changed in code:** the RT/PT split was not deleted by removing code — it was deleted by making PT the only value. `LIGHTING_MODE_RT` no longer exists; every `LIGHTING_MODE == LIGHTING_MODE_RT` guard is now `LIGHTING_MODE == LIGHTING_MODE_PT`, so the world-space voxel path (GI, contact AO, reflections, irradiance cache, voxelizing shadow/gbuffer passes) is what ships, and the GI-off placeholder branches are gone. `LIGHTING_MODE_PT` / `LIGHTING_MODE` survive as a **temporary compile guard** so the remaining guard sites can be folded into unconditional code one review at a time; deleting the enum is P7 cleanup. `PT_RAW_ESTIMATOR` marks `rtgi_trace.csh` as the temporary internal raw estimator (P6 replaces it).
 
 ### P1 — Reconstruction data contract and static-state detector
 
@@ -367,12 +373,12 @@ The PT-only fork is ready when:
 
 ---
 
-## 9. Open item
+## 9. Resolved item — the force-pushed performance commit
 
-The force-pushed performance commit `4dd4391` is on remote `arena/ce39d2b2-photon`, while this session's active branch is `arena/9ea823e0-photon` at `a89d422`. The plan does not assume those trees are identical. Before P1, choose one:
+**Resolved 2026-11-04 (P0): option 3.**
 
-1. **Port/cherry-pick `4dd4391` into `arena/9ea823e0-photon`** so the plan and code share the reduced-workload baseline; or
-2. **Reset the active branch to the fetched commit** if Arena permits it without losing tracked work; or
-3. **Keep the current branch as-is** and treat `4dd4391` as an external performance reference only.
+The force-pushed performance commit `4dd4391` is on remote `arena/ce39d2b2-photon`, while this session's active branch is `arena/d99fd523-photon` at `f1df4b7`. The user instructed this session to skip the decision, which settles it as **option 3: keep the current branch as-is and treat `4dd4391` as an external performance reference only.** It was not fetched, merged, cherry-picked or reset into the active branch.
 
-This document only updates the plan; it does not switch branches, merge commits or modify shader code.
+Practical note for anyone revisiting this: the two trees have diverged in ways that make a literal port meaningless — `RTGI_PROBE_RAYS` / `RTGI_PROBE_HYSTERESIS` (which `4dd4391` changes) no longer exist here, because the DDGI probe cache was replaced by the voxel irradiance volume. A port would be a re-implementation plus a re-measurement, not a cherry-pick.
+
+Successor item, still open: **matched captures.** No screenshot pair or frame-time trace for this branch exists. Every visual gate from P1 onwards compares against P0, and P0 currently has user-reported FPS numbers only. Produce them as the first P1 action.

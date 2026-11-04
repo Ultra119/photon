@@ -107,8 +107,6 @@ option.WEATHER_WIND_VARIATION_SPEED        = Скорость изменения
 
 # Lighting settings
 
-option.HANDHELD_LIGHTING               = Свет предметов
-option.HANDHELD_LIGHTING.comment       = Предметы в руках будут освещать мир. Если цветное освещение включено, свет от предметов будет такого же цвета, как и свет от блоков
 option.HANDHELD_LIGHTING_INTENSITY     = Сила света предметов
 option.HANDHELD_LIGHTING_INTENSITY.comment = Регулирует яркость света от предметов
 option.CLOUD_SHADOWS                   = Тени облаков
@@ -160,8 +158,6 @@ option.MOON_G                          = §aЗеленый
 option.MOON_B                          = §9Синий
 option.MOON_I                          = Интенсивность лунного света
 option.SKYLIGHT_I                      = Интенсивность солнечного света
-option.BOUNCED_LIGHT_I                 = Сила отраженного солнечного света
-option.CAVE_LIGHTING_I                 = Яркость в пещерах
 option.LIGHTNING_FLASH                 = Вспышка молнии
 option.NETHER_USE_BIOME_COLOR          = Использовать цвет биома
 option.NETHER_I                        = Интенсивность окружающей среды
@@ -495,22 +491,6 @@ suffix.POM_DISTANCE                    = m
 value.TEXTURE_FORMAT.TEXTURE_FORMAT_LAB = labPBR
 value.TEXTURE_FORMAT.TEXTURE_FORMAT_OLD = Old PBR
 
-option.ENVIRONMENT_REFLECTIONS         = Отражения окружающей среды
-option.ENVIRONMENT_REFLECTIONS.comment = Отражения в пространстве экрана. Вода и блестящие блоки отражают окружающую среду. Большое влияние на производительность
-option.SKY_REFLECTIONS                 = Отражения неба
-option.SKY_REFLECTIONS.comment         = Заставляет воду и блестящие глыбы отражать небо
-option.SSR_ROUGHNESS_SUPPORT           = Поддержка шероховатости
-option.SSR_ROUGHNESS_SUPPORT.comment   = Делает отражения на шероховатых поверхностях действительно шероховатыми. Значительное влияние на производительность
-option.SSR_RAY_COUNT                   = Количество лучей
-option.SSR_RAY_COUNT.comment           = Количество лучей, отслеживаемых для получения грубых отражений. Чем больше лучей, тем меньше шума, но хуже производительность
-option.SSR_INTERSECTION_STEPS_SMOOTH   = Шаги пересечения - Гладкий
-option.SSR_INTERSECTION_STEPS_SMOOTH.comment = Регулирует точность плавного отражения в ущерб производительности
-option.SSR_INTERSECTION_STEPS_ROUGH    = Шаги пересечения - Грубый
-option.SSR_INTERSECTION_STEPS_ROUGH.comment = Регулирует точность грубых отражений в ущерб производительности
-option.SSR_REFINEMENT_STEPS            = Шагов доработки
-option.SSR_REFINEMENT_STEPS.comment    = Регулирует точность всех отражений в ущерб производительности
-option.SSR_ROUGHNESS_THRESHOLD         = Порог шероховатости
-option.SSR_ROUGHNESS_THRESHOLD.comment = Определяет, насколько гладкой должна быть поверхность для появления отражений
 
 # Water settings
 
@@ -726,23 +706,7 @@ option.NOISE_ON_DH_TERRAIN     = Шум на ландшафте DH
 
 screen.raytracing                                                    = Настройки трассировки лучей и GI
 
-option.RAYTRACED_GI                                                  = Ray-Traced GI
-option.RAYTRACED_GI.comment                                          = Нативная трассировка лучей (RTGI) для реалистичного непрямого освещения от солнца, неба и источников света.
 
-option.RTGI_TRACER                                                   = Трассировщик RTGI
-option.RTGI_TRACER.comment                                           = Метод трассировки. Воксельный режим (RTGI_TRACER_VOXEL) полностью не зависит от положения и обзора камеры.
-value.RTGI_TRACER.RTGI_TRACER_VOXEL                                  = Воксельный
-value.RTGI_TRACER.RTGI_TRACER_HYBRID                                 = Гибридный
-option.RTGI_MULTIBOUNCE                                             = Мульти-отскоки (DDGI)
-option.RTGI_MULTIBOUNCE.comment                                     = Многократные отскоки света через 3D-кэш проб освещенности (DDGI). Обеспечивает реалистичные цветовые переотражения между поверхностями (color bleeding) и мягкое непрямое освещение комнат и пещер.
-value.RTGI_MULTIBOUNCE.RTGI_MULTIBOUNCE_OFF                         = ВЫКЛ (1 отскок)
-value.RTGI_MULTIBOUNCE.RTGI_MULTIBOUNCE_PROBES                      = Пробы DDGI
-value.RTGI_MULTIBOUNCE.0                                            = ВЫКЛ (1 отскок)
-value.RTGI_MULTIBOUNCE.1                                            = Пробы DDGI
-option.RTGI_PROBE_RAYS                                              = Лучи проб DDGI
-option.RTGI_PROBE_RAYS.comment                                      = Количество сферических лучей, выпускаемых каждой пробой для сбора непрямого света.
-option.RTGI_PROBE_HYSTERESIS                                        = Сглаживание проб DDGI
-option.RTGI_PROBE_HYSTERESIS.comment                                = Коэффициент временного накопления истории проб освещенности (0.85 обеспечивает стабильность без вспышек).
 
 option.RTGI_INTENSITY                                                = Физическая яркость RTGI
 option.RTGI_INTENSITY.comment                                        = Физический множитель интенсивности диффузного непрямого освещения.
@@ -750,8 +714,6 @@ option.RTGI_INTENSITY.comment                                        = Физи�
 option.RTGI_BRIGHTNESS                                               = Яркость RTGI
 option.RTGI_BRIGHTNESS.comment                                        = Общая визуальная яркость непрямого освещения.
 
-option.RTGI_INTERIOR_RETENTION                                       = Удержание освещения интерьеров
-option.RTGI_INTERIOR_RETENTION.comment                               = Сохранение непрямого света неба внутри темных помещений. 1.00 сохраняет весь трассированный свет.
 
 
 option.RTGI_VOXELIZE_ENTITIES                                        = Вокселизация сущностей
@@ -759,17 +721,9 @@ option.RTGI_VOXELIZE_ENTITIES.comment                                = Эксп�
 value.RTGI_VOXELIZE_ENTITIES.0                                       = ВЫКЛ
 value.RTGI_VOXELIZE_ENTITIES.1                                       = ВКЛ
 
-option.RTGI_POINT_LIGHT_STRENGTH                                     = Яркость света блоков
-option.RTGI_POINT_LIGHT_STRENGTH.comment                             = Яркость воксельного светового поля вокруг светящихся блоков.
 
-option.RTGI_POINT_LIGHT_RADIUS                                       = Радиус света блоков
-option.RTGI_POINT_LIGHT_RADIUS.comment                               = Радиус распространения света блоков в вокселях.
 
-option.RTGI_SSGI_LOCAL_LIGHT_SCALE                                   = Масштаб света SSGI
-option.RTGI_SSGI_LOCAL_LIGHT_SCALE.comment                            = Масштаб локального экранного освещения.
 
-option.RTGI_CAVE_AMBIENT_SCALE                                       = Освещение пещер
-option.RTGI_CAVE_AMBIENT_SCALE.comment                               = Масштаб минимального фонового освещения в пещерах.
 
 option.RTGI_RAY_COUNT                                                = Количество лучей RTGI
 option.RTGI_RAY_COUNT.comment                                        = Количество трассируемых лучей на пиксель за кадр.
@@ -780,8 +734,6 @@ value.RTGI_RESOLUTION.0                                              = Четв�
 value.RTGI_RESOLUTION.1                                              = Половина (0.5x)
 value.RTGI_RESOLUTION.2                                              = Полное (1.0x)
 
-option.RT_REFLECTIONS                                                = Трассировка отражений
-option.RT_REFLECTIONS.comment                                        = Отражения с трассировкой лучей в экранном пространстве и вокселях.
 
 option.PHYSICAL_BSDF_ENERGY_COMP                                     = Сохранение энергии BSDF
 option.PHYSICAL_BSDF_ENERGY_COMP.comment                             = Физическая компенсация рассеяния для шероховатых поверхностей.

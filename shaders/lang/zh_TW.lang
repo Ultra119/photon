@@ -109,8 +109,6 @@ option.WEATHER_WIND_VARIATION_SPEED        = 風速變化速率
 
 # Lighting settings
 
-option.HANDHELD_LIGHTING               = 手持光源
-option.HANDHELD_LIGHTING.comment       = 手持物品會投射光源;若啟用有色光線，手持光源也會染色
 option.HANDHELD_LIGHTING_INTENSITY     = 手持光源強度
 option.HANDHELD_LIGHTING_INTENSITY.comment = 調整手持光源亮度
 option.CLOUD_SHADOWS                   = 雲層陰影
@@ -160,8 +158,6 @@ option.MOON_G                          = 綠色月光
 option.MOON_B                          = 藍色月光
 option.MOON_I                          = 月光強度
 option.SKYLIGHT_I                      = 天空光強度
-option.BOUNCED_LIGHT_I                 = 反彈光強度
-option.CAVE_LIGHTING_I                 = 洞穴亮度
 option.LIGHTNING_FLASH                 = 閃電效果
 option.NETHER_USE_BIOME_COLOR          = 使用生物群系顏色
 option.NETHER_I                        = 地獄環境強度
@@ -479,22 +475,6 @@ suffix.POM_DISTANCE                    = m
 value.TEXTURE_FORMAT.TEXTURE_FORMAT_LAB = labPBR
 value.TEXTURE_FORMAT.TEXTURE_FORMAT_OLD = Old PBR
 
-option.ENVIRONMENT_REFLECTIONS         = 環境反射
-option.ENVIRONMENT_REFLECTIONS.comment = 螢幕空間反射，讓水面與亮面方塊反射環境;效能消耗高
-option.SKY_REFLECTIONS                 = 天空反射
-option.SKY_REFLECTIONS.comment         = 讓水面與亮面方塊反射天空
-option.SSR_ROUGHNESS_SUPPORT           = 粗糙度支援
-option.SSR_ROUGHNESS_SUPPORT.comment   = 讓粗糙表面反射呈現粗糙感;效能消耗高
-option.SSR_RAY_COUNT                   = 光線數量
-option.SSR_RAY_COUNT.comment           = 測試粗糙反射的光線數;光線愈多雜訊愈少但效能愈差
-option.SSR_INTERSECTION_STEPS_SMOOTH   = 平滑相交步數
-option.SSR_INTERSECTION_STEPS_SMOOTH.comment = 調整平滑反射的精度，會影響效能
-option.SSR_INTERSECTION_STEPS_ROUGH    = 粗糙相交步數
-option.SSR_INTERSECTION_STEPS_ROUGH.comment = 調整粗糙反射的精度，會影響效能
-option.SSR_REFINEMENT_STEPS            = 精煉步數
-option.SSR_REFINEMENT_STEPS.comment    = 調整所有反射的精度，會影響效能
-option.SSR_ROUGHNESS_THRESHOLD         = 粗糙度閾值
-option.SSR_ROUGHNESS_THRESHOLD.comment = 調整物體表面必須多光滑才會出現反射
 
 # Water settings
 

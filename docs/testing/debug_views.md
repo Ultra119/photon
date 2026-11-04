@@ -17,9 +17,9 @@ they can be driven from Iris's slider list):
 histogram, the weather debug overlay and this one. `GI_DEBUG` is new and picks
 which GI buffer is displayed.
 
-The views require **Ray Traced GI** to be enabled. With it off the screen turns
-flat magenta — that is a deliberate signal, not a rendering bug: the buffers do
-not exist, so there is nothing to display.
+The views always have buffers to read: the PT-only fork has no GI-off mode, so
+there is no "nothing to display" case. (The magenta screen that used to signal
+a disabled GI path is gone with it.)
 
 ## Status
 
@@ -178,17 +178,17 @@ compare against `History`: the difference between them is everything the
 Per-ray estimator provenance, written by `rtgi_trace.csh` as the fraction of
 rays resolved by each path:
 
-- **Red** — screen space (SSGI)
+- **Red** — unused, there is no screen-space GI partition
 - **Green** — voxel DDA
 - **Blue** — escaped to sky
 
 Proportions, not raw counts, so `RTGI_RAY_COUNT` does not change the colours.
 
-**Healthy:** red dominates on nearby, on-screen geometry and falls off with
-distance as the screen-space ray runs out of screen; green takes over past that
-point. Green everywhere, including up close, means SSGI is failing; red
-everywhere at long range would mean rays are being wrongly resolved in screen
-space. This is the first objective measure of the hybrid split.
+**Healthy:** green dominates wherever the clipmaps are populated, blue takes
+over in the open and on rays that escape the volume. Red anywhere means a
+provenance channel is being written without a matching estimator — there is no
+screen-space transport left to report. Black means the dispatch wrote nothing
+(off-viewport or sky pixel).
 
 ### History Rejected · `GI_DEBUG_REJECT`
 

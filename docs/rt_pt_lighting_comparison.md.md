@@ -1,6 +1,7 @@
 # Photon fork vs KappaPT v18.8 — RT/PT and lighting comparison
 
-**Last updated:** 2026-11-03 after the Gemini cross-check and the user's PT-only product decision. Active roadmap: `docs/PT_ONLY_FORK_PLAN.md`.  
+**Last updated:** 2026-11-03 after the Gemini cross-check and the user's PT-only product decision. Active roadmap: `docs/PT_ONLY_PLAN.md`.  
+**P0 note (2026-11-04):** the PT-only contract is now implemented — `LIGHTING_MODE_RT` and the `rt_*` / `pt_*` profile split are deleted from shaders, properties and every language file, and the five surviving profiles (`low` … `extreme`) are the PT quality tiers. Rows describing `LIGHTING_MODE_PT` as a "GI-off placeholder" describe the tree *before* P0; from P0 on, PT is the path that allocates and runs everything described here as "RT Mode". See [`docs/pt_baseline.md`](pt_baseline.md).  
 **Scope:** only ray/path tracing, indirect/direct lighting, shadows, AO, reflections/refractions, emissive light transport, BRDFs, volumetric lighting, and the temporal/spatial reconstruction needed by RT/PT. Sky art, cloud modelling, weather, exposure, tone mapping, bloom, DoF and general post-processing are intentionally excluded.
 
 ## Provenance
@@ -19,7 +20,7 @@
 - **The fork's `LIGHTING_MODE_PT` profiles are not a path tracer.** Per `shaders/settings.glsl`, `shaders.properties` and `diffuse_lighting.glsl`, they are a reserved direct-only, GI-off A/B baseline: no GI, no RT AO, and RT resources are not allocated. Do not compare these profiles as a second renderer.
 - **KappaPT v18.8 is a heavier hybrid path tracer.** It combines screen-space path tracing, a voxel octree, L1 spherical-harmonic diffuse irradiance, a world-space SH irradiance cache, multi-bounce specular infrastructure and separate diffuse/specular accumulation+denoising. Primary visibility and a substantial part of direct lighting remain rasterized; diffuse tracing is one explicit bounce with the cache approximating further bounces.
 - **Best architectural decision:** keep Photon's stable, world-space clipmap renderer as the **PT scene backend** and selectively port *ideas*, not Kappa's pipeline wholesale. Kappa's world0 pipeline alone has 37 `.csh` compute wrappers. The highest-value ideas are reconstruction-first: adaptive accumulation, multi-scale denoising, directional SH irradiance, dedicated specular history and reactive masks.
-- **Product decision changed on 2026-11-03:** ship **PT-only**. There will be no separate RT gameplay mode, OFF mode, HYBRID mode or GI-off `pt_*` placeholder. All profiles become PT quality tiers. Keep Photon's lighting/voxel/emitter substrate, delete the RT/PT split, and rebuild temporal accumulation + denoising first. See `docs/PT_ONLY_FORK_PLAN.md`.
+- **Product decision changed on 2026-11-03:** ship **PT-only**. There will be no separate RT gameplay mode, OFF mode, HYBRID mode or GI-off `pt_*` placeholder. All profiles become PT quality tiers. Keep Photon's lighting/voxel/emitter substrate, delete the RT/PT split, and rebuild temporal accumulation + denoising first. See `docs/PT_ONLY_PLAN.md`.
 - **Licensing:** Kappa's `LICENSE` permits private modifications, but §4 requires explicit permission from RRe36 to use parts of its source code in another original project; §§1–3 restrict public redistribution, require credit and the same license for public modified versions, and prohibit monetization without permission. Study the design and write a clean-room implementation, or obtain permission before copying code/assets. The local `KappaPT_v18.8.zip` is ignored by `.gitignore` and should not be committed or redistributed.
 
 ---
@@ -74,7 +75,7 @@ Legend: **+** advantage, **−** limitation.
 
 **Legal constraint first:** none of the rows below authorize copying Kappa source, shaders, noise textures, or other assets into a public fork. Kappa `LICENSE` §4 requires explicit permission and credit for using parts in another original project; §1 restricts redistribution and §3 restricts public modified versions. Treat these as **algorithm/design references for an independent implementation**, or get written permission.
 
-**Revised priority:** after the PT-only decision, the execution order is governed by `docs/PT_ONLY_FORK_PLAN.md`. Reconstruction is P0: aux/data contract → temporal accumulation → multi-scale denoise redesign → SH → separate specular reconstruction → explicit PT integrator. The table below remains the idea inventory; it is no longer the delivery order.
+**Revised priority:** after the PT-only decision, the execution order is governed by `docs/PT_ONLY_PLAN.md`. Reconstruction is P0: aux/data contract → temporal accumulation → multi-scale denoise redesign → SH → separate specular reconstruction → explicit PT integrator. The table below remains the idea inventory; it is no longer the delivery order.
 
 | Priority | Kappa idea worth adopting | Why it helps Photon | Fit / implementation path | Effort / risk |
 |---|---|---|---|---|
@@ -111,7 +112,7 @@ Legend: **+** advantage, **−** limitation.
 6. **Explicit PT integrator:** diffuse reference, NEE/MIS, GGX-VNDF, Russian roulette and numerical acceptance on Photon's clipmaps.
 7. **Cleanup and release gates:** UI/lang/docs/tests, image budget, static/runtime/performance validation.
 
-This supersedes the earlier RT-first order. See `docs/PT_ONLY_FORK_PLAN.md` for gates, legal boundary and work packages.
+This supersedes the earlier RT-first order. See `docs/PT_ONLY_PLAN.md` for gates, legal boundary and work packages.
 
 ---
 
@@ -165,7 +166,7 @@ Verdicts: **✅** confirmed, **⚠️** partially right / different branch or ne
 | Port 2-level octree, L1 SH, SVGF variance, glass absorption and direct shadow at hit | ⚠️ | Octree, SH, glass throughput and direct-hit shadows are worthwhile with caveats; variance weighting is already present in Photon. | Add P1/P2 rows and an “already present” section. |
 | Do not port atlas sampling, guiding or the 5-stage wavelet chain | ✅ | Dual-image payload doubles voxel storage and adds divergent atlas fetches; guiding is disabled; Kappa's full chain needs 37 world0 compute wrappers. | Keep Avoid rows; add explicit atlas-payload row. |
 
-**Net effect:** the original scope, legal conclusion and feature inventory still stand. The main corrections are Photon's memory/payload and emitter model, the removal of SSGI/SSR and radial-light-field claims, Kappa's actual 128³ SH cache and 8-bitplane octree, cloud shadows being off by default, and the fact that Photon already has variance-guided SVGF-style filtering. Valid additions from Gemini include exact SH coefficient packing, Kappa's 24 stair configurations, atlas/specular voxel sampling, emission falloff, Beer-Lambert water/glass throughput, and raster direct-light evaluation at traced hits. The **execution order** has since been superseded by the PT-only decision in `docs/PT_ONLY_FORK_PLAN.md`.
+**Net effect:** the original scope, legal conclusion and feature inventory still stand. The main corrections are Photon's memory/payload and emitter model, the removal of SSGI/SSR and radial-light-field claims, Kappa's actual 128³ SH cache and 8-bitplane octree, cloud shadows being off by default, and the fact that Photon already has variance-guided SVGF-style filtering. Valid additions from Gemini include exact SH coefficient packing, Kappa's 24 stair configurations, atlas/specular voxel sampling, emission falloff, Beer-Lambert water/glass throughput, and raster direct-light evaluation at traced hits. The **execution order** has since been superseded by the PT-only decision in `docs/PT_ONLY_PLAN.md`.
 
 ---
 
@@ -173,7 +174,7 @@ Verdicts: **✅** confirmed, **⚠️** partially right / different branch or ne
 
 On 2026-11-03 the user decided to **ship PT only**. The separate RT gameplay mode is no longer worth maintaining: after the force-pushed workload reduction Photon is reported at 100–120 FPS at stock x1.0, versus 60 FPS before and 90 FPS for KappaPT v18.8. The remaining problem is not the lighting model; it is the final processing — accumulation, temporal reconstruction and denoising.
 
-Active roadmap: **`docs/PT_ONLY_FORK_PLAN.md`**.
+Active roadmap: **`docs/PT_ONLY_PLAN.md`**.
 
 Its order is:
 
@@ -187,4 +188,4 @@ Its order is:
 
 Kappa is used as a **conceptual reference only**. No code or assets may be copied without RRe36's permission; even with permission, Kappa's SH/history/atlas/octree contracts would require a clean-room rewrite against Photon's 32-bit clipmaps and RGB + sky-fraction pipeline.
 
-**Repository changes made for this report:** the uploaded `.txt` was renamed/copied to the workspace as `KappaPT_v18.8.zip` (ignored by `*.zip` in `.gitignore`); this comparison document was added and then updated with the Gemini cross-check and PT-only decision; `docs/PT_ONLY_FORK_PLAN.md` was added. No shader code was modified, no branch was switched, and the fetched performance commit was not merged.
+**Repository changes made for this report:** the uploaded `.txt` was renamed/copied to the workspace as `KappaPT_v18.8.zip` (ignored by `*.zip` in `.gitignore`); this comparison document was added and then updated with the Gemini cross-check and PT-only decision; `docs/PT_ONLY_PLAN.md` was added. No shader code was modified, no branch was switched, and the fetched performance commit was not merged.

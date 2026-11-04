@@ -108,8 +108,6 @@ option.WEATHER_WIND_VARIATION_SPEED        = Winderigheidsvariatie-snelheid
 
 # Lighting settings
 
-option.HANDHELD_LIGHTING               = Vastgehouden Belichting
-option.HANDHELD_LIGHTING.comment       = Voorwerpen die je vasthoud werpen licht op de omgeving. Dit heeft kleur als Gekleurde Lichtbronnen aanstaat.
 option.HANDHELD_LIGHTING_INTENSITY     = Vastgehouden Belichting Felheid
 option.HANDHELD_LIGHTING_INTENSITY.comment = Wijzigt de felheid van vastgehouden belichting.
 option.CLOUD_SHADOWS                   = Wolkschaduwen
@@ -163,8 +161,6 @@ option.MOON_G                          = §a▍ Groen
 option.MOON_B                          = §9▍ Blauw
 option.MOON_I                          = Maanlicht Intensiteit
 option.SKYLIGHT_I                      = Luchtlicht Intensiteit
-option.BOUNCED_LIGHT_I                 = Gestuiterd Zonlicht Intensiteit
-option.CAVE_LIGHTING_I                 = Grot Belichting Intensiteit
 option.LIGHTNING_FLASH                 = Bliksemflits
 option.NETHER_USE_BIOME_COLOR          = Gebruik Bioomkleur
 option.NETHER_I                        = Omgevingsintensiteit
@@ -485,22 +481,6 @@ suffix.POM_DISTANCE                    = m
 value.TEXTURE_FORMAT.TEXTURE_FORMAT_LAB = labPBR
 value.TEXTURE_FORMAT.TEXTURE_FORMAT_OLD = OldPBR
 
-option.ENVIRONMENT_REFLECTIONS         = Omgeving Reflecties
-option.ENVIRONMENT_REFLECTIONS.comment = Reflecties van de omgeving op oppervlakken. Reflecties kunnen alleen blokken op het scherm bevatten. Kost redelijk veel prestaties!
-option.SKY_REFLECTIONS                 = Lucht Reflecties
-option.SKY_REFLECTIONS.comment         = Reflecties van de lucht op oppervlakken.
-option.SSR_ROUGHNESS_SUPPORT           = Ruwheid Ondersteuning
-option.SSR_ROUGHNESS_SUPPORT.comment   = Maakt reflecties op ruwe oppervlakken echt ruw. Kost veel prestaties!
-option.SSR_RAY_COUNT                   = Ray Aantal
-option.SSR_RAY_COUNT.comment           = Het aantal 'rays' gebruikt voor ruwe reflecties. Hoge waarden kosten veel meer prestaties maar verminderen ruis.
-option.SSR_INTERSECTION_STEPS_SMOOTH   = Reflectie Stappen - Glad
-option.SSR_INTERSECTION_STEPS_SMOOTH.comment = Wijzigt de maximale aftstand die gladde reflecties weergeven. Lage prestatiekosten.
-option.SSR_INTERSECTION_STEPS_ROUGH    = Reflectie Stappen - Ruw
-option.SSR_INTERSECTION_STEPS_ROUGH.comment = Wijzigt de maximale aftstand die ruwe reflecties weergeven. Lage prestatiekosten.
-option.SSR_REFINEMENT_STEPS            = Verfijning Stappen
-option.SSR_REFINEMENT_STEPS.comment    = Wijzigt de precisie en mooiheid van alle reflecties. Lage prestatiekosten.
-option.SSR_ROUGHNESS_THRESHOLD         = Ruwheid Drempelwaarde
-option.SSR_ROUGHNESS_THRESHOLD.comment = Wijzigt hoe ruw een oppervlakte volgens het bronpakket moet zijn voordat reflecties optreden.
 
 # Water settings
 

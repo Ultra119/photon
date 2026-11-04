@@ -1,6 +1,17 @@
 # Photon RTGI / Path-Tracing Fork — Implementation Plan
 
-**Document status:** first deliverable (plan, not implementation)
+> **Historical audit — read before using.**
+> This is the 2026-10/11 audit of the RTGI pipeline as it stood at `e56ae19`
+> (+ `216b896`), on branch `arena/1996cb09-photon`. The active roadmap is now
+> [`docs/PT_ONLY_PLAN.md`](docs/PT_ONLY_PLAN.md), and the PT-only P0 baseline is
+> [`docs/pt_baseline.md`](docs/pt_baseline.md).
+> Two naming traps: (1) **"P0" here means this audit's compile fix** (`216b896`,
+> `voxel_dda.glsl` / `voxel_update.glsl`), *not* the PT-only P0 work package in
+> `docs/PT_ONLY_PLAN.md`; (2) **"Stage 0"** here is this plan's own baseline
+> stage, not the PT-only P0. Several sections still describe a DDGI probe cache,
+> an SSGI hybrid and light-only voxels that no longer exist in the tree.
+
+**Document status:** superseded as a roadmap; kept as a technical audit (plan, not implementation)
 **Branch:** `arena/1996cb09-photon`
 **Fork HEAD at time of audit:** `e56ae19` ("Refine voxel GI lighting and redstone handling"), plus one P0 fix committed during this audit (`216b896`)
 **Upstream fork point:** `6e67b36e818bacde0304edd49f28e2bb70e33f04` — *Use Distant Horizons LOD block textures when Iris provides them (#691)*, 2026-10-23, which is also the current `main` of `sixthsurge/photon`

@@ -1,14 +1,26 @@
 /*
 --------------------------------------------------------------------------------
 
-  Photon Shader: Native Voxel RTGI
+  Photon Shader: PT
   program/rtgi/rtgi_trace.csh:
   Trace diffuse indirect GI rays (world-space voxel RT)
+
+  P0 -> P6: this pass is the temporary internal raw estimator for the shipped
+  PT path, not a second lighting mode and never a menu entry. Reconstruction
+  (P1-P3) is rebuilt against the raw signal it produces; P6 replaces the
+  estimator with the explicit integrator and deletes PT_RAW_ESTIMATOR with it.
 
 --------------------------------------------------------------------------------
 */
 
 #include "/include/global.glsl"
+
+// Contract marker for the temporary raw estimator: if the macro disappears
+// before the estimator is replaced, the build must fail here rather than
+// silently ship an unowned lighting path.
+#if !defined PT_RAW_ESTIMATOR
+    #error "PT_RAW_ESTIMATOR is required: program/rtgi/rtgi_trace.csh is the temporary internal raw estimator for the PT path"
+#endif
 
 #if RTGI_RESOLUTION == 0
 const vec2 workGroupsRender = vec2(0.25, 0.25);

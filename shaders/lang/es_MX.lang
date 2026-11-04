@@ -110,8 +110,6 @@ option.WEATHER_WIND_VARIATION_SPEED = Velocidad de la variación del viento
 
 # Lighting settings
 
-option.HANDHELD_LIGHTING = Iluminación en mano
-option.HANDHELD_LIGHTING.comment = Los items en la mano proyectan luz en el mundo. Si se activa la iluminación de colores, la iluminación en la mano se coloreará como las propias luces.
 option.HANDHELD_LIGHTING_INTENSITY = Intensidad de la iluminación en la mano
 option.HANDHELD_LIGHTING_INTENSITY.comment = Ajusta el brillo de las fuentes de luz en la mano.
 option.CLOUD_SHADOWS = Sombras de las nubes
@@ -163,8 +161,6 @@ option.MOON_G = Verde
 option.MOON_B = Azul
 option.MOON_I = Intensidad de la luz lunar
 option.SKYLIGHT_I = Intensidad del tragaluz
-option.BOUNCED_LIGHT_I = Intensidad de la luz solar rebotada
-option.CAVE_LIGHTING_I = Brillo de la cueva
 option.LIGHTNING_FLASH = Destello del rayo
 option.NETHER_USE_BIOME_COLOR = Usar color del bioma
 option.NETHER_I = Intensidad ambiental
@@ -503,22 +499,6 @@ suffix.POM_DISTANCE = m
 value.TEXTURE_FORMAT.TEXTURE_FORMAT_LAB = labPBR
 value.TEXTURE_FORMAT.TEXTURE_FORMAT_OLD = Viejo PBR
 
-option.ENVIRONMENT_REFLECTIONS = Reflejos del entorno
-option.ENVIRONMENT_REFLECTIONS.comment = Reflejos en espacio de pantalla. Hace que el agua y los bloques brillantes reflejen su entorno. Gran impacto en el rendimiento
-option.SKY_REFLECTIONS = Reflejos del cielo
-option.SKY_REFLECTIONS.comment = Hace que el agua y los bloques brillantes reflejen el cielo
-option.SSR_ROUGHNESS_SUPPORT = Soporte para rugosidad
-option.SSR_ROUGHNESS_SUPPORT.comment = Hace que los reflejos en superficies rugosas realmente se vean rugosos. Gran impacto en el rendimiento
-option.SSR_RAY_COUNT = Cantidad de rayos
-option.SSR_RAY_COUNT.comment = Cantidad de rayos trazados para reflejos rugosos. Más rayos significan menos ruido, pero peor rendimiento
-option.SSR_INTERSECTION_STEPS_SMOOTH = Pasos de intersección – Suave
-option.SSR_INTERSECTION_STEPS_SMOOTH.comment = Ajusta la precisión de los reflejos suaves, a costa del rendimiento
-option.SSR_INTERSECTION_STEPS_ROUGH = Pasos de intersección – Rugoso
-option.SSR_INTERSECTION_STEPS_ROUGH.comment = Ajusta la precisión de los reflejos rugosos, a costa del rendimiento
-option.SSR_REFINEMENT_STEPS = Pasos de refinamiento
-option.SSR_REFINEMENT_STEPS.comment = Ajusta la precisión de todos los reflejos, a costa del rendimiento
-option.SSR_ROUGHNESS_THRESHOLD = Umbral de rugosidad
-option.SSR_ROUGHNESS_THRESHOLD.comment = Ajusta cuán suave debe ser una superficie para que los reflejos se muestren
 
 # Water settings
 

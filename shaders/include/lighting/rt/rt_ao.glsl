@@ -2,7 +2,7 @@
 #define INCLUDE_LIGHTING_RT_RT_AO
 
 /*
- * RT Mode contact occlusion.
+ * PT contact occlusion.
  *
  * Short world-space visibility rays supplement the occlusion already present
  * in traced GI. This is an artistic direct-light/contact term, not a second

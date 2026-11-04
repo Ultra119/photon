@@ -293,7 +293,7 @@ void main() {
         // Apply purkinje shift
         fragment_color = purkinje_shift(fragment_color, vec2(0.0, 1.0));
     } else { // Terrain
-#if LIGHTING_MODE == LIGHTING_MODE_RT
+#if LIGHTING_MODE == LIGHTING_MODE_PT
         // Sample ambient occlusion a while before using it (latency hiding)
 
         vec2 half_res_pos = gl_FragCoord.xy * (0.5 / taau_render_scale) - 0.5;
@@ -313,7 +313,7 @@ void main() {
         float ambient_depth_10 = texelFetch(colortex14, p10, 0).x;
         float ambient_depth_01 = texelFetch(colortex14, p01, 0).x;
         float ambient_depth_11 = texelFetch(colortex14, p11, 0).x;
-#endif // LIGHTING_MODE_RT
+#endif // LIGHTING_MODE_PT
 
         // Unpack gbuffer data
 
@@ -392,7 +392,7 @@ void main() {
 
         // Upscale ambient occlusion
 
-#if LIGHTING_MODE == LIGHTING_MODE_RT
+#if LIGHTING_MODE == LIGHTING_MODE_PT
         float lin_z = screen_to_view_space_depth(
             combined_projection_matrix_inverse,
             depth
@@ -428,10 +428,7 @@ void main() {
         }
 
         float ao = ambient_upscaled.x;
-#else
-        // PT placeholder: d3_ao (RT contact AO) does not run; direct-only.
-        float ao = 1.0;
-#endif // LIGHTING_MODE_RT
+#endif // LIGHTING_MODE_PT
 
         // The hand is outside the world-space voxel volume.
         if (is_hand) {

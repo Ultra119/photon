@@ -10,11 +10,12 @@
 #include "/include/utility/sampling.glsl"
 #include "/include/utility/space_conversion.glsl"
 
-// RT Mode reflections are world-space voxel ray traces. There is no screen-space
+// PT reflections are world-space voxel ray traces. There is no screen-space
 // ray march and no previous-composite scene source. The voxel scene is always
-// allocated in RT Mode; the transport itself guards shadow-map availability.
+// allocated in the PT-only fork; the transport itself guards shadow-map
+// availability.
 #include "/include/lighting/rt/rt_reflections.glsl"
-#if LIGHTING_MODE == LIGHTING_MODE_RT
+#if LIGHTING_MODE == LIGHTING_MODE_PT
 #include "/include/lighting/rt/voxel_samplers.glsl"
 #endif
 

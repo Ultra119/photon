@@ -10,6 +10,12 @@ python3 tools/shadercheck/voxel_packing_test.py
 echo "== properties lint =="
 python3 tools/shadercheck/properties_lint.py
 
+echo "== custom image budget (per PT quality tier) =="
+# Prints the per-tier allocation table; regenerate docs/pt_image_budget.md from
+# it when the profile set or the image declarations change.
+python3 tools/shadercheck/image_budget.py > /dev/null
+echo "image budget OK (at most 16 custom images per tier)"
+
 echo "== compute/fragment static matrix =="
 python3 tools/shadercheck/matrix_compute.py
 

@@ -59,16 +59,26 @@ const float wetnessHalflife         = 70.0;
 //   Ray Tracing & Global Illumination
 // ------------------------------------
 
-  // Lighting mode is profile-driven only (no menu switch): the RT/PT
-  // low-medium-high profiles in shaders.properties select the mode together
-  // with the quality budget. RT is the native path; PT is reserved for the
-  // future quality-first implementation. The PT placeholder is intentionally
-  // still valid to select: it runs direct lighting only (no GI, no RT AO)
-  // instead of sampling unallocated RT resources, so it doubles as a GI-off
-  // A/B baseline for testing.
-  #define LIGHTING_MODE_RT 0
+  // PT-only contract (P0): the fork ships one lighting path. There is no RT
+  // gameplay mode, no OFF / HYBRID mode and no GI-off placeholder profile;
+  // every profile in shaders.properties is a PT quality tier.
+  //
+  // LIGHTING_MODE_PT / LIGHTING_MODE is a temporary compile guard, not a
+  // product switch: it is never exposed in the menu. It exists so the pass-
+  // and resource-guard sites inherited from the RT/PT split can be folded
+  // into unconditional code one at a time and reviewed in isolation. Delete
+  // the enum once the last `LIGHTING_MODE == LIGHTING_MODE_PT` guard is gone
+  // (P7 cleanup).
   #define LIGHTING_MODE_PT 1
-  #define LIGHTING_MODE LIGHTING_MODE_RT // [LIGHTING_MODE_RT LIGHTING_MODE_PT]
+  #define LIGHTING_MODE LIGHTING_MODE_PT
+
+  // Temporary internal estimator contract (P0 → P6): the shipped PT path
+  // resolves indirect light with the cosine-hemisphere voxel estimator in
+  // program/rtgi/rtgi_trace.csh. That pass is the raw signal the
+  // reconstruction stack (P1–P3) is rebuilt against; it is not a second
+  // shipped lighting mode and never a menu entry. P6 replaces it with the
+  // explicit integrator and deletes this macro.
+  #define PT_RAW_ESTIMATOR
 
   // Precise test knobs (see also the profiles). RTGI_FILTER_PHI scales the
   // atrous edge-stopping sigma (higher = softer, leakier edges); RTGI_HISTORY_FRAMES
@@ -432,7 +442,7 @@ const float wetnessHalflife         = 70.0;
   #define REFRACTION_WATER_ONLY 2
 
 // Reflections
-// RT Mode reflections are world-space voxel ray traces with a directional sky
+// PT reflections are world-space voxel ray traces with a directional sky
 // miss. RT_REFLECTION_RAYS sets the rough-reflection GGX VNDF ray count; 0
 // disables reflections. Smooth surfaces always use a single mirror ray.
 // (The RT_REFLECTION_RAYS define lives in the Ray Tracing block above.)

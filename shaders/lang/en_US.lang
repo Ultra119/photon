@@ -667,7 +667,7 @@ value.DEBUG_VIEW.DEBUG_VIEW_WEATHER    = Weather
 value.DEBUG_VIEW.DEBUG_VIEW_GI         = GI Buffers\n\nRequires Ray Traced GI to be enabled, otherwise the screen turns magenta.
 
 option.GI_DEBUG                        = GI Buffer
-option.GI_DEBUG.comment                = Which GI buffer the GI debug view displays.\n\nRaw - This frame's traced radiance, before temporal accumulation. Shows the per-frame noise directly.\nHistory - After temporal accumulation. Compare with Raw to see how much work the temporal filter is doing.\nFiltered - Exactly what surfaces are lit with.\nHit Source - Green: resolved in the voxel volume. Blue: escaped to the directional sky map. Red: unused in RT Mode.\nHistory Rejected - Red: temporal history discarded (disocclusion). Yellow: history accepted. Black: no history available.\nVoxel ID / Light / Albedo - Reads the voxel volume at the surface the camera sees. Magenta: outside the volume.\nClipmap Coverage - Bright red/green/blue = populated fine/medium/coarse voxel. Dark hue = inside bounds but no voxel record at the sampled point. Yellow = owning level boundary. Magenta = outside all active clipmaps.\nConvergence - Disagreement between this frame's estimate and the accumulated history. Grey means stable. This is temporal spread, not a variance estimate.
+option.GI_DEBUG.comment                = Which GI buffer the GI debug view displays.\n\nRaw - This frame's traced radiance, before temporal accumulation. Shows the per-frame noise directly.\nHistory - After temporal accumulation. Compare with Raw to see how much work the temporal filter is doing.\nFiltered - Exactly what surfaces are lit with.\nHit Source - Green: resolved in the voxel volume. Blue: escaped to the directional sky map. Red: unused, there is no screen-space GI.\nHistory Rejected - Red: temporal history discarded (disocclusion). Yellow: history accepted. Black: no history available.\nVoxel ID / Light / Albedo - Reads the voxel volume at the surface the camera sees. Magenta: outside the volume.\nClipmap Coverage - Bright red/green/blue = populated fine/medium/coarse voxel. Dark hue = inside bounds but no voxel record at the sampled point. Yellow = owning level boundary. Magenta = outside all active clipmaps.\nConvergence - Disagreement between this frame's estimate and the accumulated history. Grey means stable. This is temporal spread, not a variance estimate.
 value.GI_DEBUG.GI_DEBUG_OFF            = OFF
 value.GI_DEBUG.GI_DEBUG_RAW            = Raw
 value.GI_DEBUG.GI_DEBUG_HISTORY        = History
@@ -743,11 +743,9 @@ screen.ao                                                           = RT Contact
 profile.extreme                                                      = Extreme
 
 
-option.LIGHTING_MODE = Lighting Mode
-option.LIGHTING_MODE.comment = RT Mode is the gameplay-balanced ray-traced lighting path. PT Mode is reserved for a future quality-first path and is not available yet.
-value.LIGHTING_MODE.LIGHTING_MODE_RT = RT
-value.LIGHTING_MODE.LIGHTING_MODE_PT = PT (unavailable)
-option.VOXEL_CACHE_MULTIBOUNCE                                        = Voxel Cache Multi-Bounce
+# PT-only fork: there is no lighting-mode switch and no GI-off mode. The five
+# profiles (low / medium / high / ultra / extreme) are PT quality tiers.
+option.VOXEL_CACHE_MULTIBOUNCE                                       = Voxel Cache Multi-Bounce
 option.VOXEL_CACHE_MULTIBOUNCE.comment                                = Enables recursive secondary bounce evaluation inside the Voxel Irradiance Volume.
 
 option.RTGI_INTENSITY                                               = RTGI Physical Intensity

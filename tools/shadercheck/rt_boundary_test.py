@@ -49,11 +49,20 @@ def main() -> int:
     diffuse = read("include/lighting/diffuse_lighting.glsl")
     if diffuse.count("direct_lighting += material.emission * emission_scale;") != 1:
         failures.append("material emission must be added exactly once in diffuse composition")
-    indirect = diffuse.split("// Indirect lighting: RT only.", 1)[-1].split(
-        "direct_lighting += material.emission", 1
-    )[0]
-    if "sample_rtgi_smooth" not in indirect or "sample_ddgi_irradiance" not in indirect:
-        failures.append("diffuse indirect must use filtered RTGI and forward probes")
+    # Anchor on the comment prefix only: the sentence after it is prose and
+    # changes with the PT-only wording.
+    if "// Indirect lighting:" not in diffuse:
+        failures.append("indirect lighting block marker missing")
+        indirect = ""
+    else:
+        indirect = diffuse.split("// Indirect lighting:", 1)[-1].split(
+            "direct_lighting += material.emission", 1
+        )[0]
+    if "sample_rtgi_smooth" not in indirect or "sample_voxel_cache_irradiance" not in indirect:
+        # The DDGI probe cache was replaced by the world-space voxel
+        # irradiance volume; both the deferred (filtered RTGI) and the forward
+        # (irradiance cache) consumers must remain the only indirect sources.
+        failures.append("diffuse indirect must use filtered RTGI and the forward irradiance cache")
     if re.search(r"\bao\b", indirect):
         failures.append("contact AO must not multiply traced indirect irradiance")
     if "ambient_color" in indirect or "sh_evaluate" in indirect:

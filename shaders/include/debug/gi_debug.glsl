@@ -126,7 +126,7 @@ vec3 gi_debug_voxel_albedo(uint packed) {
 //   G = fraction resolved by the voxel DDA
 //   B = fraction that escaped to sky
 //
-// RT Mode has no screen-space GI partition. R stays zero; G is voxel-surface
+// The PT path has no screen-space GI partition. R stays zero; G is voxel-surface
 // transport and B is an explicit directional sky-map miss.
 vec3 gi_debug_hit_mask(vec4 hit) {
     float total = hit.r + hit.g + hit.b;

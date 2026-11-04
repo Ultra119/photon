@@ -1,7 +1,7 @@
 /*
 --------------------------------------------------------------------------------
 
-  Photon Shader: RT Mode
+  Photon Shader: PT
 
   program/d3_ao:
   Short voxel-ray contact occlusion for direct lighting

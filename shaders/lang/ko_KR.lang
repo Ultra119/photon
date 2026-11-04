@@ -108,8 +108,6 @@ option.WEATHER_WIND_VARIATION_SPEED        = 바람 변화 속도
 
 # Lighting settings
 
-option.HANDHELD_LIGHTING               = 손에 든 조명
-option.HANDHELD_LIGHTING.comment       = 손에 든 아이템이 월드에 빛을 비춥니다. 유색 조명이 활성화되어 있으면 손에 든 조명도 해당 광원의 색상으로 표시됩니다
 option.HANDHELD_LIGHTING_INTENSITY     = 손에 든 조명 강도
 option.HANDHELD_LIGHTING_INTENSITY.comment = 손에 든 광원의 밝기를 조절합니다
 option.CLOUD_SHADOWS                   = 구름 그림자
@@ -161,8 +159,6 @@ option.MOON_G                          = §a초록
 option.MOON_B                          = §9파랑
 option.MOON_I                          = 달빛 강도
 option.SKYLIGHT_I                      = 하늘빛 강도
-option.BOUNCED_LIGHT_I                 = 반사된 햇빛 강도
-option.CAVE_LIGHTING_I                 = 동굴 밝기
 option.LIGHTNING_FLASH                 = 번개 섬광
 option.NETHER_USE_BIOME_COLOR          = 생물균계 색상 사용
 option.NETHER_I                        = 주변광 강도
@@ -496,22 +492,6 @@ suffix.POM_DISTANCE                    = m
 value.TEXTURE_FORMAT.TEXTURE_FORMAT_LAB = labPBR
 value.TEXTURE_FORMAT.TEXTURE_FORMAT_OLD = Old PBR
 
-option.ENVIRONMENT_REFLECTIONS         = 환경 반사
-option.ENVIRONMENT_REFLECTIONS.comment = 스크린 스페이스 반사. 물과 반짝이는 블록이 주변 환경을 반사하게 합니다. 성능에 큰 영향이 있습니다
-option.SKY_REFLECTIONS                 = 하늘 반사
-option.SKY_REFLECTIONS.comment         = 물과 반짝이는 블록이 하늘을 반사하게 합니다
-option.SSR_ROUGHNESS_SUPPORT           = 거칠기 지원
-option.SSR_ROUGHNESS_SUPPORT.comment   = 거친 표면의 반사가 실제로 거칠게 보이도록 합니다. 성능에 큰 영향이 있습니다
-option.SSR_RAY_COUNT                   = 광선 수
-option.SSR_RAY_COUNT.comment           = 거친 반사에 사용되는 광선의 수입니다. 광선 수가 많을수록 노이즈는 줄지만 성능이 저하됩니다
-option.SSR_INTERSECTION_STEPS_SMOOTH   = 교차 단계 - 매끄러움
-option.SSR_INTERSECTION_STEPS_SMOOTH.comment = 성능을 대가로 매끄러운 반사의 정확도를 조절합니다
-option.SSR_INTERSECTION_STEPS_ROUGH    = 교차 단계 - 거침
-option.SSR_INTERSECTION_STEPS_ROUGH.comment = 성능을 대가로 거친 반사의 정확도를 조절합니다
-option.SSR_REFINEMENT_STEPS            = 정제 단계
-option.SSR_REFINEMENT_STEPS.comment    = 성능을 대가로 모든 반사의 정확도를 조절합니다
-option.SSR_ROUGHNESS_THRESHOLD         = 거칠기 임계값
-option.SSR_ROUGHNESS_THRESHOLD.comment = 반사가 나타나기 위해 표면이 얼마나 매끄러워야 하는지 조절합니다
 
 # Water settings
 

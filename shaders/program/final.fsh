@@ -28,7 +28,7 @@ uniform sampler2D DEBUG_SAMPLER;
 uniform float viewHeight;
 uniform float frameTimeCounter;
 
-#if LIGHTING_MODE == LIGHTING_MODE_RT && (defined WORLD_NETHER || !defined SHADOW)
+#if LIGHTING_MODE == LIGHTING_MODE_PT && (defined WORLD_NETHER || !defined SHADOW)
 uniform sampler2D shadowtex0;
 #endif
 
@@ -81,11 +81,11 @@ uniform sampler2D depthtex1;
 
 #include "/include/utility/space_conversion.glsl"
 
-// The RTGI images and voxel scene are only declared in shaders.properties
-// under RT Mode (every view here except the voxel ones needs the radiance
-// buffers), so the whole debug path is gated on the same condition. Without it
-// the view renders a flat magenta rather than sampling an unbound sampler.
-#if LIGHTING_MODE == LIGHTING_MODE_RT
+// The RTGI images and voxel scene are always declared in shaders.properties
+// now that PT is the only lighting path (every view here except the voxel ones
+// needs the radiance buffers). The guard below is the temporary LIGHTING_MODE
+// compile guard and is folded away with the rest of them.
+#if LIGHTING_MODE == LIGHTING_MODE_PT
 #include "/include/lighting/rt/voxel_samplers.glsl"
 
 uniform sampler2D rtgi_raw_sampler;
@@ -197,14 +197,10 @@ void main() {
 #elif DEBUG_VIEW == DEBUG_VIEW_WEATHER
     debug_weather(fragment_color);
 #elif DEBUG_VIEW == DEBUG_VIEW_GI
-#if LIGHTING_MODE == LIGHTING_MODE_RT
+    // The PT-only fork always allocates the RTGI buffers, so there is no
+    // "GI disabled" case to signal with a magenta screen any more.
     fragment_color = gi_debug_view(texel, uv, fragment_color);
     fragment_color = gi_debug_stamp_swatch(fragment_color, texel);
-#else
-    // Magenta is not a bug report about the scene: it means the GI debug views
-    // have nothing to read because ray-traced GI is disabled.
-    fragment_color = vec3(0.6, 0.0, 0.6);
-#endif
 #endif
 
 #ifdef DISTANCE_VIEW
@@ -243,7 +239,7 @@ void main() {
         : vec3(clamp01(dist * rcp(DISTANCE_VIEW_MAX_DISTANCE)));
 #endif
 
-#if LIGHTING_MODE == LIGHTING_MODE_RT && (defined WORLD_NETHER || !defined SHADOW)
+#if LIGHTING_MODE == LIGHTING_MODE_PT && (defined WORLD_NETHER || !defined SHADOW)
     // Must sample shadowtex0 so that the shadow map is rendered
     if (uv.x < 0.0) {
         fragment_color = texture(shadowtex0, uv).rgb;

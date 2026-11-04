@@ -1,7 +1,7 @@
 /*
 --------------------------------------------------------------------------------
 
-  Photon Shader: Native Voxel RTGI + SSGI Hybrid
+  Photon Shader: Native Voxel RTGI
   program/rtgi/rtgi_filter.csh:
   SVGF Variance-Guided Edge-Avoiding À-Trous Wavelet Filter
 

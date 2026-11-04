@@ -129,7 +129,7 @@ uniform int currentRenderedItemId;
 #include "/include/weather/fog.glsl"
 #endif
 
-#if (LIGHTING_MODE == LIGHTING_MODE_RT) && defined PROGRAM_GBUFFERS_WATER
+#if (LIGHTING_MODE == LIGHTING_MODE_PT) && defined PROGRAM_GBUFFERS_WATER
 #include "/include/lighting/voxel/voxel_update.glsl"
 #endif
 
@@ -142,7 +142,7 @@ void main() {
     material_mask = get_material_mask();
     tbn = get_tbn_matrix();
 
-#if (LIGHTING_MODE == LIGHTING_MODE_RT) && defined PROGRAM_GBUFFERS_WATER
+#if (LIGHTING_MODE == LIGHTING_MODE_PT) && defined PROGRAM_GBUFFERS_WATER
     update_rt_voxel_grid(material_mask, tint.rgb, at_midBlock, light_levels, mc_midTexCoord, uv);
 #endif
 

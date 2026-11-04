@@ -27,8 +27,7 @@ KNOWN_DUPLICATE_KEYS = {
 }
 
 RTGI_SCREEN_OPTIONS = [
-    "RTGI_PROBE_RAYS",
-    "RTGI_PROBE_HYSTERESIS",
+    "VOXEL_CACHE_MULTIBOUNCE",
     "RTGI_INTENSITY",
     "RTGI_BRIGHTNESS",
     "RT_AO_STRENGTH",
@@ -38,7 +37,6 @@ RTGI_SCREEN_OPTIONS = [
     "RTGI_FILTER_PHI",
     "RTGI_HISTORY_FRAMES",
     "RTGI_MAX_RADIANCE",
-    "RTGI_PROBE_SPACING",
     "EMISSION_ANCHOR",
     "RT_REFLECTION_RAYS",
     "PHYSICAL_BSDF_ENERGY_COMP",
@@ -46,9 +44,18 @@ RTGI_SCREEN_OPTIONS = [
     "RT_COVERAGE_LEVELS",
 ]
 
-# LIGHTING_MODE is profile-driven only (RT/PT low-medium-high profiles); it must
-# NOT be a menu switch. The six profiles below are the required exposure.
-MODE_PROFILES = [
+# PT-only contract (P0): one shipped lighting path, so there is no mode token
+# for a profile to set and no menu switch. The five profiles below are the PT
+# quality tiers; every rt_*/pt_* profile from the RT/PT split must be gone.
+PT_QUALITY_TIERS = [
+    "profile.low",
+    "profile.medium",
+    "profile.high",
+    "profile.ultra",
+    "profile.extreme",
+]
+
+REMOVED_MODE_PROFILES = [
     "profile.rt_low",
     "profile.rt_medium",
     "profile.rt_high",
@@ -70,6 +77,11 @@ DEAD_OPTIONS = [
     "RTGI_CAVE_AMBIENT_SCALE",
     "RTGI_DIRECT_BLOCK_FALLBACK",
     "RTGI_GI_INPUT",
+    # Removed with the DDGI probe cache when the voxel irradiance volume
+    # landed; they lingered as required menu options long after the code went.
+    "RTGI_PROBE_RAYS",
+    "RTGI_PROBE_HYSTERESIS",
+    "RTGI_PROBE_SPACING",
     "BOUNCED_LIGHT_I",
     "CAVE_LIGHTING_I",
     "HANDHELD_LIGHTING",
@@ -109,9 +121,12 @@ EXPECTED_CUSTOM_IMAGES = [
     "rtgi_filtered_img",
     "rtgi_sky_accum_img",
     "rtgi_sky_history_img",
-    "ddgi_irradiance_img",
-    "ddgi_direction_img",
-    "ddgi_cell_img",
+    # Voxel irradiance volume (replaced the DDGI probe cache): L1 SH + aux,
+    # plus the flip pair used by the generate / reproject / filter chain.
+    "voxel_cache_sh_img",
+    "voxel_cache_aux_img",
+    "voxel_cache_flip_sh_img",
+    "voxel_cache_flip_aux_img",
 ]
 
 DIRECTIVE_WORDS = {
@@ -237,6 +252,26 @@ IMAGE_PIXEL_TYPES = {
 IRIS_MAX_IMAGES = 16
 
 
+def resolve_dimension(token: str, settings: dict[str, str]) -> int | None:
+    """Resolve an absolute image dimension.
+
+    Iris preprocesses shaders.properties before parsing it, so a dimension may
+    be a settings.glsl macro such as `RT_CLIPMAP_SIZE`. The syntax check runs
+    on the raw file, so it has to follow the same macro expansion or it reports
+    a legal declaration as an error.
+    """
+    for _ in range(4):
+        try:
+            return int(token)
+        except ValueError:
+            pass
+        expanded = settings.get(token)
+        if expanded is None:
+            return None
+        token = expanded.split()[0].rstrip(",")
+    return None
+
+
 def check_image_directives(
     properties: str, preprocessed: str, settings: dict[str, str]
 ) -> tuple[list[str], list[str]]:
@@ -321,12 +356,11 @@ def check_image_directives(
                 )
                 continue
             for idx in range(6, len(parts)):
-                try:
-                    int(parts[idx])
-                except ValueError:
+                if resolve_dimension(parts[idx], settings) is None:
                     errors.append(
                         f"line {lineno}: image.{name} absolute dimension "
-                        f"'{parts[idx]}' must be an integer"
+                        f"'{parts[idx]}' must be an integer or a settings.glsl "
+                        "macro that expands to one"
                     )
 
     # An image written by an RTGI pass must be declared at the same relative
@@ -488,9 +522,15 @@ def read_settings_defines() -> dict[str, str]:
     return defs
 
 
-def preprocess_properties(overrides: dict[str, str] | None = None) -> str:
+def preprocess_properties(
+    overrides: dict[str, str] | None = None,
+    undef: set[str] | frozenset[str] | None = None,
+) -> str:
     raw = (SHADERS / "shaders.properties").read_text(encoding='utf-8', errors='replace')
     defs = read_settings_defines()
+    if undef:
+        for name in undef:
+            defs.pop(name, None)
     if overrides:
         defs.update(overrides)
     lines = [f"#define {k} {v}" for k, v in defs.items()]
@@ -552,7 +592,14 @@ def main() -> int:
             screen_line = line
             break
 
-    lang = (SHADERS / "lang" / "en_US.lang").read_text(encoding='utf-8', errors='replace')
+    # Every shipped translation is checked: a dead mode token left in a
+    # non-English file is still shipped UI, and it is invisible to a reviewer
+    # who only reads en_US.
+    lang_texts = {
+        path.name: path.read_text(encoding="utf-8", errors="replace")
+        for path in sorted((SHADERS / "lang").glob("*.lang"))
+    }
+    lang = lang_texts.get("en_US.lang", "")
     settings = (SHADERS / "settings.glsl").read_text(encoding='utf-8', errors='replace')
 
     errors: list[str] = []
@@ -573,23 +620,41 @@ def main() -> int:
             warnings.append(f"no settings.glsl define found for: {opt}")
 
     for opt in DEAD_OPTIONS:
-        if opt in properties or opt in settings or opt in lang:
+        if opt in properties or opt in settings:
             errors.append(f"dead option still present: {opt}")
+            continue
+        for name, text in lang_texts.items():
+            if re.search(r"(?m)^\s*(option|value)\." + re.escape(opt) + r"\b", text):
+                errors.append(f"dead option still present in {name}: {opt}")
+                break
 
     for name in EXPECTED_CUSTOM_IMAGES:
         if f"image.{name}" not in properties:
             errors.append(f"missing custom image declaration: {name}")
 
-    # Profile-driven lighting mode: no menu switch, six required profiles, and
-    # the settings option list must expose both RT and PT so profiles can set it.
+    # PT-only contract (P0): one shipped lighting path. No menu switch, one set
+    # of PT quality tiers, no RT/OFF/HYBRID profile left, and the temporary
+    # LIGHTING_MODE_PT compile guard still present until P7 folds it away.
     if "LIGHTING_MODE" in screen_line:
         errors.append("LIGHTING_MODE must not be a raytracing menu switch (profiles own it)")
     property_lines = preprocessed.splitlines()
-    for profile_key in MODE_PROFILES:
+    for profile_key in PT_QUALITY_TIERS:
         if not any(line.strip().startswith(f"{profile_key} ") for line in property_lines):
-            errors.append(f"missing lighting profile: {profile_key}")
-    if "// [LIGHTING_MODE_RT LIGHTING_MODE_PT]" not in settings:
-        errors.append("settings.glsl LIGHTING_MODE option list must expose RT and PT for profiles")
+            errors.append(f"missing PT quality tier profile: {profile_key}")
+    for profile_key in REMOVED_MODE_PROFILES:
+        if any(line.strip().startswith(f"{profile_key} ") for line in property_lines):
+            errors.append(f"RT/PT split profile must be removed: {profile_key}")
+    if "#define LIGHTING_MODE_PT" not in settings:
+        errors.append("settings.glsl must define the temporary LIGHTING_MODE_PT guard")
+    for name, text in lang_texts.items():
+        for token in ("LIGHTING_MODE_RT", "LIGHTING_MODE", "RAYTRACED_GI",
+                      "RTGI_TRACER", "SSGI", "HYBRID"):
+            if token in text:
+                errors.append(f"{name} still contains removed mode token: {token}")
+    if "LIGHTING_MODE_RT" in settings or "LIGHTING_MODE_RT" in properties:
+        errors.append("LIGHTING_MODE_RT must be gone: PT is the only lighting path")
+    if "#define PT_RAW_ESTIMATOR" not in settings:
+        errors.append("settings.glsl must define PT_RAW_ESTIMATOR (temporary raw estimator contract)")
 
     orphan_errors, orphan_warnings = check_orphan_options(properties, settings)
     errors.extend(orphan_errors)

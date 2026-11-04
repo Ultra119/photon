@@ -64,7 +64,7 @@ uniform float time_midnight;
 uniform float biome_temperature;
 uniform float biome_humidity;
 
-#if LIGHTING_MODE == LIGHTING_MODE_RT
+#if LIGHTING_MODE == LIGHTING_MODE_PT
 // R32UI supports imageAtomicMax(), which resolves concurrent voxel writes
 // from multiple vertices deterministically.
 
@@ -78,7 +78,7 @@ uniform int renderStage;
 #include "/include/lighting/shadows/distortion.glsl"
 #include "/include/vertex/displacement.glsl"
 
-#if LIGHTING_MODE == LIGHTING_MODE_RT
+#if LIGHTING_MODE == LIGHTING_MODE_PT
 #include "/include/lighting/voxel/voxel_update.glsl"
 #endif
 
@@ -87,7 +87,7 @@ void main() {
     material_mask = uint(max0(mc_Entity.x - 10000.0));
     tint = gl_Color.rgb;
 
-#if (LIGHTING_MODE == LIGHTING_MODE_RT) && (!defined PROGRAM_SHADOW_ENTITIES || (defined RTGI_VOXELIZE_ENTITIES && RTGI_VOXELIZE_ENTITIES == 1))
+#if (LIGHTING_MODE == LIGHTING_MODE_PT) && (!defined PROGRAM_SHADOW_ENTITIES || (defined RTGI_VOXELIZE_ENTITIES && RTGI_VOXELIZE_ENTITIES == 1))
     update_rt_voxel_grid(material_mask, tint, at_midBlock, clamp01(gl_MultiTexCoord1.xy * (1.0 / 240.0)), mc_midTexCoord, uv);
 #endif
 

@@ -1,6 +1,17 @@
 # RT-first fork plan — RT by default, PT deferred
 
-**Status:** proposal for review; planning only, no renderer implementation in this change.  
+> **SUPERSEDED — historical reference only.**
+> This document's product contract (two lighting modes, RT default, PT deferred)
+> was replaced on 2026-11-03 by the PT-only decision. The active roadmap is
+> [`docs/PT_ONLY_PLAN.md`](PT_ONLY_PLAN.md); the P0 baseline that implements it is
+> recorded in [`docs/pt_baseline.md`](pt_baseline.md). Everything below is kept as
+> a technical reference — the numerical acceptance criteria, image budgets and
+> mode-removal inventory are still useful — but its **RT-default, HYBRID and
+> OFF-mode assumptions no longer describe the shipped product**, and `LIGHTING_MODE_RT`
+> has since been deleted from the tree. Read it as "how the RT path was specified",
+> not as "what we ship".
+
+**Status:** superseded 2026-11-03 by `docs/PT_ONLY_PLAN.md`; planning only, no renderer implementation in this change.  
 **Audited baseline:** `1c764b3` (`Improve DDGI relocation and firefly filtering`), 2026-10-29.  
 **Supersedes as the active roadmap:** `docs/PT_IMPLEMENTATION_PLAN.md` for current work. That document remains a future PT reference, not the next implementation target.
 
