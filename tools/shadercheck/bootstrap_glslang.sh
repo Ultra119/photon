@@ -14,6 +14,12 @@
 # It prints the binary path when it succeeds. Requires: git, cmake >= 3.22,
 # a C++17 compiler, python3. Network access to github.com is needed for the
 # clone; everything after that is local.
+#
+# The finished binary is also copied to $GLSLANG_BIN (default
+# $HOME/glslang-bin/glslang-$VERSION). The default build prefix is under /tmp
+# because the tree is ~180 MB, and /tmp gets reclaimed -- sometimes in the
+# middle of a run, which makes check.py fail with a confusing "no such file"
+# for every shader. The copy is 3 MB and survives it.
 set -euo pipefail
 
 # The default matches GLSLANG's default in gi_debug_test.py and check.py.
@@ -21,6 +27,7 @@ PREFIX="${GLSLANG_PREFIX:-/tmp/glslang-build}"
 VERSION="${GLSLANG_VERSION:-15.0.0}"
 JOBS="${GLSLANG_JOBS:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)}"
 BINARY="$PREFIX/glslang-$VERSION/build/StandAlone/glslang"
+KEEP="${GLSLANG_BIN:-$HOME/glslang-bin}/glslang-$VERSION"
 
 if [ -x "$BINARY" ]; then
   echo "glslang $VERSION already built: $BINARY"
@@ -54,6 +61,12 @@ echo "== building (this takes several minutes) =="
 cmake --build build --target glslang-standalone --parallel "$JOBS"
 
 test -x "$BINARY" || { echo "error: build finished but $BINARY is missing" >&2; exit 1; }
+
+# /tmp is not durable; keep a copy of the binary where a cleanup cannot take it.
+mkdir -p "$(dirname "$KEEP")"
+cp -f "$BINARY" "$KEEP"
+chmod +x "$KEEP"
+
 echo
 echo "glslang ready:"
-echo "  export GLSLANG=$BINARY"
+echo "  export GLSLANG=$KEEP"

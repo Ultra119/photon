@@ -180,12 +180,20 @@ def check_spp_math(failures: list[str]) -> None:
             "the temporal pass does not derive its per-frame sample count from "
             "RTGI_RAY_COUNT"
         )
+    # The growth is weighted by reprojection confidence: a pixel whose history
+    # is barely being trusted should not claim a full sample of new evidence.
+    # (It used to be gated on the static-state detector instead, which held the
+    # count for as long as the camera moved -- see check_motion_invariance.)
     if not re.search(
-        r"min\(prev_count \+ current_spp, float\(RTGI_SPP_CAP\)\)", src
+        r"min\(\s*prev_count \+ current_spp \* total_confidence,\s*"
+        r"float\(RTGI_SPP_CAP\)\s*\)",
+        src,
+        re.S,
     ):
         failures.append(
-            "the temporal pass does not add this frame's samples to the "
-            "accumulated count under RTGI_SPP_CAP"
+            "the temporal pass does not add this frame's samples, weighted by "
+            "reprojection confidence, to the accumulated count under "
+            "RTGI_SPP_CAP"
         )
     if not re.search(
         r"current_spp / max\(sample_count, current_spp\)", src
@@ -489,6 +497,167 @@ def check_adaptive(failures: list[str]) -> None:
     )
     if young["fired"]:
         failures.append("the adaptive test fires on a history below RTGI_ADAPT_MIN_SAMPLES")
+
+
+def _mat3_mul_vec(m, v):
+    """Affine mat4 x vec3: the shader's transform(), mat3(m)*v + m[3]."""
+    return tuple(
+        sum(m[row][c] * v[c] for c in range(3)) + m[row][3] for row in range(3)
+    )
+
+
+def _yaw_pitch(yaw: float, pitch: float):
+    """The rotational part of gbufferModelView for a yaw/pitch camera."""
+    cy, sy = math.cos(yaw), math.sin(yaw)
+    cp, sp = math.cos(pitch), math.sin(pitch)
+    # column-major mat4, as GLSL lays them out: m[col][row]
+    return (
+        (cy, 0.0, -sy, 0.0),
+        (sp * sy, cp, sp * cy, 0.0),
+        (cp * sy, -sp, cp * cy, 0.0),
+        (0.0, 0.0, 0.0, 1.0),
+    )
+
+
+def check_motion_invariance(failures: list[str]) -> None:
+    """Claim 8: camera motion must not read as a disocclusion.
+
+    The depth test used to compare the distance stored by the previous frame
+    against the distance measured by the CURRENT camera. For a static world
+    those differ by exactly the camera's own motion, so walking or panning
+    looked like the surface had moved: the reprojection confidence collapsed
+    and the pixel fell back toward its raw sample. Moving was pure noise.
+
+    This checks the shipped comparison is invariant under rigid camera motion
+    -- that the previous camera's view-space depth of the current surface point
+    equals what the previous frame stored, to fp32, for a translating and
+    rotating camera -- and that the sample count grows while the camera moves.
+    """
+    temporal = strip_comments(read(TEMPORAL))
+
+    # --- the numeric proof ------------------------------------------------
+    # A static world, camera at the origin looking down -Z. Sample points
+    # across the visible screen: up to 60 degrees off axis (a 90 degree FOV on
+    # a 16:9 display), 2 to 40 blocks away, and the speeds a player actually
+    # reaches. Both sides are rounded to fp32, which is all the shader has.
+    def measure(radial: float, off_axis_deg: float, step_z: float, dyaw: float):
+        off = math.radians(off_axis_deg)
+        point = (radial * math.sin(off), 0.0, -radial * math.cos(off))
+        prev_cam = (0.0, 0.0, 0.0)
+        curr_cam = (0.0, 0.0, -step_z)  # moving forward
+        prev_mv = _yaw_pitch(0.0, 0.0)
+        curr_mv = _yaw_pitch(dyaw, 0.0)
+
+        rel_prev = tuple(point[i] - prev_cam[i] for i in range(3))
+        stored_prev_dist = -_mat3_mul_vec(prev_mv, rel_prev)[2]
+
+        rel_curr = tuple(point[i] - curr_cam[i] for i in range(3))
+        curr_view = _mat3_mul_vec(curr_mv, rel_curr)
+        current_dist = -curr_view[2]
+
+        # scene_pos is camera-relative: view_to_scene_space is the inverse
+        # rotation alone, so this is the shipped expression exactly.
+        inv = (
+            (curr_mv[0][0], curr_mv[1][0], curr_mv[2][0], 0.0),
+            (curr_mv[0][1], curr_mv[1][1], curr_mv[2][1], 0.0),
+            (curr_mv[0][2], curr_mv[1][2], curr_mv[2][2], 0.0),
+            (0.0, 0.0, 0.0, 1.0),
+        )
+        scene_pos = _mat3_mul_vec(inv, curr_view)
+        offset = tuple(curr_cam[i] - prev_cam[i] for i in range(3))
+        expected = -_mat3_mul_vec(
+            prev_mv, tuple(f32(scene_pos[i] + offset[i]) for i in range(3))
+        )[2]
+
+        new_diff = abs(f32(f32(expected) - f32(stored_prev_dist)))
+        old_diff = abs(f32(f32(current_dist) - f32(stored_prev_dist)))
+        tolerance = max(current_dist * 0.06, 0.10)
+        confidence = clamp(1.0 - max(0.0, old_diff - tolerance) / tolerance, 0.0, 1.0)
+        return new_diff, old_diff, confidence
+
+    # (name, radial, off-axis deg, blocks/frame, radians/frame)
+    cases = [
+        ("standing still", 8.0, 0.0, 0.0, 0.0),
+        ("walking, wall ahead", 6.0, 0.0, 0.07, 0.0),
+        ("sprinting, wall ahead", 4.0, 20.0, 0.093, 0.0),
+        ("elytra, near geometry", 3.0, 30.0, 0.33, 0.0),
+        ("elytra, far geometry", 30.0, 10.0, 0.33, 0.0),
+        ("slow pan, near corner", 3.0, 55.0, 0.0, 0.02),
+        ("slow pan, mid screen", 15.0, 25.0, 0.0, 0.02),
+        ("fast pan, mid screen", 15.0, 25.0, 0.0, 0.09),
+        ("fast pan, screen edge", 10.0, 55.0, 0.0, 0.09),
+        ("walk and pan", 8.0, 30.0, 0.07, 0.04),
+    ]
+    worst_new = 0.0
+    worst_old_confidence = 1.0
+    collapsed = []
+    for name, radial, off, step_z, dyaw in cases:
+        new_diff, old_diff, confidence = measure(radial, off, step_z, dyaw)
+        worst_new = max(worst_new, new_diff)
+        worst_old_confidence = min(worst_old_confidence, confidence)
+        if confidence < 0.5:
+            collapsed.append(f"{name} ({confidence:.2f})")
+        if new_diff > 1e-4:
+            failures.append(
+                f"the depth test is not motion-invariant under {name}: "
+                f"{new_diff:.6f} blocks of disagreement for a static world"
+            )
+
+    # The old comparison has to be shown to actually fail on realistic motion,
+    # otherwise this check does not describe the bug it claims to.
+    if not collapsed:
+        failures.append(
+            "the measurement does not exercise the bug it documents: camera "
+            "motion leaves the old comparison at full confidence everywhere"
+        )
+
+    # --- the count has to grow while moving -------------------------------
+    src = "".join(temporal.split())
+    if "floatdist_diff=abs(expected_prev_dist-prev_dist);" not in src:
+        failures.append(
+            "the disocclusion test compares current_dist with prev_dist; camera "
+            "motion then reads as a disocclusion and the image falls back to "
+            "raw noise while moving"
+        )
+    if "prev_count+current_spp*total_confidence" not in src:
+        failures.append(
+            "the sample count does not grow while the camera moves; a pixel "
+            "revealed by a pan can then never converge until the camera stops"
+        )
+    if "?min(prev_count+current_spp" in src or ":max(prev_count,current_spp)" in src:
+        failures.append(
+            "the sample count is still held on motion (the old accumulating "
+            "ternary is still in the source)"
+        )
+
+    # A pixel revealed by a pan: with the count held it is pinned at its
+    # starting value for as long as the camera moves; with the shipped
+    # recurrence it climbs to the cap.
+    spp = 1.0
+    cap = float(read_define(read(SHADERS / "settings.glsl"), "RTGI_SPP_CAP") or 128)
+    start = 7.0  # the spatial fallback's starting evidence
+    frames = int(cap / spp) + 32
+    growing = start
+    held = start
+    for _ in range(frames):
+        growing = min(growing + spp, cap)
+        held = min(max(held, spp), cap)  # held: no growth while moving
+    if growing < cap - 0.5:
+        failures.append(
+            f"a pixel revealed while panning only reaches {growing:.0f} samples "
+            f"in {frames} frames; it should reach the cap"
+        )
+    if held > start + 0.5:
+        failures.append(
+            "the held-count model is wrong: it should not grow while moving"
+        )
+    # What that is worth: noise falls as 1/sqrt(N).
+    improvement = math.sqrt(growing / held)
+    if improvement < 3.0:
+        failures.append(
+            f"growing the count during motion is only worth {improvement:.1f}x "
+            "less noise; not worth the change"
+        )
 
 
 def check_spatial_fallback(failures: list[str]) -> None:
@@ -800,6 +969,7 @@ def main() -> int:
     check_adaptive(failures)
     check_adaptive_wiring(failures)
     check_spatial_fallback(failures)
+    check_motion_invariance(failures)
 
     if failures:
         print(f"FAIL: {len(failures)} assertion(s)")

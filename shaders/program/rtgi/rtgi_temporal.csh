@@ -272,6 +272,25 @@ void main() {
     float current_dist = -view_pos.z; // Exact metric distance in meters
     vec3 scene_pos = view_to_scene_space(view_pos);
 
+    // The distance this surface had in the PREVIOUS frame's camera. Comparing
+    // the stored distance against the CURRENT camera's distance instead makes
+    // every camera move look like a disocclusion: walk one block toward a wall
+    // and the measurement changes by one block although the surface, the wall
+    // and the light on it have not moved at all. At 60 Hz that is a large
+    // fraction of the disocclusion tolerance, so the confidence collapsed on
+    // any motion and the pixel fell back toward its raw sample -- the "moving
+    // is pure noise, standing still is clean" behaviour.
+    //
+    // This is the first half of reproject_scene_space(): the surface has not
+    // moved, so the previous camera's view-space depth of the current point is
+    // exactly what the previous frame stored, to within texel quantisation.
+    // Both are unjittered, so TAAU jitter cancels too.
+    vec3 prev_camera_view_pos = transform(
+        gbufferPreviousModelView,
+        scene_pos + (cameraPosition - previousCameraPosition)
+    );
+    float expected_prev_dist = -prev_camera_view_pos.z;
+
     // Reproject to previous frame projection space
     vec3 prev_screen_pos = reproject_scene_space(scene_pos, false, false);
     vec2 prev_framebuffer_uv = taau_framebuffer_uv(prev_screen_pos.xy);
@@ -355,7 +374,9 @@ void main() {
                             : texelFetch(rtgi_sky_accum_sampler, prev_texel, 0);
 
             float prev_dist = prev_sample.a;
-            float dist_diff = abs(current_dist - prev_dist);
+            // Motion-invariant: both sides are measured from the PREVIOUS
+            // camera, so this is geometric disagreement only.
+            float dist_diff = abs(expected_prev_dist - prev_dist);
 
             // SVGF Disocclusion Test 1: Tight metric depth tolerance
             float dist_tolerance = max(current_dist * 0.06, 0.10);
@@ -486,9 +507,31 @@ void main() {
                 : 0.0;
             bool rejected = rejection > 0.05;
 
-            sample_count = accumulating
-                ? min(prev_count + current_spp, float(RTGI_SPP_CAP))
-                : max(prev_count, current_spp);
+            // The count grows while the camera moves, scaled by how much the
+            // reprojection is trusted.
+            //
+            // It used to be HELD on motion, on the reasoning that a reprojected
+            // sample is the same light re-measured and therefore not new
+            // evidence. That is only half right: the light is the same, but the
+            // rays are new and independent, so averaging them does reduce
+            // variance by 1/N -- which is the entire basis of temporal reuse
+            // under a moving camera, and the reason Kappa can be clean while
+            // you move. What the reasoning was really protecting against is
+            // BIAS from a wrong reprojection, and that is the disocclusion
+            // tests' job, not the count's.
+            //
+            // Holding it had a worse consequence than the bias it avoided: a
+            // pixel revealed by a pan (a disocclusion edge, or the strip of new
+            // world at the leading edge) restarted at ~1 sample and then could
+            // NEVER grow, for as long as the camera kept moving. Pan for a
+            // second and the whole screen is newly revealed and pinned at that
+            // one sample -- the field of raw dots that only settles after the
+            // camera stops, and the columns that converge latest are the ones
+            // revealed last, which is what reads as vertical stripes.
+            sample_count = min(
+                prev_count + current_spp * total_confidence,
+                float(RTGI_SPP_CAP)
+            );
 
             // alpha = this frame's samples / total samples. At one ray per
             // pixel this is the previous pure 1/n; at eight rays per pixel it

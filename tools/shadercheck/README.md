@@ -13,7 +13,7 @@ have one installed:
 
 ```sh
 bash tools/shadercheck/bootstrap_glslang.sh        # prints the export line
-export GLSLANG=/tmp/glslang-build/glslang-15.0.0/build/StandAlone/glslang
+export GLSLANG="$HOME/glslang-bin/glslang-15.0.0"   # the line it prints
 ```
 
 or, by hand:
@@ -22,13 +22,19 @@ or, by hand:
 git clone --depth 1 --branch 15.0.0 https://github.com/KhronosGroup/glslang.git
 python3 -m pip install --user cmake
 cmake -S glslang -B glslang/build -DCMAKE_BUILD_TYPE=Release -DENABLE_OPT=OFF
-cmake --build glslang/build --target glslang --parallel 4
+cmake --build glslang/build --target glslang-standalone --parallel 4
 export GLSLANG="$PWD/glslang/build/StandAlone/glslang"
 ```
 
-The version is pinned to 15.0.0 and the target is `glslang` (not
-`glslang-standalone`): the binary has to accept `-S <stage>` and `-E`, which is
-what `check.py` and `gi_debug_test.py` invoke.
+The version is pinned to 15.0.0. The cmake target is `glslang-standalone`; the
+binary it produces is `build/StandAlone/glslang`, which is what `GLSLANG` has to
+point at. It must accept `-S <stage>` and `-E`, which is what `check.py` and
+`gi_debug_test.py` invoke.
+
+The script builds under `/tmp` by default (the tree is ~180 MB) and copies the
+finished 3 MB binary to `~/glslang-bin/`. Use that copy: `/tmp` gets reclaimed,
+and if it goes away mid-run `check.py` fails every shader with "no such file or
+directory", which looks exactly like a compiler that cannot be found.
 
 ## Run
 

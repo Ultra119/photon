@@ -336,7 +336,8 @@ Gate:
 - Ghosting is bounded and has a debug view.
 - First-frame / invalid-history fallback removes most raw noise without edge smearing.
 
-**Status 2026-11-04: all four tasks shipped.**
+**Status 2026-11-04: all four tasks shipped, and two motion defects found in
+game and fixed.**
 
 Shipped:
 
@@ -438,6 +439,64 @@ asserts the wiring in the source: the 3×3 mean, the sigma/3, all three gates,
 no count shortening, and the point-sampled debug read. All three regressions
 were verified to fail it.
 
+**Second in-game run (2026-11-04): "the light freezes and doesn't stabilize
+until you come to a complete stop; while moving it is pure noise made of dots,
+and when panning it stabilizes with a delay, as vertical stripes."** Both
+halves of that are one bug, and there is a second behind it.
+
+1. **The sample count was frozen whenever the camera moved.** P1 decided that
+   "a reprojected sample from a moving camera is the same light re-measured,
+   not new evidence", so `sample_count` was *held* rather than grown. Half
+   right: the light is the same, but the rays are new and independent, so
+   averaging them does cut variance by 1/sqrt(N) — that is the entire basis of
+   temporal reuse under a moving camera, and why Kappa is clean while you move.
+   What the reasoning was really protecting against is *bias* from a wrong
+   reprojection, and that is the disocclusion tests' job, not the count's.
+   The consequence was worse than the bias it avoided: a pixel revealed by a
+   pan — a disocclusion edge, or the strip of new world at the leading edge —
+   restarted at about one sample and then **could never grow for as long as the
+   camera kept moving**. Pan for a second and the whole screen is newly
+   revealed and pinned at that one sample: the field of dots. The columns
+   revealed last are the last to converge, which is the vertical stripes, and
+   they only start converging after the camera stops, which is the delay.
+   Now: `sample_count = min(prev_count + current_spp * total_confidence, cap)`.
+   The confidence weighting keeps the honest part of the old reasoning — a
+   pixel whose reprojection is barely trusted should not claim a full sample of
+   new evidence — without freezing it.
+2. **The depth disocclusion test compared distances measured by two different
+   cameras.** It compared the distance the previous frame stored against the
+   distance the *current* camera measures, so for a static world they differ by
+   exactly the camera's own motion: walk one block toward a wall and the
+   measurement changes by one block, although the wall and the light on it have
+   not moved. The confidence then collapsed and the pixel fell back toward its
+   raw sample. Now the current surface point is transformed into the previous
+   camera's view space first, which is the first half of
+   `reproject_scene_space()` — for a static surface the previous camera's
+   view-space depth of the current point is exactly what the previous frame
+   stored, so the difference measures geometric disagreement only.
+
+Measured for the second one (static world, moving camera, both sides rounded to
+fp32, points across the visible screen):
+
+| case | old diff | new diff | tolerance | old confidence |
+|---|---:|---:|---:|---:|
+| standing still | 0.000 | 0.000 | 0.480 | 1.000 |
+| walking, wall ahead | 0.070 | 0.000 | 0.356 | 1.000 |
+| sprinting, 5.6 blocks/s | 0.093 | 0.000 | 0.220 | 1.000 |
+| elytra, 20 blocks/s, near geometry | 0.330 | 0.000 | 0.136 | **0.000** |
+| elytra, 20 blocks/s, far geometry | 0.330 | 0.000 | 1.753 | 1.000 |
+| slow pan, near corner | 0.050 | 0.000 | 0.100 | 1.000 |
+| slow pan, mid screen | 0.130 | 0.000 | 0.808 | 1.000 |
+| fast pan, mid screen | 0.625 | 0.000 | 0.778 | 1.000 |
+| fast pan, screen edge | 0.760 | 0.000 | 0.299 | **0.000** |
+| walk and pan | 0.235 | 0.000 | 0.402 | 1.000 |
+
+So the depth test was **not** the main cause — ordinary walking and moderate
+pans were fine, and only fast translation near geometry and fast pans at the
+screen edge collapsed. It is fixed because it is wrong in principle and cheap to
+fix, not because it explains the report. The frozen count is what explains the
+report.
+
 **The 7×7 spatial preaccumulation fallback shipped after all** — it was
 deferred at first as "the most expensive task, and P3 redesigns spatial
 filtering anyway", but it is also the one that answers the last open gate item
@@ -489,6 +548,14 @@ defective statistic, and need repeating against this one):
 4. Watch for the failure mode on purpose: `RTGI_ADAPT_STRENGTH 1.0` in a dark,
    noisy scene. If noise starts to shimmer, the z thresholds (2σ/8σ) are too
    tight for that scene and should be widened, not the strength lowered.
+0. **The one that matters now:** walk forward continuously for ten seconds,
+   then pan continuously for ten seconds, in a torch-lit interior. The image
+   must be as clean while moving as it is standing still, apart from a narrow
+   band at the leading edge of the pan. If it is still noisy while moving, the
+   count is not growing — check `GI_DEBUG_SPP`: it must climb to the cap within
+   ~2 s of a surface appearing, whether or not the camera is moving. If it is
+   smeared instead, the count is growing on pixels whose reprojection is wrong,
+   and `total_confidence` is too generous.
 5. The spatial fallback: walk around a corner so new surfaces come into view,
    with `RTGI_SPATIAL_FALLBACK` on and then off. On, the revealed strip should
    arrive already smooth; off, it should flash raw noise for a frame or two.
