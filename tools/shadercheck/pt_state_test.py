@@ -519,6 +519,97 @@ def _yaw_pitch(yaw: float, pitch: float):
     )
 
 
+def check_history_resample(failures: list[str]) -> None:
+    """Claim 12: resampling the history must not blur it away.
+
+    The history is resampled at a fractional position every frame, and every
+    resample is a low-pass filter, so the blur accumulates for as long as the
+    camera moves. Bilinear has no negative lobe, so it attenuates mid-band
+    frequencies a little every frame and, over the ~128 frames a converged
+    pixel carries, destroys everything below about 30 screen pixels: the room
+    goes evenly lit while moving and only shows its real light and dark areas
+    once the camera stops.
+
+    Point sampling is not the answer (the accumulated pattern swims in texel
+    steps under dolly). An interpolating kernel with a negative lobe is: exact
+    when the reprojection lands on a texel centre, sharp in between.
+    """
+    temporal = strip_comments(read(TEMPORAL))
+    src = "".join(temporal.split())
+
+    if "catmull_rom_weights(" not in src:
+        failures.append(
+            "the history is not resampled with an interpolating kernel, so "
+            "repeated resampling blurs it away while the camera moves"
+        )
+    if "hist_wx[ox+1]" not in src or "hist_wy[oy+1]" not in src:
+        failures.append("the Catmull-Rom weights are not applied per axis")
+    if "/max(hist_weight_sum,1e-4)" not in src:
+        failures.append(
+            "the resample does not renormalise; the negative lobes do not sum "
+            "to 1 at a clamped screen edge"
+        )
+    # The old bilinear tap: two weights per axis, no negative lobe.
+    if "(ox==0?1.0-hist_f.x:hist_f.x)" in src:
+        failures.append(
+            "the history fetch is still bilinear: 4 taps, no negative lobe, "
+            "and every frame of motion low-passes the accumulated field again"
+        )
+
+    # --- the measurement that justifies it --------------------------------
+    n_tex = 512
+    frames = 128  # the accumulated history at RTGI_SPP_CAP
+
+    def bilinear(x, d):
+        return [(1.0 - d) * x[n] + d * x[(n - 1) % len(x)] for n in range(len(x))]
+
+    def catmull(x, d):
+        f2, f3 = d * d, d * d * d
+        w = (
+            -0.5 * f3 + f2 - 0.5 * d,
+            1.5 * f3 - 2.5 * f2 + 1.0,
+            -1.5 * f3 + 2.0 * f2 + 0.5 * d,
+            0.5 * f3 - 0.5 * f2,
+        )
+        return [
+            w[0] * x[(n + 1) % len(x)] + w[1] * x[n]
+            + w[2] * x[(n - 1) % len(x)] + w[3] * x[(n - 2) % len(x)]
+            for n in range(len(x))
+        ]
+
+    def survive(resample, period):
+        rng = random.Random(3)
+        x = [math.cos(2 * math.pi * n / period) for n in range(n_tex)]
+        amp0 = max(x) - min(x)
+        for _ in range(frames):
+            x = resample(x, rng.random())
+        return (max(x) - min(x)) / amp0
+
+    # The sharper kernel has to actually preserve the detail it is there for.
+    for period, floor_c in ((8, 0.40), (16, 0.60)):
+        c = survive(catmull, period)
+        if c < floor_c:
+            failures.append(
+                f"the resample preserves only {c:.0%} of {period}-texel detail "
+                f"over {frames} frames; want at least {floor_c:.0%}"
+            )
+    # And bilinear has to be shown to be the thing being fixed, so the check
+    # cannot pass on a kernel that makes no difference.
+    b8 = survive(bilinear, 8)
+    c8 = survive(catmull, 8)
+    if b8 > 0.25:
+        failures.append(
+            f"bilinear preserves {b8:.0%} of 8-texel detail over {frames} "
+            "frames, so the resample is not the cause of the blur and this "
+            "check does not describe anything real"
+        )
+    if c8 < b8 * 3.0:
+        failures.append(
+            f"the sharper resample only takes 8-texel detail from {b8:.0%} to "
+            f"{c8:.0%}; not worth twelve extra fetches"
+        )
+
+
 def check_reset_variance(failures: list[str]) -> None:
     """Claim 11: a reset pixel must report the noise it actually has.
 
@@ -1171,6 +1262,7 @@ def main() -> int:
     check_voxel_cache_history(failures)
     check_voxel_cache_switch(failures)
     check_reset_variance(failures)
+    check_history_resample(failures)
 
     if failures:
         print(f"FAIL: {len(failures)} assertion(s)")

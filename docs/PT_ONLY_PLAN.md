@@ -632,6 +632,41 @@ Two related notes, not changed:
   direction — the filter blurs a pixel that is adapting, which hides the
   transition — so it was left alone.
 
+**Sixth pass (2026-11-04): "the room is only evenly lit when I'm moving; when
+I'm standing still I can see darker and lighter areas."** That inversion is the
+resample kernel. The history is resampled at a fractional position **every**
+frame, and every resample is a low-pass filter, so the blur accumulates for as
+long as the camera moves and the sharp new samples can only replace it at 1/N
+per frame. Measured over 128 frames of resampling:
+
+| feature size | bilinear | Catmull-Rom |
+|---|---:|---:|
+| 8 texels | **0 %** | 56 % |
+| 16 texels | **20 %** | 96 % |
+| 32 texels | 67 % | 100 % |
+| 64 texels | 90 % | 100 % |
+
+At half resolution, 8–16 texels is 16–32 screen pixels: every GI feature
+smaller than that is destroyed while the camera moves and only returns once it
+stops. Point sampling is not the alternative — it makes the accumulated pattern
+swim in texel steps under dolly — so the fix is an *interpolating* kernel with
+a negative lobe: exact when the reprojection lands on a texel centre (a still
+camera), sharp in between. Now `catmull_rom_weights()`, 16 taps instead of 4,
+renormalised because the negative lobes do not sum to 1 at a clamped edge.
+
+**Open, and agreed to defer — all three are P3 or P6, not tuning:**
+
+- **The blur at the screen edge and behind moving blocks is one artifact and it
+  is the à-trous doing its job.** A revealed pixel has one sample; the filter
+  is told (correctly, since `90012dc`) that it is noisy and blurs it hard. The
+  choice is noisy or blurred, and doing better needs a better prior than
+  "average the neighbours" — that is P3's redesign.
+- **Lava fireflies.** A bright emitter at one ray per pixel produces sparse
+  direct hits that survive `RTGI_MAX_RADIANCE` and out-run the à-trous. The fix
+  is importance sampling the emitter (P6), not a tighter clamp, which would
+  cost legitimate brightness.
+- **Torch/lava light has no bounce** (see above): P6, two steps.
+
 **The 7×7 spatial preaccumulation fallback shipped after all** — it was
 deferred at first as "the most expensive task, and P3 redesigns spatial
 filtering anyway", but it is also the one that answers the last open gate item
