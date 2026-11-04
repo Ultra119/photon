@@ -519,6 +519,58 @@ def _yaw_pitch(yaw: float, pitch: float):
     )
 
 
+def check_voxel_cache_history(failures: list[str]) -> None:
+    """Claim 9: the irradiance volume must notice a light going out.
+
+    The volume accumulates one ray per cell per frame with alpha = 1/N and no
+    change detection at all -- the only thing that ever invalidates a cell is
+    the camera-scroll reprojection. N is therefore also how long the volume
+    takes to forget a removed light, and VOXEL_CACHE_MULTIBOUNCE feeds the
+    cache back into itself, which stretches the tail further.
+
+    A torch being placed is fast because the screen-space accumulator has an
+    adaptive test and the deferred pass has analytic direct light. A torch
+    being removed has neither, so the fade is this pass's N.
+    """
+    generate = strip_comments(read(SHADERS / "program/rtgi/voxel_cache_generate.csh"))
+    match = re.search(r"const float voxel_cache_history = ([0-9.]+);", generate)
+    if not match:
+        failures.append(
+            "the voxel cache has no named history length to audit; the burn-in "
+            "is then whatever literal someone last typed into the clamp"
+        )
+        return
+    history = float(match.group(1))
+
+    # Cell value after the light is gone: the new sample carries only the
+    # recursive bounce of the cache itself (albedo 0.8, /pi, *0.85), so
+    #   c[t+1] = c[t] * (1 - 1/N) + (k * c[t]) / N  =  c[t] * (1 - (1-k)/N)
+    albedo = 0.8
+    k = albedo / math.pi * 0.85
+    decay = 1.0 - (1.0 - k) / history
+    frames_90 = math.log(0.10) / math.log(decay) if 0.0 < decay < 1.0 else float("inf")
+    seconds = frames_90 / 60.0
+
+    if seconds > 1.5:
+        failures.append(
+            f"a removed light takes {seconds:.1f} s to fade out of the voxel "
+            f"irradiance volume ({history:.0f} samples, multi-bounce feedback "
+            f"{k:.2f}); that is the reported burn-in"
+        )
+    if history > 32.0:
+        failures.append(
+            f"the voxel cache keeps {history:.0f} samples per cell with no "
+            "change detection; the volume feeds only the second bounce and is "
+            "spatially filtered every frame, so it does not need a deep history"
+        )
+    # The bound must still be long enough to be worth accumulating at all.
+    if history < 8.0:
+        failures.append(
+            f"the voxel cache keeps only {history:.0f} samples; the second "
+            "bounce will be noisier than a single-bounce trace is worth"
+        )
+
+
 def check_motion_invariance(failures: list[str]) -> None:
     """Claim 8: camera motion must not read as a disocclusion.
 
@@ -755,6 +807,53 @@ def check_spatial_fallback(failures: list[str]) -> None:
     if "PT_RESET_SPATIAL" not in src:
         failures.append("the spatial fallback does not report PT_RESET_SPATIAL")
     # Unstripped: the reason colours are identified by their comments.
+    # --- the gather must not cross a lighting boundary --------------------
+    # Depth and normal cannot separate a lit patch from the unlit patch beside
+    # it on one flat wall: same depth, same normal, different light. A gather
+    # that takes any geometrically acceptable neighbour therefore averages
+    # across the boundary and drags the bright side into the newly revealed
+    # dark side, which then persists for a hundred frames.
+    lit, dark = 1.00, 0.05
+    taps = list(range(-3, 4, 2))  # the shipped 4x4 stride-2 footprint
+
+    def borrowed(texel_x, strip_lo, strip_hi, restricted: bool):
+        total = 0.0
+        w = 0.0
+        for oy in taps:
+            for ox in taps:
+                x = texel_x + ox
+                if not (strip_lo <= x <= strip_hi) and restricted:
+                    continue  # that texel still has history: not ours to take
+                total += lit if x < 0 else dark
+                w += 1.0
+        return (total / w if w > 0.0 else dark), w
+
+    worst_leak = 0.0
+    worst_restricted = 0.0
+    for texel_x in range(0, 8, 2):
+        strip = (texel_x, texel_x + 1)  # this frame's revealed band
+        unrestricted, _ = borrowed(texel_x, *strip, restricted=False)
+        restricted, _ = borrowed(texel_x, *strip, restricted=True)
+        worst_leak = max(worst_leak, unrestricted / dark)
+        worst_restricted = max(worst_restricted, restricted / dark)
+    if worst_leak < 3.0:
+        failures.append(
+            "the light-leak model does not exercise the bug it documents: an "
+            f"unrestricted gather only brightens a revealed texel {worst_leak:.1f}x"
+        )
+    if worst_restricted > 1.001:
+        failures.append(
+            "restricting the gather to texels the previous frame reset still "
+            f"borrows {worst_restricted:.2f}x the local radiance"
+        )
+    if "pt_state_reset(" not in src or "if(n_reason<0.5){continue;}" not in src:
+        failures.append(
+            "the spatial fallback gathers from every geometrically acceptable "
+            "neighbour, including texels whose converged history belongs to the "
+            "surface that was visible before this one was revealed; that drags "
+            "light across lighting boundaries and leaves trails behind blocks"
+        )
+
     debug = (SHADERS / "include/debug/gi_debug.glsl").read_text(encoding="utf-8")
     if "PT_RESET_SPATIAL" not in debug and "SPATIAL:" not in debug:
         failures.append("the reset debug view has no colour for PT_RESET_SPATIAL")
@@ -970,6 +1069,7 @@ def main() -> int:
     check_adaptive_wiring(failures)
     check_spatial_fallback(failures)
     check_motion_invariance(failures)
+    check_voxel_cache_history(failures)
 
     if failures:
         print(f"FAIL: {len(failures)} assertion(s)")

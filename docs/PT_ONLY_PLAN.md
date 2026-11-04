@@ -497,6 +497,52 @@ screen edge collapsed. It is fixed because it is wrong in principle and cheap to
 fix, not because it explains the report. The frozen count is what explains the
 report.
 
+**Third in-game run (2026-11-04): trails behind blocks while moving, the room
+brighter while moving, "fills with light evenly" once stopped, and a 2-4 s
+burn-in when a torch is removed.**
+
+*The trails, the brighter-while-moving and the even fill are one bug, and it is
+the fallback shipped below.* It gathered from every geometrically acceptable
+neighbour, but depth and normal cannot separate a lit patch from the unlit
+patch beside it on one flat wall — same depth, same normal, different light —
+so the gather averaged straight across the lighting boundary. Measured on a
+lit/unlit wall pair, a texel revealed next to the boundary came out **10.5× too
+bright**, and 5.7× two texels away. Credited as six samples and then held for
+the next hundred frames, that is a bright band painted along every newly
+revealed strip: the trail behind a moving block, the room that fills with light
+evenly, and the brightness that rises while the camera moves.
+
+Fixed by restricting the gather to texels the **previous frame had to reset** —
+texels that are as clueless as this one. A neighbour with converged history is
+a texel of the frame that was visible before this surface was revealed, which
+is exactly the lighting not to inherit. The gather is now self-limiting: it
+averages freely when a large region appears at once (first frame, resize, fast
+pan — where it is wanted) and leaves a slow pan's one-texel-wide reveal strip
+to fend for itself. With the restriction the borrowed mean is the local
+radiance to within 0.1% at every position.
+
+*The burn-in is the Voxel Irradiance Volume.* It accumulates one ray per cell
+per frame with `alpha = 1/N` and **no change detection of any kind** — the only
+thing that ever invalidates a cell is the camera-scroll reprojection — so `N`
+is also how long the volume takes to forget a removed light, and
+`VOXEL_CACHE_MULTIBOUNCE` feeds the cache back into itself which stretches the
+tail. Placing a torch is quick because the screen-space accumulator has an
+adaptive test and the deferred pass has analytic direct light; removing one has
+neither. Modelled (cell decay `1 - (1-k)/N`, multi-bounce feedback
+`k = 0.8/pi * 0.85`, 60 fps, to 10%):
+
+| cache history | fade to 10% | without multi-bounce |
+|---|---:|---:|
+| 128 samples (shipped) | **6.2 s** | 4.9 s |
+| **24 samples (now)** | **1.2 s** | 0.9 s |
+
+The volume feeds only the second bounce and is spatially filtered every frame
+(six-neighbour air-constrained blur), so it does not need the deep history the
+screen-space accumulator does. Two other mechanisms are in the same time range
+and were **not** changed: the screen-space floor (`RTGI_MIN_ACCUM`, 0.01 →
+3.8 s to 10%) and auto-exposure, which brightens the residual as the scene
+darkens. If the burn-in survives this change, it is one of those two.
+
 **The 7×7 spatial preaccumulation fallback shipped after all** — it was
 deferred at first as "the most expensive task, and P3 redesigns spatial
 filtering anyway", but it is also the one that answers the last open gate item
@@ -548,6 +594,10 @@ defective statistic, and need repeating against this one):
 4. Watch for the failure mode on purpose: `RTGI_ADAPT_STRENGTH 1.0` in a dark,
    noisy scene. If noise starts to shimmer, the z thresholds (2σ/8σ) are too
    tight for that scene and should be widened, not the strength lowered.
+00. **Trails:** pan past a torch in a dark room. There must be no bright band
+    along the surface revealed by the pan. `GI_DEBUG_RESET` should show
+    `SPATIAL` (teal) only in the strip revealed this frame, never in a band
+    that persists after the camera stops.
 0. **The one that matters now:** walk forward continuously for ten seconds,
    then pan continuously for ten seconds, in a torch-lit interior. The image
    must be as clean while moving as it is standing still, apart from a narrow

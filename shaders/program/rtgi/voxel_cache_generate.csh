@@ -151,8 +151,19 @@ void main() {
     vec4 prev_aux = texelFetch(voxel_cache_flip_aux_sampler, cell, 0);
     vec4 prev_sh = texelFetch(voxel_cache_flip_sh_sampler, cell, 0);
 
+    // How long a cell's history lives. The only thing that ever invalidates a
+    // cell is the camera-scroll reprojection, so this is also how long the
+    // volume takes to notice that a light was removed: at 128 samples a torch
+    // going out faded over ~2 s, and the recursive multi-bounce -- which reads
+    // last frame's cache back through the flip images at 0.85 * albedo / pi --
+    // stretched the tail to 3-4 s. The volume is spatially filtered every
+    // frame (six-neighbour air-constrained blur) and it only feeds the second
+    // bounce, so it does not need the deep history the screen-space
+    // accumulator does; 24 samples converge in under half a second at the cost
+    // of a noisier bounce that the a-trous already smooths.
+    const float voxel_cache_history = 24.0;
     float prev_samples = floor(prev_aux.a);
-    float new_samples = clamp(prev_samples + 1.0, 1.0, 128.0);
+    float new_samples = clamp(prev_samples + 1.0, 1.0, voxel_cache_history);
     float alpha = 1.0 / new_samples;
 
     vec4 blended_sh = mix(prev_sh, new_sh, alpha);
