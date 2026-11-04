@@ -83,6 +83,16 @@ script before them:
 
 ## 3. Frame-rate baseline — user-measured, not reproduced
 
+**First in-game GPU profile exists:** 2026-11-04, Viewfinder, 10 frames,
+5.38 ms GPU across 44 passes, on this P0 build — see
+[`docs/pt_perf_baseline.md`](pt_perf_baseline.md). It is GPU time only: no FPS,
+resolution, scene or CPU frame time was captured with it, so it does not
+replace the table below and cannot yet be reconciled with it. The structural
+finding from that profile is that Iris bills every PT compute dispatch to the
+fragment pass of the same index, so the PT chain's cost is currently invisible
+in any per-pass profile; the differential measurement to expose it is written
+up in that document.
+
 No GPU or Minecraft instance exists in this sandbox, so the numbers below are
 the user's own measurements and **not** matched, reproduced or verified here.
 Record GPU, driver, scene, resolution scale and settings next to them before
@@ -113,7 +123,7 @@ produce — every later visual gate in `PT_ONLY_PLAN.md` compares against them.
 | Second bounce | world-space voxel irradiance volume (`VOXEL_CACHE_*`), L1 SH, filtered and reprojected |
 | Contact AO | `d3_ao.fsh`, quarter-res voxel any-hit, direct light only |
 | Reflections | one world-space voxel bounce, no dedicated history or denoiser |
-| Temporal | `rtgi_temporal.csh`, fixed `RTGI_HISTORY_FRAMES=32`, pure `1/n`, soft disocclusion, no variance clip |
+| Temporal | `rtgi_temporal.csh`, `RTGI_SPP_CAP=32` **samples** (was `RTGI_HISTORY_FRAMES=32` frames), `alpha = spp/max(count, spp)` (identical to `1/n` at 1 ray/px), soft disocclusion, no variance clip, `PT_RESET_*` reason codes + `rtgi_state_img` |
 | Spatial | `rtgi_filter.csh`, four à-trous passes, strides 1/2/4/8, variance-guided luma weight with `RTGI_FILTER_PHI=10` |
 | Known visual defect | user-reported square bloom around bright regions, tracking the à-trous footprint at ±16 buffer texels; three weight-tuning attempts were reverted. **P3 must redesign the kernel/stride, not re-tune φ** |
 

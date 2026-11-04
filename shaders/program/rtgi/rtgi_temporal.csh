@@ -24,11 +24,16 @@ layout(rgba16f) writeonly uniform image2D rtgi_accum_img;
 layout(rgba16f) writeonly uniform image2D rtgi_sky_history_img;
 layout(rgba16f) writeonly uniform image2D rtgi_sky_accum_img;
 
+// Single-buffered P1 state: written here, read by the debug view and by
+// later passes of the same frame. Never read in this dispatch.
+layout(rgba16f) writeonly uniform image2D rtgi_state_img;
+
 uniform sampler2D rtgi_raw_sampler;
 uniform sampler2D rtgi_history_sampler;
 uniform sampler2D rtgi_accum_sampler;
 uniform sampler2D rtgi_sky_history_sampler;
 uniform sampler2D rtgi_sky_accum_sampler;
+uniform sampler2D rtgi_state_sampler;
 
 // Declared only when the diagnostic view is active (see rtgi_trace.csh).
 #if GI_DEBUG == GI_DEBUG_REJECT
@@ -60,8 +65,20 @@ uniform vec2 taa_offset;
 #include "/include/utility/encoding.glsl"
 #include "/include/utility/space_conversion.glsl"
 #include "/include/utility/color.glsl"
+#include "/include/lighting/rt/pt_state.glsl"
 
-void write_zero(ivec2 texel, bool ping) {
+// Every exit path writes the state image: a pixel that leaves the accumulation
+// must still say why, or the debug view reads whatever the previous frame left
+// in a texel nobody owns.
+void write_state(ivec2 texel, float reason, float reactive, float valid_fraction, float converged) {
+    imageStore(
+        rtgi_state_img,
+        texel,
+        pt_state_pack(reason, reactive, valid_fraction, converged)
+    );
+}
+
+void write_zero(ivec2 texel, bool ping, float reason) {
     if (ping) {
         imageStore(rtgi_accum_img, texel, vec4(0.0));
         imageStore(rtgi_sky_accum_img, texel, vec4(0.0));
@@ -69,6 +86,7 @@ void write_zero(ivec2 texel, bool ping) {
         imageStore(rtgi_history_img, texel, vec4(0.0));
         imageStore(rtgi_sky_history_img, texel, vec4(0.0));
     }
+    write_state(texel, reason, 1.0, 0.0, 0.0);
 }
 
 void main() {
@@ -92,7 +110,7 @@ void main() {
     bool ping = (frameCounter & 1) == 0;
 
     if (taau_uv_outside_viewport(uv)) {
-        write_zero(texel, ping);
+        write_zero(texel, ping, PT_RESET_NO_SURFACE);
         return;
     }
 
@@ -101,9 +119,16 @@ void main() {
     float depth = texelFetch(depthtex1, full_texel, 0).x;
 
     if (depth >= 1.0) {
-        write_zero(texel, ping);
+        write_zero(texel, ping, PT_RESET_NO_SURFACE);
         return;
     }
+
+    // The trace pass wrote the valid-path fraction of this frame's rays into
+    // the state image's .b channel; carry it through and replace the other
+    // three channels with this pass's verdict.
+    float valid_path_fraction = pt_state_valid_fraction(
+        texelFetch(rtgi_state_sampler, texel, 0)
+    );
 
     // Current frame raw sample
     vec4 raw_sample = texelFetch(rtgi_raw_sampler, texel, 0);
@@ -145,6 +170,31 @@ void main() {
         current_lum = absolute_radiance_cap;
     }
 
+    // P1 finite guard: a NaN or Inf raw sample would otherwise poison the
+    // accumulated radiance, the M2 moment and every à-trous tap that reads
+    // them, and it would never wash out (NaN * 0 is still NaN). Reject the
+    // sample, not just the history.
+    bool raw_finite = all(equal(current_radiance, current_radiance))
+        && all(greaterThanEqual(current_radiance, vec3(0.0)))
+        && (current_sky_weight == current_sky_weight);
+
+    if (!raw_finite) {
+        current_radiance = vec3(0.0);
+        current_sky_weight = 0.0;
+        current_lum = 0.0;
+    }
+
+    // P1 static-state detector. Jitter and frameCounter are deliberately not
+    // signals: both advance on a perfectly static frame.
+    PtStaticState static_state = pt_static_state(
+        cameraPosition,
+        previousCameraPosition,
+        gbufferModelView,
+        gbufferPreviousModelView,
+        gbufferProjection,
+        gbufferPreviousProjection
+    );
+
     // Reconstruct position in view and scene space (handle_jitter = true because depth buffer is jittered)
     vec3 screen_pos = vec3(taau_projection_uv(uv), depth);
     vec3 view_pos = screen_to_view_space(screen_pos, true);
@@ -164,8 +214,11 @@ void main() {
     float history_available = inside_prev_screen ? 1.0 : 0.0;
 #endif
 
-    float n_samples = 1.0;
+    // Samples, not frames: this frame contributed RTGI_RAY_COUNT traced rays.
+    float current_spp = float(RTGI_RAY_COUNT);
+    float sample_count = current_spp;
     float alpha = 1.0;
+    float reset_reason = PT_RESET_FIRST; // no history was available at all
     vec3 accumulated_radiance = current_radiance;
     float accumulated_sky = current_sky_weight;
     // M2 moment seed: center luminance squared plus the local raw variance so
@@ -175,6 +228,12 @@ void main() {
     // luminance.)
     float m2 = current_lum * current_lum
         + dot(raw_sigma * raw_sigma, luminance_weights);
+
+    if (!inside_prev_screen) {
+        // The reprojected pixel left the previous viewport, so there is no
+        // history to keep — not a disocclusion, just an absence.
+        reset_reason = PT_RESET_OFFSCREEN;
+    }
 
     if (inside_prev_screen) {
         // Neighborhood reprojection search (educational Minecraft-PTGI
@@ -194,6 +253,9 @@ void main() {
         );
 
         bool history_valid = false;
+        // The centre tap carries the diagnosis; the ring only recovers from
+        // jitter, so a failure there is the honest reason for the reset.
+        bool center_diagnosed = false;
         float total_confidence = 0.0;
         vec4 prev_sample = vec4(0.0);
         vec4 prev_aux = vec4(0.0);
@@ -234,6 +296,11 @@ void main() {
             bool normal_valid = normal_dot > 0.85;
             float normal_confidence = smoothstep(0.70, 0.90, normal_dot);
 
+            if (tap == 0) {
+                center_diagnosed = true;
+                reset_reason = depth_valid ? PT_RESET_NORMAL : PT_RESET_DEPTH;
+            }
+
             if (depth_valid && normal_valid) {
                 history_valid = true;
                 total_confidence = depth_confidence * normal_confidence;
@@ -242,23 +309,36 @@ void main() {
         }
 
         if (history_valid) {
-            // Unpack previous sample age and sky weight
-            vec2 prev_sky_age = unpack_sky_age(prev_aux.g);
-            float prev_sky = prev_sky_age.x;
-            float prev_age = prev_sky_age.y;
+            // P1: unpack the previous accumulated SAMPLE COUNT and sky weight.
+            vec2 prev_sky_count = unpack_sky_count(prev_aux.g);
+            float prev_sky = prev_sky_count.x;
+            float prev_count = prev_sky_count.y;
 
-            // History-age cap exposed as RTGI_HISTORY_FRAMES (test knob).
-            n_samples = min(prev_age + 1.0, float(RTGI_HISTORY_FRAMES));
+            // The count only grows when the surface, the camera and the
+            // projection are all unchanged: a reprojected sample from a moving
+            // camera is the same light re-measured, not new evidence, so it
+            // must not be counted as an independent sample. Holding the count
+            // (rather than resetting) keeps the tuned pan behaviour: the blend
+            // rate stays exactly where it was instead of dumping the field
+            // back to raw dots.
+            bool accumulating = static_state.camera_static
+                && static_state.projection_static
+                && raw_finite;
+            sample_count = accumulating
+                ? min(prev_count + current_spp, float(RTGI_SPP_CAP))
+                : max(prev_count, current_spp);
 
-            // Pure 1/n blend — NO motion-driven alpha and NO variance clip
-            // (both the educational Minecraft-PTGI temporal and SEUS work
-            // this way). Motion is handled entirely by the reprojection and
-            // the disocclusion tests above: a motion alpha dumped the
-            // accumulated light field back to raw dots on every pan (it hit
-            // 1.0 at ~22 RTGI px/frame) and forced a full re-convergence
-            // after every stop. Ghosting during fast motion is the standard
-            // tradeoff for keeping the field intact.
-            float alpha_temporal = 1.0 / n_samples;
+            // alpha = this frame's samples / total samples. At one ray per
+            // pixel this is the previous pure 1/n; at eight rays per pixel it
+            // correctly reflects eight new samples instead of one, so the cap
+            // means 32 samples of evidence and not 32 frames of wall clock.
+            float alpha_temporal = current_spp / max(sample_count, current_spp);
+
+            reset_reason = accumulating
+                ? PT_RESET_NONE
+                : (static_state.projection_static
+                    ? PT_RESET_CAMERA
+                    : PT_RESET_PROJECTION);
 
             // Confidence keeps freshly-disoccluded pixels responsive.
             alpha = clamp(mix(1.0, alpha_temporal, total_confidence), 0.01, 1.0);
@@ -288,13 +368,26 @@ void main() {
             accumulated_radiance = mix(prev_rad, current_radiance, alpha);
             accumulated_sky = mix(prev_sky, current_sky_weight, alpha);
 
+            if (!raw_finite) {
+                // History is geometrically valid but this frame's sample is
+                // poisoned: keep the history rather than the NaN, and say so.
+                accumulated_radiance = prev_rad;
+                accumulated_sky = prev_sky;
+                reset_reason = PT_RESET_NON_FINITE;
+            }
+
             // Second-moment tracking for the à-trous variance: M2 must be an
             // EMA of sample luminance SQUARED. Driving it toward
             // (accumulated luminance)^2 instead would collapse
             // variance = M2 - M1^2 to zero and disable all variance-guided
             // filtering. M1 needs no storage: the accumulated radiance's
             // luminance already is the matched EMA of sample luminance.
-            m2 = mix(prev_aux.r, current_lum * current_lum, alpha);
+            m2 = raw_finite
+                ? mix(prev_aux.r, current_lum * current_lum, alpha)
+                // A poisoned sample has no second moment to contribute;
+                // folding zero in here would understate the variance of a
+                // pixel whose history is still perfectly good.
+                : prev_aux.r;
 
 #if GI_DEBUG == GI_DEBUG_REJECT
             history_accepted = 1.0;
@@ -314,13 +407,22 @@ void main() {
                                   : texelFetch(rtgi_accum_sampler, center_prev, 0);
             vec4 soft_aux = ping ? texelFetch(rtgi_sky_history_sampler, center_prev, 0)
                                  : texelFetch(rtgi_sky_accum_sampler, center_prev, 0);
-            vec2 soft_sky_age = unpack_sky_age(soft_aux.g);
+            vec2 soft_sky_count = unpack_sky_count(soft_aux.g);
 
             accumulated_radiance = mix(soft_prev.rgb, current_radiance, 0.9);
-            accumulated_sky = mix(soft_sky_age.x, current_sky_weight, 0.9);
-            n_samples = 2.0;
+            accumulated_sky = mix(soft_sky_count.x, current_sky_weight, 0.9);
+            // The retained 10% is worth about a tenth of a sample, so the
+            // count restarts just above one fresh sample.
+            sample_count = current_spp / 0.9;
             alpha = 0.9;
             m2 = mix(soft_aux.r, current_lum * current_lum, 0.9);
+
+            // Distinguish the two ways a reprojection can fail: the previous
+            // texel simply is not there (off-screen), or the surface moved
+            // (depth/normal disagreed). Both are soft resets.
+            if (!center_diagnosed) {
+                reset_reason = PT_RESET_DEPTH;
+            }
         }
     }
 
@@ -329,15 +431,15 @@ void main() {
     imageStore(rtgi_reject_img, texel, vec4(1.0 - history_accepted, history_available, 0.0, 1.0));
 #endif
 
-    // Auxiliary buffer:
+    // Auxiliary buffer (see /include/lighting/rt/pt_state.glsl for the contract):
     // .r = mean squared luminance M2 (variance = max(0, M2 - M1*M1), M1 = dot(radiance, luminance_weights))
-    // .g = exact packed sky weight + sample age [0..2047]
+    // .g = exact packed sky fraction (4 bits) + accumulated sample count (7 bits)
     // .b = octahedral world normal X
     // .a = octahedral world normal Y
     vec2 oct_norm = encode_unit_vector(current_world_normal);
     vec4 aux_data = vec4(
         m2,
-        pack_sky_age(accumulated_sky, n_samples),
+        pack_sky_count(accumulated_sky, sample_count),
         oct_norm.x,
         oct_norm.y
     );
@@ -351,4 +453,13 @@ void main() {
         imageStore(rtgi_history_img, texel, accum_data);
         imageStore(rtgi_sky_history_img, texel, aux_data);
     }
+
+    // Reactive mask: how much of the pixel's history was thrown away this
+    // frame. 0 = the full converged field was kept, 1 = nothing survived.
+    // (P5 adds the material-driven water/wetness term on top of this.)
+    float reactive = 1.0 - clamp01(
+        (sample_count - current_spp) / max(float(RTGI_SPP_CAP) - current_spp, 1.0)
+    );
+    float converged = step(float(RTGI_SPP_CAP) - 0.5, sample_count);
+    write_state(texel, reset_reason, reactive, valid_path_fraction, converged);
 }

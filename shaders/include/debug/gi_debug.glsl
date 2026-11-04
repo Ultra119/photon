@@ -8,6 +8,8 @@
 #if GI_DEBUG == 10
 #include "/include/lighting/rt/voxel_cache.glsl"
 #endif
+// The P1 state views read the same contract the temporal pass writes.
+#include "/include/lighting/rt/pt_state.glsl"
 
 // GI debug view encoding.
 //
@@ -210,6 +212,10 @@ vec3 gi_debug_view_swatch() {
     return vec3(0.85, 0.20, 0.95);
 #elif GI_DEBUG == GI_DEBUG_COVERAGE
     return vec3(0.50, 1.00, 0.50);
+#elif GI_DEBUG == GI_DEBUG_SPP
+    return vec3(0.30, 0.95, 0.95);
+#elif GI_DEBUG == GI_DEBUG_RESET
+    return vec3(0.95, 0.95, 0.20);
 #else
     return vec3(0.0);
 #endif
@@ -274,6 +280,46 @@ vec3 gi_debug_view(ivec2 texel, vec2 uv, vec3 fallback) {
                    : t_var < 0.66 ? mix(col_green, col_yellow, (t_var - 0.33) * 3.0)
                    : mix(col_yellow, col_red, (t_var - 0.66) * 3.0);
     return var_color;
+#elif GI_DEBUG == GI_DEBUG_SPP
+    // Accumulated samples per pixel, 0..RTGI_SPP_CAP, as a cold-to-hot ramp.
+    // This is the count the temporal pass actually blends with (alpha =
+    // spp / count), so a field that never warms up here is a field that is
+    // being reset every frame, whatever the picture looks like.
+    //
+    // Sampled, not fetched: the temporal pass only writes texels below
+    // target_res, and a bilinear fetch past it would read never-written
+    // memory. The RTGI images clamp to edge, which the temporal pass's own
+    // neighbourhood search relies on too.
+    vec4 spp_aux = ping ? texture(rtgi_sky_accum_sampler, rtgi_uv)
+                        : texture(rtgi_sky_history_sampler, rtgi_uv);
+    float spp = unpack_sky_count(spp_aux.g).y;
+    float spp_t = clamp01(spp / max(float(RTGI_SPP_CAP), 1.0));
+    return mix(vec3(0.0, 0.15, 0.45), vec3(1.0, 0.85, 0.20), spp_t);
+#elif GI_DEBUG == GI_DEBUG_RESET
+    // Why the temporal pass reset this pixel. Nine distinct colours, one per
+    // PT_RESET_* reason, so the whole invalidation story of a frame is visible
+    // at once: a camera pan shows CAMERA everywhere, a resize shows FIRST, a
+    // healthy still frame goes NONE within a couple of dozen frames.
+    vec4 state_sample = texture(rtgi_state_sampler, rtgi_uv);
+    float reason = pt_state_reset(state_sample);
+    if (reason < 0.5) {
+        return vec3(0.05, 0.10, 0.15);          // NONE: history kept
+    } else if (reason < 1.5) {
+        return vec3(0.20, 0.20, 0.20);          // NO_SURFACE: sky / outside
+    } else if (reason < 2.5) {
+        return vec3(0.60, 0.00, 0.80);          // OFFSCREEN
+    } else if (reason < 3.5) {
+        return vec3(0.95, 0.10, 0.10);          // DEPTH disocclusion
+    } else if (reason < 4.5) {
+        return vec3(0.95, 0.55, 0.05);          // NORMAL disocclusion
+    } else if (reason < 5.5) {
+        return vec3(0.10, 0.55, 0.95);          // CAMERA moved
+    } else if (reason < 6.5) {
+        return vec3(0.10, 0.90, 0.60);          // PROJECTION changed
+    } else if (reason < 7.5) {
+        return vec3(1.00, 0.00, 1.00);          // NON_FINITE guard tripped
+    }
+    return vec3(0.85, 0.85, 0.85);              // FIRST: no usable history
 #elif GI_DEBUG == GI_DEBUG_HIT
     return gi_debug_hit_mask(
         vec4(gi_debug_smooth_3x3(rtgi_hit_sampler, rtgi_uv), 1.0)

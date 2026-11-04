@@ -33,6 +33,11 @@ layout(local_size_x = 16, local_size_y = 16) in;
 
 layout(rgba16f) writeonly uniform image2D rtgi_raw_img;
 
+// P1: the state image's .b channel is the valid-path fraction of this frame's
+// rays. The temporal pass reads it and owns the other three channels; it must
+// never be read in this dispatch. Allocated only for the view that reads it.
+layout(rgba16f) writeonly uniform image2D rtgi_state_img;
+
 // Declared only when the diagnostic view is active, so the image is neither
 // allocated (see shaders.properties) nor written in normal play.
 #if GI_DEBUG == GI_DEBUG_HIT
@@ -78,6 +83,7 @@ uniform vec2 taa_offset;
 #include "/include/utility/space_conversion.glsl"
 #include "/include/utility/random.glsl"
 #include "/include/lighting/rt/rt_gi.glsl"
+#include "/include/lighting/rt/pt_state.glsl"
 
 void main() {
 #if RTGI_RESOLUTION == 0
@@ -101,6 +107,7 @@ void main() {
 
     if (taau_uv_outside_viewport(uv)) {
         imageStore(rtgi_raw_img, texel, vec4(0.0));
+        imageStore(rtgi_state_img, texel, pt_state_pack(PT_RESET_NO_SURFACE, 1.0, 0.0, 0.0));
 #if GI_DEBUG == GI_DEBUG_HIT
         imageStore(rtgi_hit_img, texel, vec4(0.0));
 #endif
@@ -112,6 +119,7 @@ void main() {
     float depth = texelFetch(depthtex1, full_texel, 0).x;
     if (depth >= 1.0) {
         imageStore(rtgi_raw_img, texel, vec4(0.0));
+        imageStore(rtgi_state_img, texel, pt_state_pack(PT_RESET_NO_SURFACE, 1.0, 0.0, 0.0));
 #if GI_DEBUG == GI_DEBUG_HIT
         imageStore(rtgi_hit_img, texel, vec4(0.0));
 #endif
@@ -157,6 +165,7 @@ void main() {
 #endif
 
     vec4 accum_radiance = vec4(0.0);
+    float valid_paths = 0.0;
 
 #if GI_DEBUG == GI_DEBUG_HIT
     // Counts per estimator, normalised at the end so the view shows a
@@ -207,13 +216,31 @@ void main() {
             radiance.rgb *= RTGI_MAX_RADIANCE / lum;
         }
 
-        accum_radiance += radiance;
+        // P1: a ray only counts as a sample if it produced finite, non-negative
+        // radiance. A NaN here would survive the averaging and poison every
+        // downstream moment, so it is excluded from the average as well.
+        bool path_valid = all(equal(radiance, radiance))
+            && all(greaterThanEqual(radiance.rgb, vec3(0.0)));
+
+        if (path_valid) {
+            valid_paths += 1.0;
+            accum_radiance += radiance;
+        }
     }
 
-    vec4 final_radiance = accum_radiance * (1.0 / float(RTGI_RAY_COUNT));
+    // Divide by the rays that actually contributed, so rejected paths do not
+    // darken the pixel; keep the fraction for the state contract.
+    float path_divisor = max(valid_paths, 1.0);
+    vec4 final_radiance = accum_radiance * (1.0 / path_divisor);
     final_radiance.a = clamp01(final_radiance.a);
+    float valid_path_fraction = valid_paths / float(RTGI_RAY_COUNT);
 
     imageStore(rtgi_raw_img, texel, final_radiance);
+    imageStore(
+        rtgi_state_img,
+        texel,
+        pt_state_pack(PT_RESET_NONE, 0.0, valid_path_fraction, 0.0)
+    );
 
 #if GI_DEBUG == GI_DEBUG_HIT
     imageStore(rtgi_hit_img, texel, vec4(hit_counts / float(RTGI_RAY_COUNT), 1.0));

@@ -12,8 +12,31 @@ import pathlib
 import re
 import sys
 
+import sys
+
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 SHADERS = ROOT / "shaders"
+sys.path.insert(0, str(ROOT / "tools" / "shadercheck"))
+
+from properties_lint import (  # noqa: E402
+    IRIS_MAX_IMAGES,
+    preprocess_properties,
+    read_settings_defines,
+)
+
+
+def gi_debug_configurations() -> list[tuple[str, str]]:
+    """(view name, preprocessed properties) for every GI_DEBUG value."""
+    settings = (SHADERS / "settings.glsl").read_text(encoding="utf-8")
+    views = ["GI_DEBUG_OFF"]
+    offered = re.search(
+        r"#define GI_DEBUG GI_DEBUG_OFF\s*//\s*\[([^\]]+)\]", settings
+    )
+    if offered:
+        for token in offered.group(1).split():
+            if token not in views:
+                views.append(token)
+    return [(view, preprocess_properties({"GI_DEBUG": view})) for view in views]
 
 
 def origin(camera: float, dim: int, level: int) -> float:
@@ -102,10 +125,26 @@ def main() -> int:
             failures.append(f"level {level} emitter/glass energy double-counted")
 
     # Static wiring / budget.
+    #
+    # The budget is per configuration, not per file: images declared inside a
+    # `#if GI_DEBUG == ...` block only exist for that view, and the views are
+    # mutually exclusive. Counting every declared name would reject a pack
+    # that never allocates more than the limit, so preprocess the properties
+    # once per view and take the worst case.
     props = (SHADERS / "shaders.properties").read_text(encoding="utf-8")
-    image_names = set(re.findall(r"^image\.([A-Za-z0-9_]+)\s*=", props, re.M))
-    if len(image_names) > 16:
-        failures.append(f"custom image budget exceeded: {len(image_names)} > 16")
+    image_names: set[str] = set()
+    worst = 0
+    worst_view = "none"
+    for view, preprocessed in gi_debug_configurations():
+        names = set(re.findall(r"^image\.([A-Za-z0-9_]+)\s*=", preprocessed, re.M))
+        image_names |= names
+        if len(names) > worst:
+            worst, worst_view = len(names), view
+    if worst > IRIS_MAX_IMAGES:
+        failures.append(
+            f"custom image budget exceeded: {worst} > {IRIS_MAX_IMAGES} "
+            f"(worst view: {worst_view})"
+        )
     for name in ("voxel_img", "voxel_mid_img", "voxel_coarse_img"):
         if name not in image_names:
             failures.append(f"missing clipmap image declaration: {name}")

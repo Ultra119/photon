@@ -81,11 +81,19 @@ const float wetnessHalflife         = 70.0;
   #define PT_RAW_ESTIMATOR
 
   // Precise test knobs (see also the profiles). RTGI_FILTER_PHI scales the
-  // atrous edge-stopping sigma (higher = softer, leakier edges); RTGI_HISTORY_FRAMES
-  // caps temporal accumulation age; RTGI_MAX_RADIANCE clamps per-ray radiance
-  // at trace time (firefly control).
+  // atrous edge-stopping sigma (higher = softer, leakier edges); RTGI_MAX_RADIANCE
+  // clamps per-ray radiance at trace time (firefly control).
+  //
+  // RTGI_SPP_CAP is the temporal accumulation cap in SAMPLES, not frames: the
+  // temporal pass adds the rays this frame actually traced (RTGI_RAY_COUNT) to
+  // the pixel's accumulated count and blends with spp / new_count. A tier that
+  // traces 8 rays per pixel per frame therefore reaches the cap in an eighth of
+  // the wall-clock time a 1-ray tier needs, and every tier stops at the same
+  // amount of accumulated evidence. The ceiling of 127 is the packing limit of
+  // the aux channel (7 bits, see /include/lighting/rt/pt_state.glsl); P2 raises
+  // the cap together with the packing if it wants 256.
   #define RTGI_FILTER_PHI 10.0 // [4.0 6.0 8.0 10.0 12.0 16.0 24.0 32.0]
-  #define RTGI_HISTORY_FRAMES 32 // [16 24 32 48 64 96 128 160]
+  #define RTGI_SPP_CAP 32 // [16 24 32 48 64 96 127]
   #define RTGI_MAX_RADIANCE 12.0 // [2.0 3.0 4.0 6.0 8.0 12.0 16.0 32.0]
   // Voxel Irradiance Volume settings: 1:1 block-aligned dense irradiance volume
   // matching Level 0 clipmaps with directional L1 Spherical Harmonics.
@@ -579,8 +587,10 @@ const float wetnessHalflife         = 70.0;
   #define GI_DEBUG_VARIANCE  9  // SVGF measured local relative variance / standard deviation
   #define GI_DEBUG_PROBE     10 // Voxel Irradiance Volume cache visualization
   #define GI_DEBUG_COVERAGE  11 // finest clipmap level containing each surface / outside coverage
+  #define GI_DEBUG_SPP       12 // accumulated samples per pixel (P1 state contract)
+  #define GI_DEBUG_RESET     13 // why the temporal pass reset each pixel (P1 state contract)
 
-  #define GI_DEBUG GI_DEBUG_OFF // [GI_DEBUG_OFF GI_DEBUG_RAW GI_DEBUG_HISTORY GI_DEBUG_FILTERED GI_DEBUG_HIT GI_DEBUG_REJECT GI_DEBUG_VOXEL_ID GI_DEBUG_VOXEL_LIGHT GI_DEBUG_VOXEL_ALBEDO GI_DEBUG_VARIANCE GI_DEBUG_PROBE GI_DEBUG_COVERAGE]
+  #define GI_DEBUG GI_DEBUG_OFF // [GI_DEBUG_OFF GI_DEBUG_RAW GI_DEBUG_HISTORY GI_DEBUG_FILTERED GI_DEBUG_HIT GI_DEBUG_REJECT GI_DEBUG_VOXEL_ID GI_DEBUG_VOXEL_LIGHT GI_DEBUG_VOXEL_ALBEDO GI_DEBUG_VARIANCE GI_DEBUG_PROBE GI_DEBUG_COVERAGE GI_DEBUG_SPP GI_DEBUG_RESET]
 
 // On GI_DEBUG_VARIANCE: Stage 7 tracks 1st and 2nd luminance moments per-pixel.
 // Displays the relative standard deviation sqrt(var) / (mean + 0.05) using a

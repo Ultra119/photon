@@ -40,3 +40,5 @@ echo "== RT AO estimator dispatch =="
 python3 tools/shadercheck/ao_dispatch_test.py
 echo "== gi debug view wiring =="
 python3 tools/shadercheck/gi_debug_test.py
+echo "== PT reconstruction state contract (P1) =="
+python3 tools/shadercheck/pt_state_test.py

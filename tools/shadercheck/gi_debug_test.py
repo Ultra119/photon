@@ -53,6 +53,10 @@ EXPECTED = {
     "GI_DEBUG_VOXEL_LIGHT":  ({"voxel_light"}, set()),
     "GI_DEBUG_VOXEL_ALBEDO": ({"voxel_albedo"}, set()),
     "GI_DEBUG_COVERAGE":    ({"coverage"}, set()),
+    # P1 state contract: the sample count lives in the aux image's packed
+    # channel, the reset reason in the single-buffered state image.
+    "GI_DEBUG_SPP":         (set(), {"rtgi_sky_accum", "rtgi_sky_history"}),
+    "GI_DEBUG_RESET":       (set(), {"rtgi_state"}),
 }
 
 # (world wrapper, stage, image name, the value of GI_DEBUG that writes it)

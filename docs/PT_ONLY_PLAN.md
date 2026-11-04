@@ -205,6 +205,75 @@ Gate:
 - No NaN/Inf in a long static run.
 - Every new aux channel is read by shader code and visible in a debug view.
 
+**Status 2026-11-04: contract landed, invalidation sweep outstanding.**
+
+Shipped (`e45b545` → this commit):
+
+- **One aux layout**, defined once in `shaders/include/lighting/rt/pt_state.glsl`
+  and consumed by the trace, temporal, filter and debug passes so they cannot
+  drift. Aux ping-pong: `(radiance.rgb, view distance)` + `(M2, pack(sky 4 bits,
+  count 7 bits), octahedral normal .ba)`. A third, single-buffered
+  `rtgi_state_img` carries `(reset reason, reactive mask, valid-path fraction,
+  converged)`; it is written by `rtgi_temporal` and read only by later passes and
+  the debug view, never by the dispatch that writes it.
+- **SPP, not frames.** `RTGI_SPP_CAP` replaces `RTGI_HISTORY_FRAMES`; the
+  temporal pass adds `RTGI_RAY_COUNT` (this frame's rays) to the pixel's count
+  and blends with `current_spp / max(count, current_spp)`. At one ray per pixel
+  the recurrence is bit-identical to the old `1/n`; at eight rays per pixel the
+  cap now means 32 samples of evidence instead of 32 frames of wall clock. The
+  127 ceiling is the aux packing limit, not a design choice — P2 raises the cap
+  together with the packing.
+- **Static-state detector** (`pt_static_state()`): camera translation, camera
+  rotation (view basis) and projection/FOV. Jitter and `frameCounter` are
+  explicitly not signals. The count only *grows* when the camera and projection
+  are static; when they are not, the count is held rather than reset, which
+  preserves the tuned pan behaviour (no dump to raw dots) while making the
+  count mean independent evidence.
+- **Reset reasons** (`PT_RESET_*`, nine of them) written on every exit path,
+  including the finite/negative guard. `rtgi_trace` rejects non-finite and
+  negative per-ray radiance and divides by the rays that survived, so a NaN can
+  no longer poison the accumulation, the M2 moment or the à-trous taps.
+- **Debug views** `GI_DEBUG_SPP` (accumulated samples, read from the packed aux
+  channel) and `GI_DEBUG_RESET` (one colour per reason, read from the state
+  image), with swatches and language strings.
+- **Checks**: `tools/shadercheck/pt_state_test.py` in `run_checks.sh` — packing
+  round trip over every representable pair, the fp16 exact-integer budget, the
+  sample-accounting recurrence against a Python reference (including "the cap
+  is reached in `cap/spp` frames" and "a pan from a converged field does not
+  change the blend rate"), and that no temporal exit path skips the state
+  store. Both negative cases were verified to fail the gate.
+- `clipmap_test.py`'s image-budget check is now configuration-aware (it
+  preprocesses `shaders.properties` per `GI_DEBUG` value instead of counting
+  declared names), because the debug images are mutually exclusive.
+
+Deviations from the task list, and why:
+
+- **No scene-revision or lighting-revision signal.** Iris exposes no block-edit
+  or emitter-edit counter, and the state image cannot be read by the dispatch
+  that writes it, so a previous-frame revision hash has nowhere to live. A
+  block edit changes depth at the edited pixels, which the existing
+  disocclusion test catches; an emitter edit changes only radiance and is
+  absorbed by the blend. Both show up as their reason codes in the reset view
+  rather than as a targeted invalidation. Revisit if P2's adaptive alpha makes
+  the lag visible.
+- **The detector gates count growth, not hard resets.** Resetting on camera
+  motion is exactly the behaviour P0 rejected (raw dots on every pan).
+- **Debug views for invalid paths, reactive mask and converged pixels** are
+  carried in the state image; only SPP and reset reason have dedicated views
+  so far. The reactive mask is defined today as "how much history this pixel
+  dropped", which is what P3's converged-pixel bypass needs; P5 adds the
+  material-driven water/wetness term on top.
+
+Outstanding before the gate can be closed:
+
+- Matched captures and an **invalidation sweep**: stand still → `GI_DEBUG_RESET`
+  should go `NONE` within a few dozen frames; pan → `CAMERA`; resize → `FIRST`/
+  `NO_SURFACE` at the new texels; FOV slider → `PROJECTION`; place a block →
+  `DEPTH` along the edited surface; place a torch → no reset (expected
+  limitation above). `GI_DEBUG_SPP` should be flat during motion and ramp to
+  the cap when still.
+- A long static run with `GI_DEBUG_RESET` on, to confirm no `NON_FINITE`.
+
 ### P2 — Temporal accumulation rewrite
 
 **Goal:** replace fixed 32-frame `1/n` with Kappa-class motion behavior, implemented independently.

@@ -680,6 +680,8 @@ value.GI_DEBUG.GI_DEBUG_VOXEL_ALBEDO   = Voxel Albedo
 value.GI_DEBUG.GI_DEBUG_VARIANCE       = Variance
 value.GI_DEBUG.GI_DEBUG_PROBE          = Voxel Irradiance Volume
 value.GI_DEBUG.GI_DEBUG_COVERAGE = Clipmap Coverage
+value.GI_DEBUG.GI_DEBUG_SPP          = Accumulated Samples
+value.GI_DEBUG.GI_DEBUG_RESET        = Reset Reason
 
 value.tonemap_left.tonemap_aces_fit       = ACES Fit
 value.tonemap_left.tonemap_aces_full      = ACES Full
@@ -781,8 +783,8 @@ value.RTGI_RESOLUTION.2                                              = Full (1.0
 
 option.RTGI_FILTER_PHI                                               = Atrous Colour Sigma
 option.RTGI_FILTER_PHI.comment                                       = Luminance edge-stopping scale (phi = value * sqrt(variance)) of the temporal filter. Higher softens detail and widens light bleed; lower keeps detail noisier.
-option.RTGI_HISTORY_FRAMES                                           = Temporal History Cap
-option.RTGI_HISTORY_FRAMES.comment                                   = Maximum number of frames the temporal accumulation may average. Lower adapts faster to change, higher converges to a cleaner but staler image.
+option.RTGI_SPP_CAP                                                  = Temporal Sample Cap
+option.RTGI_SPP_CAP.comment                                          = Maximum number of traced samples the temporal accumulation may average per pixel, not frames: a tier that traces 8 rays per pixel per frame reaches the cap in an eighth of the time. Lower adapts faster to change, higher converges to a cleaner but staler image.
 option.RTGI_MAX_RADIANCE                                             = Ray Radiance Cap
 option.RTGI_MAX_RADIANCE.comment                                     = Per-ray radiance clamp applied during voxel tracing (firefly control). Keep at or above EMISSION_ANCHOR so bright emitters are not dimmed.
 option.EMISSION_ANCHOR                                               = Emission Radiance Anchor
