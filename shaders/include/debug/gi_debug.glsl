@@ -6,7 +6,7 @@
 #include "/include/utility/color.glsl"
 #include "/include/lighting/voxel/voxel_storage.glsl"
 #if GI_DEBUG == 10
-#include "/include/lighting/rt/ddgi.glsl"
+#include "/include/lighting/rt/voxel_cache.glsl"
 #endif
 
 // GI debug view encoding.
@@ -340,9 +340,8 @@ vec3 gi_debug_view(ivec2 texel, vec2 uv, vec3 fallback) {
 #elif GI_DEBUG == GI_DEBUG_VOXEL_ALBEDO
     return gi_debug_voxel_albedo(packed);
 #elif GI_DEBUG == GI_DEBUG_PROBE
-    vec3 world_pos = scene_pos + cameraPosition;
-    vec4 probe_irr = sample_ddgi_irradiance(world_pos + scene_normal * 0.15, scene_normal, cameraPosition);
-    return gi_debug_tonemap(probe_irr.rgb);
+    vec4 cache_irr = sample_voxel_cache_irradiance(scene_pos, scene_normal, cameraPosition);
+    return gi_debug_tonemap(cache_irr.rgb);
 #else
     return fallback;
 #endif

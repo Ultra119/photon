@@ -86,11 +86,7 @@ uniform sampler2D depthtex1;
 // buffers), so the whole debug path is gated on the same condition. Without it
 // the view renders a flat magenta rather than sampling an unbound sampler.
 #if LIGHTING_MODE == LIGHTING_MODE_RT
-uniform usampler3D voxel_sampler;
-#if GI_DEBUG == GI_DEBUG_COVERAGE
-uniform usampler3D voxel_mid_sampler;
-uniform usampler3D voxel_coarse_sampler;
-#endif
+#include "/include/lighting/rt/voxel_samplers.glsl"
 
 uniform sampler2D rtgi_raw_sampler;
 uniform sampler2D rtgi_history_sampler;

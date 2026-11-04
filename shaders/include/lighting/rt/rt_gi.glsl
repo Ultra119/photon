@@ -13,10 +13,7 @@
 #include "/include/utility/geometry.glsl"
 #include "/include/sky/projection.glsl"
 #include "voxel_dda.glsl"
-// Let sample_ddgi_irradiance() occlusion-test surface->probe segments against
-// the fine voxel grid (callers of this file declare the voxel samplers).
-#define DDGI_QUERY_OCCLUSION
-#include "ddgi.glsl"
+#include "voxel_cache.glsl"
 
 #define RTGI_HIT_NONE  0
 #define RTGI_HIT_VOXEL 1
@@ -77,33 +74,20 @@ vec4 evaluate_rtgi_ray(
     if (vx_hit.hit) {
         hit_source = RTGI_HIT_VOXEL;
 
-        vec3 hit_world_pos = vx_hit.hit_pos + cameraPosition;
-        vec4 probe_irr = sample_ddgi_irradiance(
-            hit_world_pos + vx_hit.hit_normal * 0.15,
+        vec4 cache_irr = sample_voxel_cache_irradiance(
+            vx_hit.hit_pos,
             vx_hit.hit_normal,
             cameraPosition
         );
 
-        // Fade the probe term in with distance: close hits are already
-        // resolved by the per-pixel ray (their neighbours' direct light), so
-        // injecting raw probe estimates there re-injects probe churn at the
-        // scale where per-pixel tracing is strongest (the "DDGI light keeps
-        // showing up and fading out" symptom). Far hits keep the full second
-        // bounce. The 0.45 floor keeps short-range bounce alive: a surface a
-        // block from a lit wall must still receive that wall's reflected
-        // light (lantern on a ledge bouncing off the wall onto the rock
-        // beside it), which a zero fade-in had silently killed at exactly
-        // the distances where bounce matters most.
-        float probe_gate = mix(0.45, 1.0, smoothstep(1.0, 3.0, vx_hit.distance));
+        float cache_gate = mix(0.45, 1.0, smoothstep(1.0, 3.0, vx_hit.distance));
 
-        // The probe cache stores irradiance. Convert the cached indirect
-        // irradiance at the hit surface back into outgoing radiance. Split
-        // the probe's sky fraction so the receiver skylight gate applies to
-        // it as well.
-        vec3 probe_bounce = vx_hit.albedo * voxel_bounce_rcp_pi * probe_irr.rgb;
-        vec3 probe_bounce_local = probe_bounce * (1.0 - probe_irr.a);
-        vec3 probe_bounce_sky = probe_bounce * probe_irr.a * sky_gate;
-        probe_bounce = (probe_bounce_local + probe_bounce_sky) * probe_gate;
+        // The voxel cache stores directional L1 SH irradiance. Convert the cached
+        // indirect irradiance at the hit surface back into outgoing radiance.
+        vec3 cache_bounce = vx_hit.albedo * voxel_bounce_rcp_pi * cache_irr.rgb;
+        vec3 cache_bounce_local = cache_bounce * (1.0 - cache_irr.a);
+        vec3 cache_bounce_sky = cache_bounce * cache_irr.a * sky_gate;
+        vec3 second_bounce = (cache_bounce_local + cache_bounce_sky) * cache_gate;
 
         // Split the hit into its sun/sky-bounce and local/emission parts and
         // gate ONLY the sky part. This is the full S2 leak gate: a bounce hit
@@ -113,12 +97,12 @@ vec4 evaluate_rtgi_ray(
         vec3 hit_sky = vx_hit.radiance * vx_hit.sky_weight;
         vec3 hit_local = vx_hit.radiance - hit_sky;
 
-        vec3 radiance = (hit_local + hit_sky * sky_gate + probe_bounce)
+        vec3 radiance = (hit_local + hit_sky * sky_gate + second_bounce)
             * vx_hit.transmittance
             + vx_hit.passed_emission;
 
         float sky_lum = dot(
-            hit_sky * sky_gate + probe_bounce * probe_irr.a,
+            hit_sky * sky_gate + second_bounce * cache_irr.a,
             luminance_weights
         );
         float total_lum = dot(radiance, luminance_weights);

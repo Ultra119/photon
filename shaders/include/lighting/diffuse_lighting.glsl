@@ -22,10 +22,7 @@
 // LIGHTING_MODE_PT (profile placeholder) has none of these resources
 // allocated: its indirect path is direct-only (see get_diffuse_lighting).
 #if LIGHTING_MODE == LIGHTING_MODE_RT
-#if !defined PROGRAM_DEFERRED4
-#define DDGI_QUERY_OCCLUSION
-#endif
-#include "/include/lighting/rt/ddgi.glsl"
+#include "/include/lighting/rt/voxel_cache.glsl"
 #if defined PROGRAM_DEFERRED4
 #define DIFFUSE_USE_RTGI
 uniform sampler2D rtgi_filtered_sampler;
@@ -212,13 +209,12 @@ vec3 get_diffuse_lighting(
     // shared (albedo / pi) diffuse composition below.
     indirect_lighting = rtgi_sample.rgb * (pi * (RTGI_INTENSITY * RTGI_BRIGHTNESS));
 #else
-    vec3 world_pos = scene_pos + cameraPosition;
-    vec4 probe_irr = sample_ddgi_irradiance(
-        world_pos + bent_normal * 0.15,
+    vec4 cache_irr = sample_voxel_cache_irradiance(
+        scene_pos,
         bent_normal,
         cameraPosition
     );
-    indirect_lighting = probe_irr.rgb * (RTGI_INTENSITY * RTGI_BRIGHTNESS);
+    indirect_lighting = cache_irr.rgb * (RTGI_INTENSITY * RTGI_BRIGHTNESS);
 #endif
 
     direct_lighting += material.emission * emission_scale;

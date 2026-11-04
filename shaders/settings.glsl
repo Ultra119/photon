@@ -77,23 +77,15 @@ const float wetnessHalflife         = 70.0;
   #define RTGI_FILTER_PHI 10.0 // [4.0 6.0 8.0 10.0 12.0 16.0 24.0 32.0]
   #define RTGI_HISTORY_FRAMES 32 // [16 24 32 48 64 96 128 160]
   #define RTGI_MAX_RADIANCE 12.0 // [2.0 3.0 4.0 6.0 8.0 12.0 16.0 32.0]
-  // World-space spacing of the irradiance probe grid (32^3 toroidal cache;
-  // grid extent = 32 * spacing around the camera). Smaller spacing resolves
-  // local color bleed (window/sun-patch bounce); 4.0 reaches further but
-  // averages small bright features into nothing.
-  #define RTGI_PROBE_SPACING 2.0 // [1.0 1.5 2.0 3.0 4.0]
+  // Voxel Irradiance Volume settings: 1:1 block-aligned dense irradiance volume
+  // matching Level 0 clipmaps with directional L1 Spherical Harmonics.
+  #define VOXEL_CACHE_ENABLED
+  #define VOXEL_CACHE_MULTIBOUNCE // Enables recursive secondary bounces in the voxel irradiance volume
   // Emission radiance anchor (light-15 emitter radiance before EMISSION_STRENGTH).
   // Matches the raster blocklight_scale at level 15; keep it under
   // RTGI_MAX_RADIANCE so legitimate emitter hits do not saturate the firefly cap.
   #define EMISSION_ANCHOR 8.0 // [2.0 3.0 4.0 5.0 6.0 8.0 10.0 12.0 16.0 24.0]
 
-  // 32 rays + 0.80 hysteresis: each probe still refreshes every 16 frames,
-  // but the per-update Monte-Carlo noise is halved and only 20% of the value
-  // is replaced, which stops the visible "probe light shows up and fades
-  // out" churn in enclosed rooms. 16 rays / 0.70 stays available on the
-  // slider for low-end profiles.
-  #define RTGI_PROBE_RAYS 8 // [4 8 16 32 64]
-  #define RTGI_PROBE_HYSTERESIS 0.85 // [0.50 0.60 0.70 0.80 0.85 0.90 0.95]
   #define RTGI_RESOLUTION 1 // [0 1 2]
   #define RTGI_RAY_COUNT 1 // [1 2 4 8]
   #define RTGI_BRIGHTNESS 1.00 // [0.25 0.50 0.75 1.00 1.25 1.50 1.75 2.00 2.50 3.00]
@@ -575,7 +567,7 @@ const float wetnessHalflife         = 70.0;
   #define GI_DEBUG_VOXEL_LIGHT 7  // R = block light, G = sky light
   #define GI_DEBUG_VOXEL_ALBEDO 8
   #define GI_DEBUG_VARIANCE  9  // SVGF measured local relative variance / standard deviation
-  #define GI_DEBUG_PROBE     10 // DDGI multi-bounce probe radiance cache visualization
+  #define GI_DEBUG_PROBE     10 // Voxel Irradiance Volume cache visualization
   #define GI_DEBUG_COVERAGE  11 // finest clipmap level containing each surface / outside coverage
 
   #define GI_DEBUG GI_DEBUG_OFF // [GI_DEBUG_OFF GI_DEBUG_RAW GI_DEBUG_HISTORY GI_DEBUG_FILTERED GI_DEBUG_HIT GI_DEBUG_REJECT GI_DEBUG_VOXEL_ID GI_DEBUG_VOXEL_LIGHT GI_DEBUG_VOXEL_ALBEDO GI_DEBUG_VARIANCE GI_DEBUG_PROBE GI_DEBUG_COVERAGE]

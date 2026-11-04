@@ -678,7 +678,7 @@ value.GI_DEBUG.GI_DEBUG_VOXEL_ID       = Voxel ID
 value.GI_DEBUG.GI_DEBUG_VOXEL_LIGHT    = Voxel Light
 value.GI_DEBUG.GI_DEBUG_VOXEL_ALBEDO   = Voxel Albedo
 value.GI_DEBUG.GI_DEBUG_VARIANCE       = Variance
-value.GI_DEBUG.GI_DEBUG_PROBE          = Probe Cache (DDGI)
+value.GI_DEBUG.GI_DEBUG_PROBE          = Voxel Irradiance Volume
 value.GI_DEBUG.GI_DEBUG_COVERAGE = Clipmap Coverage
 
 value.tonemap_left.tonemap_aces_fit       = ACES Fit
@@ -747,10 +747,8 @@ option.LIGHTING_MODE = Lighting Mode
 option.LIGHTING_MODE.comment = RT Mode is the gameplay-balanced ray-traced lighting path. PT Mode is reserved for a future quality-first path and is not available yet.
 value.LIGHTING_MODE.LIGHTING_MODE_RT = RT
 value.LIGHTING_MODE.LIGHTING_MODE_PT = PT (unavailable)
-option.RTGI_PROBE_HYSTERESIS                                        = Probe Temporal Stability
-option.RTGI_PROBE_HYSTERESIS.comment                                = Higher values keep probe history longer. Lower values react faster to lighting and camera movement.
-option.RTGI_PROBE_RAYS                                              = DDGI Probe Rays
-option.RTGI_PROBE_RAYS.comment                                      = Number of spherical rays cast by each probe to gather indirect irradiance.
+option.VOXEL_CACHE_MULTIBOUNCE                                        = Voxel Cache Multi-Bounce
+option.VOXEL_CACHE_MULTIBOUNCE.comment                                = Enables recursive secondary bounce evaluation inside the Voxel Irradiance Volume.
 
 option.RTGI_INTENSITY                                               = RTGI Physical Intensity
 option.RTGI_INTENSITY.comment                                       = Calibrated single-bounce physical indirect lighting multiplier (default 1.00). In a diffuse enclosure, energy conservation guarantees indirect illuminance matches the incoming radiance.
@@ -785,8 +783,6 @@ value.RTGI_RESOLUTION.2                                              = Full (1.0
 
 option.RTGI_FILTER_PHI                                               = Atrous Colour Sigma
 option.RTGI_FILTER_PHI.comment                                       = Luminance edge-stopping scale (phi = value * sqrt(variance)) of the temporal filter. Higher softens detail and widens light bleed; lower keeps detail noisier.
-option.RTGI_PROBE_SPACING                                            = Probe Spacing
-option.RTGI_PROBE_SPACING.comment                                    = World-space distance between irradiance probes (the probe cache covers 32 x spacing blocks around you). Smaller resolves local color bleed and window bounce; larger reaches further at the cost of smearing small light features.
 option.RTGI_HISTORY_FRAMES                                           = Temporal History Cap
 option.RTGI_HISTORY_FRAMES.comment                                   = Maximum number of frames the temporal accumulation may average. Lower adapts faster to change, higher converges to a cleaner but staler image.
 option.RTGI_MAX_RADIANCE                                             = Ray Radiance Cap
