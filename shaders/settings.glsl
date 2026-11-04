@@ -105,6 +105,14 @@ const float wetnessHalflife         = 70.0;
   // and live in pt_state.glsl; only the strength is exposed.
   #define RTGI_FILTER_PHI 10.0 // [4.0 6.0 8.0 10.0 12.0 16.0 24.0 32.0]
   #define RTGI_SPP_CAP 128 // [32 64 96 128 192 255]
+  // Spatial preaccumulation fallback for pixels whose history is invalid
+  // (newly revealed surfaces, disocclusion edges). Instead of starting from a
+  // single raw sample they start from a depth/normal-weighted 7x7 gather of the
+  // current frame, worth up to PT_SPATIAL_MAX_WEIGHT effective samples -- about
+  // 2.6x less noise on the first frame of a new surface. Costs three fetches
+  // per tap on invalid pixels only; a static frame pays nothing. 0 restores the
+  // old soft reset (90% raw, 10% retained history).
+  #define RTGI_SPATIAL_FALLBACK 1 // [0 1]
   #define RTGI_MIN_ACCUM 1.0 // [0.0 0.5 1.0 2.0]
   // The first in-game run of this (single raw sample, 2/6 sigma, no gates) was
   // clearly worse than off at every usable strength: clumps at 0.5, raw dots

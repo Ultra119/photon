@@ -89,6 +89,77 @@ void write_zero(ivec2 texel, bool ping, float reason) {
     write_state(texel, reason, 1.0, 0.0, 0.0);
 }
 
+// ---------------------------------------------------------------------------
+// P2: spatial preaccumulation fallback
+// ---------------------------------------------------------------------------
+// Only reached when a pixel's history is invalid, so a static frame never pays
+// for it. It gathers the CURRENT frame's raw neighbourhood with depth and
+// normal edge-stopping, and the caller treats the result as up to
+// PT_SPATIAL_MAX_WEIGHT samples of evidence.
+//
+// Strided: 4x4 taps at stride 2 cover the same 7x7 footprint as 49 taps for a
+// quarter of the fetches. The taps are edge-stopped against the current
+// frame's G-buffer rather than the stored history, because the whole point is
+// surfaces the history has never seen.
+void pt_spatial_fallback(
+    ivec2 texel,
+    ivec2 target_res,
+    float current_dist,
+    vec3 current_normal,
+    out vec4 radiance_and_sky,
+    out float second_moment,
+    out float weight
+) {
+    vec4 sum = vec4(0.0);
+    float sum_lum2 = 0.0;
+    float sum_weight = 0.0;
+
+    for (int sy = -3; sy <= 3; sy += 2) {
+        for (int sx = -3; sx <= 3; sx += 2) {
+            ivec2 n_coord = clamp(texel + ivec2(sx, sy), ivec2(0), target_res - 1);
+            vec2 n_uv = (vec2(n_coord) + 0.5) / vec2(target_res);
+            ivec2 n_full = ivec2(taau_framebuffer_uv(n_uv) * view_res);
+
+            float n_depth = texelFetch(depthtex1, n_full, 0).x;
+            if (n_depth >= 1.0) {
+                continue; // sky: no surface to share lighting with
+            }
+
+            vec3 n_view_pos = screen_to_view_space(
+                vec3(taau_projection_uv(n_uv), n_depth), true
+            );
+            float n_dist = -n_view_pos.z;
+
+            // Same tolerance scale as the disocclusion test, soft rather than
+            // binary so the gather degrades gracefully at a sloped edge.
+            float dist_tolerance = max(current_dist * 0.06, 0.10);
+            float w_depth = exp(-abs(n_dist - current_dist) / dist_tolerance);
+
+            vec3 n_normal = decode_unit_vector(
+                unpack_unorm_2x8(texelFetch(colortex1, n_full, 0).z)
+            );
+            // 8th power: a 30 degree tilt already halves the weight.
+            float w_normal = pow(max(dot(n_normal, current_normal), 0.0), 8.0);
+
+            float w = w_depth * w_normal;
+            if (w < 1e-3) {
+                continue;
+            }
+
+            vec4 n_raw = texelFetch(rtgi_raw_sampler, n_coord, 0);
+            sum += n_raw * w;
+            sum_lum2 += dot(n_raw.rgb, luminance_weights)
+                * dot(n_raw.rgb, luminance_weights) * w;
+            sum_weight += w;
+        }
+    }
+
+    float inv = 1.0 / max(sum_weight, 1e-4);
+    radiance_and_sky = sum * inv;
+    second_moment = sum_lum2 * inv;
+    weight = sum_weight;
+}
+
 void main() {
 #if RTGI_RESOLUTION == 0
     const float render_scale = 0.25;
@@ -498,19 +569,75 @@ void main() {
                                  : texelFetch(rtgi_sky_accum_sampler, center_prev, 0);
             vec2 soft_sky_count = unpack_sky_count(soft_aux.g);
 
-            accumulated_radiance = mix(soft_prev.rgb, current_radiance, 0.9);
-            accumulated_sky = mix(soft_sky_count.x, current_sky_weight, 0.9);
-            // The retained 10% is worth about a tenth of a sample, so the
-            // count restarts just above one fresh sample.
-            sample_count = current_spp / 0.9;
-            alpha = 0.9;
-            m2 = mix(soft_aux.r, current_lum * current_lum, 0.9);
+#if RTGI_SPATIAL_FALLBACK != 0
+            // P2 spatial preaccumulation: a pixel with no usable history
+            // starts from the current frame's neighbourhood instead of from
+            // one raw sample. Falls through to the soft reset below when the
+            // gather finds nothing (all sky, or every tap rejected).
+            vec4 fb_radiance_sky = vec4(0.0);
+            float fb_second_moment = 0.0;
+            float fb_weight = 0.0;
+            pt_spatial_fallback(
+                texel,
+                target_res,
+                current_dist,
+                current_world_normal,
+                fb_radiance_sky,
+                fb_second_moment,
+                fb_weight
+            );
 
-            // Distinguish the two ways a reprojection can fail: the previous
-            // texel simply is not there (off-screen), or the surface moved
-            // (depth/normal disagreed). Both are soft resets.
-            if (!center_diagnosed) {
-                reset_reason = PT_RESET_DEPTH;
+            // Neighbours are not independent samples of one quantity, so the
+            // gather is credited with far fewer samples than it has taps.
+            float spatial_samples = min(fb_weight, PT_SPATIAL_MAX_WEIGHT);
+            bool spatial_ok = spatial_samples >= 1.0;
+#else
+            vec4 fb_radiance_sky = vec4(0.0);
+            float fb_second_moment = 0.0;
+            float spatial_samples = 0.0;
+            bool spatial_ok = false;
+#endif
+
+            if (spatial_ok) {
+                // Combine the gathered neighbourhood with this pixel's own
+                // sample, weighted by how much evidence each represents.
+                float total_samples = spatial_samples + 1.0;
+                float inv_total = 1.0 / total_samples;
+                accumulated_radiance
+                    = (fb_radiance_sky.rgb * spatial_samples + current_radiance)
+                    * inv_total;
+                accumulated_sky
+                    = (fb_radiance_sky.a * spatial_samples + current_sky_weight)
+                    * inv_total;
+                sample_count = total_samples;
+                alpha = inv_total;
+                // M2 has to describe the noise of the ESTIMATE, not of one
+                // raw sample: the a-trous reads var = M2 - M1^2 as "how
+                // noisy is this pixel", and this pixel is an average of
+                // total_samples of them. Reporting the single-sample variance
+                // here would make the filter treat a freshly gathered pixel as
+                // four times noisier than it is and over-blur it.
+                float fb_lum = dot(fb_radiance_sky.rgb, luminance_weights);
+                float fb_var = max(fb_second_moment - fb_lum * fb_lum, 0.0);
+                float estimate_lum = dot(accumulated_radiance, luminance_weights);
+                m2 = estimate_lum * estimate_lum + fb_var * inv_total;
+                reset_reason = PT_RESET_SPATIAL;
+            } else {
+                accumulated_radiance = mix(soft_prev.rgb, current_radiance, 0.9);
+                accumulated_sky = mix(soft_sky_count.x, current_sky_weight, 0.9);
+                // The retained 10% is worth about a tenth of a sample, so the
+                // count restarts just above one fresh sample.
+                sample_count = current_spp / 0.9;
+                alpha = 0.9;
+                m2 = mix(soft_aux.r, current_lum * current_lum, 0.9);
+
+                // Distinguish the two ways a reprojection can fail: the
+                // previous texel simply is not there (off-screen), or the
+                // surface moved (depth/normal disagreed). Both are soft
+                // resets.
+                if (!center_diagnosed) {
+                    reset_reason = PT_RESET_DEPTH;
+                }
             }
         }
     }

@@ -336,7 +336,7 @@ Gate:
 - Ghosting is bounded and has a debug view.
 - First-frame / invalid-history fallback removes most raw noise without edge smearing.
 
-**Status 2026-11-04: three of four tasks shipped; the spatial fallback deferred.**
+**Status 2026-11-04: all four tasks shipped.**
 
 Shipped:
 
@@ -375,16 +375,10 @@ Shipped:
   shortens (noise must not shorten history), while a lighting jump is absorbed
   in far fewer frames than the floor alone manages.
 
-Measured on that model (1 ray/px, cap 128, sigma 0.2, light 0.30 → 1.20,
-within 10% of the new value):
-
-| `RTGI_ADAPT_STRENGTH` | frames to absorb the change |
-|---|---:|
-| 0.0 (disabled, P1 behaviour) | 229 |
-| 0.25 | 45 |
-| **0.5 (default)** | **17** |
-| 0.75 | 9 |
-| 1.00 | 3 |
+(Response times for the shipped version are in the measurement table after the
+fix, below — the numbers first recorded here were measured with the defective
+single-sample statistic and the count-shortening rejection, both since
+reverted.)
 
 **First in-game run (2026-11-04): the adaptive rejection as first shipped was
 worse than off, at every strength.** Reported: at 0.5 persistent low-frequency
@@ -444,10 +438,41 @@ asserts the wiring in the source: the 3×3 mean, the sigma/3, all three gates,
 no count shortening, and the point-sampled debug read. All three regressions
 were verified to fail it.
 
-Deferred, with the reason: **the 7×7 spatial preaccumulation fallback**. It is
-the most expensive of the four tasks (49 taps on every invalid-history pixel),
-and P3 redesigns spatial filtering anyway, so building it now means building it
-twice. It gets its own gate and its own before/after captures.
+**The 7×7 spatial preaccumulation fallback shipped after all** — it was
+deferred at first as "the most expensive task, and P3 redesigns spatial
+filtering anyway", but it is also the one that answers the last open gate item
+directly. `RTGI_SPATIAL_FALLBACK` (on by default):
+
+- A pixel whose history is invalid no longer restarts from ~1.1 samples (90%
+  raw plus 10% of a geometrically wrong history). It gathers the **current**
+  frame's raw neighbourhood — 4×4 taps at stride 2, so the same 7×7 footprint
+  as 49 taps for a quarter of the fetches — edge-stopped against the current
+  frame's G-buffer by depth (`exp(-Δz / max(0.06z, 0.10))`, the disocclusion
+  scale) and by normal (`dot(n, n_centre)^8`), and starts from that.
+- Edge-stopping uses the *current* G-buffer, not the stored history: the whole
+  point is surfaces the history has never seen, and the history's normal/depth
+  at those texels is whatever was there before the reveal.
+- **The gather is credited with at most `PT_SPATIAL_MAX_WEIGHT` (6) samples**,
+  not with its tap count. Neighbouring pixels are independent samples but not
+  samples of one quantity — the signal varies across the neighbourhood — so
+  crediting 16 taps as 16 samples would overstate the evidence. Measured on the
+  CPU model (20 000 trials, sigma 0.25 on a 0.60 signal, all taps accepted):
+  first-frame RMS falls from **0.248 to 0.064, 3.9× quieter**, while the
+  credited count only claims sqrt(7) = 2.65×. Being quieter than it admits is
+  the safe direction; claiming more than it delivers is not.
+- **`m2` describes the noise of the estimate, not of one raw sample.** The
+  à-trous reads `var = M2 - M1²` as "how noisy is this pixel", and a gathered
+  pixel is an average of `spatial_samples + 1` samples, so its variance is
+  divided by that count. Reporting the single-sample variance made the filter
+  treat a freshly gathered pixel as ~4× noisier than it is and over-blur it —
+  the edge smearing the gate warns about.
+- `PT_RESET_SPATIAL`, the eleventh reset reason, in teal, so "this pixel has no
+  history and was filled in from its neighbours" is visible per pixel and
+  distinguishable from a soft reset.
+- Cost: three fetches per tap on invalid-history pixels only. A static frame
+  pays nothing. The expensive frames are the first frame after a load or resize
+  (no history anywhere) and fast motion (disocclusion edges), which is exactly
+  when the image is least converged.
 
 A/B to run before closing P2 (the first three already ran once, against the
 defective statistic, and need repeating against this one):
@@ -462,8 +487,14 @@ defective statistic, and need repeating against this one):
    pack can produce, at the cost of a scene that stops responding — useful as
    the "how much convergence is available" reference.
 4. Watch for the failure mode on purpose: `RTGI_ADAPT_STRENGTH 1.0` in a dark,
-   noisy scene. If noise starts to shimmer, the z thresholds (2σ/6σ) are too
+   noisy scene. If noise starts to shimmer, the z thresholds (2σ/8σ) are too
    tight for that scene and should be widened, not the strength lowered.
+5. The spatial fallback: walk around a corner so new surfaces come into view,
+   with `RTGI_SPATIAL_FALLBACK` on and then off. On, the revealed strip should
+   arrive already smooth; off, it should flash raw noise for a frame or two.
+   `GI_DEBUG_RESET` marks the gathered pixels teal. Then check the cost — if
+   panning loses more frame time than it did before, the fallback is running on
+   more pixels than the disocclusion edges and the stride wants raising.
 
 ### P3 — Spatial denoise redesign, not re-tuning
 

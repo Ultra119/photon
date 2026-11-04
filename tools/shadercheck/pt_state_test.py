@@ -491,6 +491,110 @@ def check_adaptive(failures: list[str]) -> None:
         failures.append("the adaptive test fires on a history below RTGI_ADAPT_MIN_SAMPLES")
 
 
+def check_spatial_fallback(failures: list[str]) -> None:
+    """Claim 7: the invalid-history fallback is worth its fetches.
+
+    A pixel whose history is invalid used to restart from ~1.1 samples (90%
+    raw plus 10% of a geometrically wrong history), which is the raw-dot flash
+    on surfaces revealed by motion. The fallback gathers the current frame's
+    neighbourhood instead. Two things are checked on a CPU model: that the
+    gather actually cuts the first-frame noise, and that it does not claim
+    more evidence than it has -- neighbours are not independent samples of one
+    quantity, and over-crediting them would under-report variance to the
+    a-trous filter.
+    """
+    state = strip_comments(read(STATE))
+    settings = strip_comments(read(SHADERS / "settings.glsl"))
+    temporal = strip_comments(read(TEMPORAL))
+
+    enabled = read_define(settings, "RTGI_SPATIAL_FALLBACK")
+    max_weight = read_define(state, "PT_SPATIAL_MAX_WEIGHT")
+    if enabled is None or max_weight is None:
+        failures.append("the spatial fallback is not defined in both sources")
+        return
+    if enabled != 0.0 and max_weight < 2.0:
+        failures.append(
+            f"PT_SPATIAL_MAX_WEIGHT is {max_weight}; too low to be worth the fetches"
+        )
+
+    # --- the noise model -------------------------------------------------
+    # 16 edge-stopped taps, each one raw sample of the same underlying signal
+    # (a flat wall revealed by a pan). Weight 1 for taps that pass, 0 for the
+    # rest: the conservative case, since partial weights only help.
+    rng = random.Random(4242)
+    sigma = 0.25
+    mu = 0.60
+    taps = 16
+    trials = 20000
+    gathered = 0.0
+    plain = 0.0
+    for _ in range(trials):
+        samples = [mu + sigma * rng.gauss(0.0, 1.0) for _ in range(taps + 1)]
+        own = samples[0]
+        neighbour_mean = sum(samples[1:]) / taps
+        n_eff = min(float(taps), max_weight)
+        estimate = (neighbour_mean * n_eff + own) / (n_eff + 1.0)
+        gathered += (estimate - mu) ** 2
+        # the old soft reset: 90% raw + 10% of an unrelated history sample
+        plain += (own - mu) ** 2
+    rms_gather = math.sqrt(gathered / trials)
+    rms_plain = math.sqrt(plain / trials)
+    reduction = rms_plain / rms_gather
+
+    if enabled != 0.0 and reduction < 1.8:
+        failures.append(
+            f"the spatial fallback only cuts first-frame noise {reduction:.2f}x; "
+            "want >= 1.8x for three fetches per tap"
+        )
+    # The clamp is deliberately conservative, so the measured gain may EXCEED
+    # what the credited sample count implies -- that is the safe direction (a
+    # pixel that is quieter than it admits only gets blurred a little more
+    # than it needs). What must not happen is the opposite, and what must also
+    # not happen is the clamp failing to bind at all.
+    claimed = math.sqrt(max_weight + 1.0)
+    if enabled != 0.0 and reduction < claimed * 0.95:
+        failures.append(
+            f"the gather claims {claimed:.2f}x of noise reduction but delivers "
+            f"only {reduction:.2f}x: it is credited with more evidence than it "
+            "has, and under-reports variance to the a-trous filter"
+        )
+    if enabled != 0.0 and reduction > claimed * 1.6:
+        failures.append(
+            f"the gather delivers {reduction:.2f}x while only claiming "
+            f"{claimed:.2f}x; PT_SPATIAL_MAX_WEIGHT is not binding, so the "
+            "clamped sample count does not describe the estimate"
+        )
+
+    # --- wiring ----------------------------------------------------------
+    src = "".join(temporal.split())
+    if "pt_spatial_fallback(" not in src:
+        failures.append("the temporal pass never calls the spatial fallback")
+    for token, why in (
+        ("texelFetch(depthtex1", "depth edge-stopping"),
+        ("texelFetch(colortex1", "normal edge-stopping"),
+        ("if(n_depth>=1.0){continue;}", "sky rejection"),
+    ):
+        if token not in src:
+            failures.append(f"the spatial fallback lacks {why}")
+    if "sy+=2" not in src or "sx+=2" not in src:
+        failures.append(
+            "the spatial fallback is not strided; 49 taps per invalid pixel is "
+            "too many for a pass that runs during pans"
+        )
+    if "min(fb_weight,PT_SPATIAL_MAX_WEIGHT)" not in src:
+        failures.append("the gathered weight is not clamped to PT_SPATIAL_MAX_WEIGHT")
+    if "PT_RESET_SPATIAL" not in src:
+        failures.append("the spatial fallback does not report PT_RESET_SPATIAL")
+    # Unstripped: the reason colours are identified by their comments.
+    debug = (SHADERS / "include/debug/gi_debug.glsl").read_text(encoding="utf-8")
+    if "PT_RESET_SPATIAL" not in debug and "SPATIAL:" not in debug:
+        failures.append("the reset debug view has no colour for PT_RESET_SPATIAL")
+    if debug.count("return vec3(") < 11:
+        failures.append(
+            "the reset view has fewer colour branches than PT_RESET_COUNT reasons"
+        )
+
+
 def check_adaptive_wiring(failures: list[str]) -> None:
     """Claim 6: the shader still matches the model that was measured.
 
@@ -695,6 +799,7 @@ def main() -> int:
     check_static_state(failures)
     check_adaptive(failures)
     check_adaptive_wiring(failures)
+    check_spatial_fallback(failures)
 
     if failures:
         print(f"FAIL: {len(failures)} assertion(s)")

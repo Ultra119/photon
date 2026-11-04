@@ -53,9 +53,25 @@
 #define PT_RESET_NON_FINITE  7.0 // guard: raw sample was NaN/Inf or negative
 #define PT_RESET_FIRST       8.0 // no usable history yet (resize, first frame)
 #define PT_RESET_ADAPTIVE    9.0 // P2: the adaptive test rejected stale history
+#define PT_RESET_SPATIAL   10.0 // P2: history invalid, spatial fallback used
 
 // Number of reasons above; also the debug view's colour count.
-#define PT_RESET_COUNT      10.0
+#define PT_RESET_COUNT      11.0
+
+// --- P2 spatial preaccumulation fallback ------------------------------------
+//
+// When the history is invalid the pixel used to start from ~1.1 samples (90%
+// raw plus 10% of a stale, geometrically wrong history), which is the raw-dot
+// flash on newly revealed surfaces. This gathers the current frame's raw
+// neighbourhood instead -- the same trick that lets Kappa look clean
+// immediately -- and starts the pixel from a real estimate.
+//
+// The effective sample count is clamped well below the tap count because
+// neighbouring pixels are not independent: at 1 ray per pixel they are
+// independent *samples*, but they are samples of a signal that varies across
+// the neighbourhood, so treating 16 taps as 16 samples would overstate the
+// evidence and under-report the variance to the a-trous filter.
+#define PT_SPATIAL_MAX_WEIGHT 6.0
 
 // --- P2 adaptive rejection thresholds --------------------------------------
 //
