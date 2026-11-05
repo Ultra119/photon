@@ -852,6 +852,40 @@ defect is real, not that it is dominant. Confirm the *symptom* moved before
 treating the mechanism as settled.
 
 
+**Measured and rejected: the guide/variance prepass.** The variance that guides
+`sigma_l`, `sigma_n` and the bypass is each pixel's own M2, and at short history
+it badly under-reports: measured sd **0.939** against a true per-sample sd of
+**1.690** at N = 8, because with eight samples a heavy-tailed estimator simply
+has not thrown a firefly yet. Pooling the variance over a 3×3 neighbourhood,
+weighted by each texel's sample count, corrects the estimate almost exactly
+(**1.576** against 1.690). It does **not** improve the image:
+
+| N | variance | clean rmse | clean grain | lava grain |
+|---|---:|---:|---:|---:|
+| 8 | per-pixel | 0.0597 | 0.0292 | 0.0458 |
+| 8 | pooled 3×3 | 0.0615 | 0.0294 | 0.0441 |
+| 128 | per-pixel | 0.0270 | 0.0259 | 0.0420 |
+| 128 | pooled 3×3 | 0.0281 | 0.0272 | 0.0419 |
+
+The corrected variance is larger, so `sigma_l` is larger, so the filter blurs
+slightly more — and the pixels whose variance was already correct pay for it.
+Third incident of the same kind: the defect is real and measurable, and it is
+not what the image is limited by. Do not ship it.
+
+**Next: the upscale footprint.** `sample_rtgi_smooth`
+(`include/lighting/diffuse_lighting.glsl:92`) is a bare
+`textureLod(rtgi_sampler, coord, 0.0)` — the name promises a smooth upsample
+and it is a plain bilinear fetch. At `RTGI_RESOLUTION` 0 or 1 the GI buffer is
+quarter or half resolution, so that fetch bleeds indirect light around every
+depth silhouette and adds bilinear blockiness on top of the filter's square
+support. It has exactly one caller — `deferred4`, behind `PROGRAM_DEFERRED4` —
+and that program already has `depthtex1`, `view_res`, `frameCounter` and
+`gbufferProjectionInverse`, while the GI-resolution surface normal is already
+packed in the aux channel's `.ba`. A joint bilateral upsample (2×2 GI texels
+weighted by depth and normal agreement against the full-res pixel) therefore
+needs no new buffers and no new passes.
+
+
 Tasks:
 
 - **Do not tune `RTGI_FILTER_PHI`, Gaussian weights or σ caps again.** The re-audit proved weight tuning does not change the footprint.
