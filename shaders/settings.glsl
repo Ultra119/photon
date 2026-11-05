@@ -622,6 +622,20 @@ const float wetnessHalflife         = 70.0;
 
   #define GI_DEBUG GI_DEBUG_OFF // [GI_DEBUG_OFF GI_DEBUG_RAW GI_DEBUG_HISTORY GI_DEBUG_FILTERED GI_DEBUG_HIT GI_DEBUG_REJECT GI_DEBUG_VOXEL_ID GI_DEBUG_VOXEL_LIGHT GI_DEBUG_VOXEL_ALBEDO GI_DEBUG_VARIANCE GI_DEBUG_PROBE GI_DEBUG_COVERAGE GI_DEBUG_SPP GI_DEBUG_RESET GI_DEBUG_BYPASS]
 
+  // P6.1 emitter list: the block-accurate positions of this frame's thin
+  // emitters, so the GI ray can evaluate them analytically instead of waiting
+  // for a ray to happen across their cell. It is a custom image, so it draws on
+  // the same 16-image budget the two conditional diagnostic images do; while
+  // either of those is selected the list is not allocated. A1 only builds the
+  // list and has no consumer, so that costs nothing yet -- but A2 has to
+  // resolve it before NEE can run under those two views.
+  //
+  // Texel 0 is the atomic counter; emitters occupy texels 1..CAPACITY-1.
+#if GI_DEBUG != GI_DEBUG_HIT && GI_DEBUG != GI_DEBUG_REJECT
+  #define RT_EMITTER_LIST 1
+#endif
+  #define RT_EMITTER_LIST_CAPACITY 511u // emitter slots (4 texels each + 1 counter)
+
 // On GI_DEBUG_VARIANCE: Stage 7 tracks 1st and 2nd luminance moments per-pixel.
 // Displays the relative standard deviation sqrt(var) / (mean + 0.05) using a
 // cold-to-hot colormap (blue = converged, green = stable, red = high variance / disoccluded).
