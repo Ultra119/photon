@@ -1194,6 +1194,33 @@ double-count and make it correct. (A2) before (A3) is deliberate: it isolates
 "does the tail collapse" from "are the weights right", and (A2)'s over-bright
 failure mode is obvious in game whereas a wrong MIS weight is silent.
 
+**CPU feasibility check (before any shader work).** A closed-form model of the
+thin-emitter indicator estimator at N=128, emission 8.0, ambient 0.05
+(`/home/user/sim/p61_nee.py`). `P(cross)` is the cosine-weighted solid angle of
+the emitter's cell at horizontal distance r:
+
+| r | P(cross) | BSDF-only mean | sigma/m1 | relSE | verdict | NEE relSE | verdict | naive (pre-MIS) error |
+|---|---:|---:|---:|---:|---|---:|---:|---:|
+| 1 | 0.1125 | 0.945 | 2.66 | 0.235 | RED | 0.000 | BLUE | +95 % |
+| 2 | 0.0285 | 0.276 | 4.78 | 0.423 | RED | 0.000 | BLUE | +82 % |
+| 3 | 0.0101 | 0.130 | 6.10 | 0.539 | RED | 0.000 | BLUE | +62 % |
+| 5 | 0.0024 | 0.069 | 5.63 | 0.498 | RED | 0.000 | BLUE | +28 % |
+| 8 | 0.0006 | 0.055 | 3.57 | 0.316 | RED | 0.000 | BLUE | +9 % |
+| 12 | 0.0002 | 0.051 | 2.09 | 0.184 | RED | 0.000 | BLUE | +3 % |
+
+Three things follow. The BSDF-only column reproduces the report: a torch-lit
+room is red at *every* distance, and worst at 2-3 blocks, which is where a
+torch actually sits in a room. NEE takes relative SE to zero at every distance.
+And the naive pre-MIS variant is over-bright by 62-95 % within 3 blocks, which
+is what makes A2 safe to land before A3: the error is large and obvious right
+next to the torch, whereas a wrong MIS weight would be silent.
+
+Caveat stated up front: the model has static visibility, so it shows the
+variance NEE *removes*, not the variance it leaves behind. The residual is the
+visibility term (binary, and it is what makes a moving occluder flicker) plus
+the ambient's own noise. The conclusion that carries is the size of the
+collapse, not the exact value zero.
+
 **Blocking decision:** (A) needs the last image slot, which P5's specular
 history was reserved for, and which `GI_DEBUG_HIT`/`GI_DEBUG_REJECT` borrow.
 Either P6.1 goes first and P5 must free a channel later, or the debug views
