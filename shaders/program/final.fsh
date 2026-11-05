@@ -223,12 +223,12 @@ void main() {
     // can be told apart from a misread list. cnt = entries this frame, e0 = the
     // first entry's cell, pld = its packed payload, cam = the camera's own cell
     // (e0 should be within half the clipmap of cam, and pld must be non-zero).
-    uint dbg_count = texelFetch(emitter_list_sampler, ivec2(0, 0), 0).x;
+    uint dbg_count = texelFetch(emitter_list_sampler, rt_emitter_texel(0), 0).x;
     ivec3 dbg_cell = ivec3(
-        int(texelFetch(emitter_list_sampler, ivec2(1, 0), 0).x),
-        int(texelFetch(emitter_list_sampler, ivec2(2, 0), 0).x),
-        int(texelFetch(emitter_list_sampler, ivec2(3, 0), 0).x));
-    uint dbg_payload = texelFetch(emitter_list_sampler, ivec2(4, 0), 0).x;
+        int(texelFetch(emitter_list_sampler, rt_emitter_texel(1), 0).x),
+        int(texelFetch(emitter_list_sampler, rt_emitter_texel(2), 0).x),
+        int(texelFetch(emitter_list_sampler, rt_emitter_texel(3), 0).x));
+    uint dbg_payload = texelFetch(emitter_list_sampler, rt_emitter_texel(4), 0).x;
 
     begin_text(ivec2(gl_FragCoord.xy) / debug_text_scale, debug_text_position);
     text.bg_col = vec4(0.0);

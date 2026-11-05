@@ -392,7 +392,7 @@ vec3 gi_debug_view(ivec2 texel, vec2 uv, vec3 fallback) {
     vec3 ed_dots = vec3(0.0);
     float ed_stale = 0.0;
 
-    uint ed_count = texelFetch(emitter_list_sampler, ivec2(0, 0), 0).x;
+    uint ed_count = texelFetch(emitter_list_sampler, rt_emitter_texel(0), 0).x;
     ed_count = min(min(ed_count, RT_EMITTER_LIST_CAPACITY), GI_DEBUG_EMITTERS_MAX_DRAW);
 
     vec3 ed_origin = rt_clip_origin_world(0);
@@ -403,11 +403,11 @@ vec3 gi_debug_view(ivec2 texel, vec2 uv, vec3 fallback) {
     for (uint i = 0u; i < ed_count; ++i) {
         int ed_texel0 = 1 + int(i) * 4;
         ivec3 ed_texel = ivec3(
-            int(texelFetch(emitter_list_sampler, ivec2(ed_texel0, 0), 0).x),
-            int(texelFetch(emitter_list_sampler, ivec2(ed_texel0 + 1, 0), 0).x),
-            int(texelFetch(emitter_list_sampler, ivec2(ed_texel0 + 2, 0), 0).x)
+            int(texelFetch(emitter_list_sampler, rt_emitter_texel(ed_texel0), 0).x),
+            int(texelFetch(emitter_list_sampler, rt_emitter_texel(ed_texel0 + 1), 0).x),
+            int(texelFetch(emitter_list_sampler, rt_emitter_texel(ed_texel0 + 2), 0).x)
         );
-        uint ed_payload = texelFetch(emitter_list_sampler, ivec2(ed_texel0 + 3, 0), 0).x;
+        uint ed_payload = texelFetch(emitter_list_sampler, rt_emitter_texel(ed_texel0 + 3), 0).x;
 
         // Undo the toroidal texel wrap relative to the camera's own cell, so
         // this resolves to the true world cell rather than the wrapped address.

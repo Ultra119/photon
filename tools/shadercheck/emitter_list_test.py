@@ -82,10 +82,10 @@ if decl:
     if cap:
         # 4 texels per emitter (x, y, z, payload) plus the counter texel.
         need = 1 + 4 * int(cap.group(1))
-        check(int(w) >= need,
-              f"emitter_list_img width {w} is too small for capacity {cap.group(1)}: needs 1 + 4*{cap.group(1)} = {need} texels")
-        check(int(h) == 1, f"emitter_list_img height is {h}, expected 1 (1-D list)")
-
+        check(int(w) * int(h) >= need,
+              f"emitter_list_img is {w}x{h} = {int(w)*int(h)} texels but capacity "
+              f"{cap.group(1)} needs {need}")
+    
 check("#define RT_EMITTER_LIST 1" in settings,
       "settings.glsl: RT_EMITTER_LIST is not defined (build site would be compiled out)")
 
@@ -124,7 +124,7 @@ for ch, expr in (("x", "uint(coord.x)"), ("y", "uint(coord.y)"), ("z", "uint(coo
 # imageAtomicMax, and atomic image ops carry cross-pass ordering guarantees a
 # plain store does not. The list is read two passes later in another program,
 # and a plain store from a vertex shader is not guaranteed to be visible there.
-stores = re.findall(r"imageAtomicExchange\(\s*emitter_list_img\s*,\s*ivec2\(\s*base([^,]*),\s*0\s*\)\s*,\s*(.*)\s*\)",
+stores = re.findall(r"imageAtomicExchange\(\s*emitter_list_img\s*,\s*rt_emitter_texel\(\s*base([^)]*)\s*\)\s*,\s*(.*)\s*\)",
                     update)
 check(len(stores) == 4, f"voxel_update.glsl: expected 4 imageStore calls per emitter (x, y, z, payload), found {len(stores)}")
 if len(stores) == 4:
@@ -141,9 +141,9 @@ check("int base = 1 + int(slot) * 4;" in update,
       "voxel_update.glsl: base must be `1 + int(slot) * 4` (texel 0 is the counter, 4 texels per emitter)")
 
 # 4. Counter / off-by-one.
-check(re.search(r"uint\s+slot\s*=\s*imageAtomicAdd\(\s*emitter_list_img\s*,\s*ivec2\(\s*0\s*,\s*0\s*\)\s*,\s*1u\s*\)",
+check(re.search(r"uint\s+slot\s*=\s*imageAtomicAdd\(\s*emitter_list_img\s*,\s*rt_emitter_texel\(\s*0\s*\)\s*,\s*1u\s*\)",
                 update) is not None,
-      "voxel_update.glsl: the slot must come from imageAtomicAdd on texel (0,0)")
+      "voxel_update.glsl: the slot must come from imageAtomicAdd on rt_emitter_texel(0)")
 check("slot < RT_EMITTER_LIST_CAPACITY" in update,
       "voxel_update.glsl: the bounds check must be `slot < RT_EMITTER_LIST_CAPACITY`")
 
@@ -219,10 +219,19 @@ check(count == 511, f"capacity: counter clamps to {count}, expected 511")
 cap = re.search(r"#define\s+RT_EMITTER_LIST_CAPACITY\s+(\d+)u", settings)
 wid = re.search(r"^image\.emitter_list_img\s*=\s*\S+\s+\S+\s+\S+\s+\S+\s+\S+\s+\S+\s+(\d+)\s+(\d+)\s*$", props, re.M)
 if cap and wid:
+    w, h = int(wid.group(1)), int(wid.group(2))
     last_texel = 1 + 4 * int(cap.group(1)) - 1
-    check(last_texel <= int(wid.group(1)) - 1,
-          f"capacity {cap.group(1)} writes up to texel {last_texel} but the image is only "
-          f"{wid.group(1)} texels wide")
+    check(last_texel <= w * h - 1,
+          f"capacity {cap.group(1)} writes up to texel {last_texel} but the image only has "
+          f"{w}x{h} = {w*h} texels")
+    # Square on purpose. A 2048x1 image put every DATA texel out of bounds: the
+    # fetch returned ~1e9 garbage rather than failing, and only the counter at
+    # index 0 was ever valid, so the list looked full and was entirely junk. A
+    # square cannot be transposed by a width/height mix-up and cannot run out
+    # of width.
+    check(w == h,
+          f"emitter_list_img is {w}x{h}; it must be square so a width/height mix-up "
+          f"cannot transpose it and a data texel cannot fall outside the row")
 
 # ---------------------------------------------------------------------- report
 

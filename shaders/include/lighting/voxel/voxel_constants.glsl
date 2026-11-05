@@ -85,6 +85,16 @@ bool rt_clip_contains_world(vec3 world_pos, int level) {
         && all(lessThan(local, rt_clipmap_size_f));
 }
 
+// P6.1 emitter list addressing. The image is square so that a width/height
+// mix-up cannot transpose it and a data texel cannot fall outside it -- see the
+// note in shaders.properties. Index 0 is the atomic counter; entry i occupies
+// indices 1 + 4i .. 4 + 4i.
+const int rt_emitter_list_dim = 64;
+
+ivec2 rt_emitter_texel(int index) {
+    return ivec2(index % rt_emitter_list_dim, index / rt_emitter_list_dim);
+}
+
 int rt_clip_finest_containing_level(vec3 world_pos) {
     for (int level = 0; level < RT_COVERAGE_LEVELS; ++level) {
         if (rt_clip_contains_world(world_pos, level)) return level;
