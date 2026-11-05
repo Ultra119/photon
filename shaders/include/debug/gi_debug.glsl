@@ -390,6 +390,7 @@ vec3 gi_debug_view(ivec2 texel, vec2 uv, vec3 fallback) {
 #if defined RT_EMITTER_LIST
     vec3 ed_base = fallback * 0.35;
     vec3 ed_dots = vec3(0.0);
+    float ed_stale = 0.0;
 
     uint ed_count = texelFetch(emitter_list_sampler, ivec2(0, 0), 0).x;
     ed_count = min(min(ed_count, RT_EMITTER_LIST_CAPACITY), GI_DEBUG_EMITTERS_MAX_DRAW);
@@ -423,6 +424,17 @@ vec3 gi_debug_view(ivec2 texel, vec2 uv, vec3 fallback) {
         // Radius in pixels, not UV, so dots stay round at any aspect ratio.
         float ed_hit = 1.0 - smoothstep(1.8, 3.0, length((ed_uv - uv) * view_res));
 
+        // A zero payload means the slot was never written: the entry is stale
+        // and every such entry collapses onto cell (0,0,0), which is the
+        // bottom corner of the clipmap -- a single dot in the void. Drawing it
+        // magenta makes "the list is empty" distinguishable from "the list is
+        // misplaced", which is otherwise impossible to tell apart by eye.
+        if (ed_payload == 0u) {
+            ed_dots += ed_hit * vec3(1.0, 0.0, 1.0) * 2.0;
+            ed_stale += 1.0;
+            continue;
+        }
+
         VoxelSample ed_sample = unpack_voxel_data(ed_payload);
         VoxelMaterial ed_mat = get_voxel_material(ed_sample.block_id, ed_sample.color);
         float ed_lum = dot(ed_mat.emission, luminance_weights);
@@ -432,7 +444,21 @@ vec3 gi_debug_view(ivec2 texel, vec2 uv, vec3 fallback) {
         vec3 ed_tint = ed_mat.emission / max(ed_lum, eps);
         ed_dots += ed_hit * (vec3(0.35) + ed_tint * 0.65);
     }
-    return ed_base + ed_dots;
+
+    // Count bar along the very top: filled width is count / MAX_DRAW, so an
+    // empty list is unmistakable. Magenta if every entry was stale.
+    vec3 ed_bar = vec3(0.0);
+    float ed_bar_y = uv.y * view_res.y;
+    if (ed_bar_y < 6.0) {
+        float ed_fill = float(ed_count) / float(GI_DEBUG_EMITTERS_MAX_DRAW);
+        float ed_on = step(uv.x, ed_fill);
+        ed_bar = ed_on * mix(vec3(0.0, 0.4, 0.0), vec3(0.1, 1.0, 0.2), step(0.5, ed_count));
+        if (ed_count > 0.0 && ed_stale >= float(ed_count)) ed_bar = vec3(1.0, 0.0, 1.0);
+    }
+    // Empty list: wash the frame red. A dot in the void and no dot at all look
+    // similar from a screenshot; the wash removes the ambiguity.
+    if (ed_count == 0u) ed_base = mix(ed_base, vec3(0.35, 0.0, 0.0), 0.5);
+    return ed_base + ed_dots + ed_bar;
 #else
     // EMITTERS is neither HIT nor REJECT, so the list should always be
     // allocated for this view. Solid red means the allocation guard drifted.

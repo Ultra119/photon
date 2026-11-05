@@ -277,11 +277,20 @@ void update_rt_voxel_grid(
                     if (slot < RT_EMITTER_LIST_CAPACITY) {
                         // Four texels per emitter: r32ui is a single-channel
                         // format, and it is the only one imageAtomicAdd accepts.
+                        //
+                        // imageAtomicExchange rather than imageStore, even
+                        // though each slot has exactly one writer and the old
+                        // value is discarded. The clipmap that shares this pass
+                        // is written with imageAtomicMax, and atomic image
+                        // operations carry cross-pass ordering guarantees that
+                        // a plain store does not: the list is read two passes
+                        // later, in a different program, and a plain store from
+                        // a vertex shader is not guaranteed to be visible there.
                         int base = 1 + int(slot) * 4;
-                        imageStore(emitter_list_img, ivec2(base, 0), uvec4(uint(coord.x)));
-                        imageStore(emitter_list_img, ivec2(base + 1, 0), uvec4(uint(coord.y)));
-                        imageStore(emitter_list_img, ivec2(base + 2, 0), uvec4(uint(coord.z)));
-                        imageStore(emitter_list_img, ivec2(base + 3, 0), uvec4(payload));
+                        imageAtomicExchange(emitter_list_img, ivec2(base, 0), uint(coord.x));
+                        imageAtomicExchange(emitter_list_img, ivec2(base + 1, 0), uint(coord.y));
+                        imageAtomicExchange(emitter_list_img, ivec2(base + 2, 0), uint(coord.z));
+                        imageAtomicExchange(emitter_list_img, ivec2(base + 3, 0), payload);
                     }
                 }
 #endif

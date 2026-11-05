@@ -120,7 +120,11 @@ check("shape_class != VOXEL_SHAPE_CUBE" in update,
 for ch, expr in (("x", "uint(coord.x)"), ("y", "uint(coord.y)"), ("z", "uint(coord.z)"),
                  ("payload", "payload")):
     pass
-stores = re.findall(r"imageStore\(\s*emitter_list_img\s*,\s*ivec2\(\s*base([^,]*),\s*0\s*\)\s*,\s*uvec4\((.*)\)\s*\)",
+# Atomic, not imageStore: the clipmap sharing this pass is written with
+# imageAtomicMax, and atomic image ops carry cross-pass ordering guarantees a
+# plain store does not. The list is read two passes later in another program,
+# and a plain store from a vertex shader is not guaranteed to be visible there.
+stores = re.findall(r"imageAtomicExchange\(\s*emitter_list_img\s*,\s*ivec2\(\s*base([^,]*),\s*0\s*\)\s*,\s*(.*)\s*\)",
                     update)
 check(len(stores) == 4, f"voxel_update.glsl: expected 4 imageStore calls per emitter (x, y, z, payload), found {len(stores)}")
 if len(stores) == 4:
@@ -130,6 +134,9 @@ if len(stores) == 4:
           "voxel, so NEE and the BSDF path agree on the emission")
     check([o.strip() for o, _ in stores] == ["", "+ 1", "+ 2", "+ 3"],
           f"voxel_update.glsl: texel offsets are {[o.strip() for o, _ in stores]}, expected base, base+1, base+2, base+3")
+check("imageStore(emitter_list_img" not in update,
+      "voxel_update.glsl: entry texels must use imageAtomicExchange, not imageStore "
+      "-- a plain store from a vertex shader is not guaranteed visible to the pass that reads the list")
 check("int base = 1 + int(slot) * 4;" in update,
       "voxel_update.glsl: base must be `1 + int(slot) * 4` (texel 0 is the counter, 4 texels per emitter)")
 
