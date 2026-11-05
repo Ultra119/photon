@@ -966,6 +966,61 @@ the rays are escaping to sky or hitting voxels, which separates the two
 candidates outright.
 
 
+**Round 2 in-game findings (2026-11-05).** Four observations, one mechanism.
+
+Every observation is `relative_se = sigma / (sqrt(N) * (m1 + 0.02))` against the
+`se_gate = 1 - smoothstep(0.05, 0.15, relative_se)` threshold. Red means the
+*standard error of the mean* exceeds ~15 % of the mean at full sample count. At
+N = 128 that needs `sigma / m1 > 1.7`: the per-sample spread must exceed the
+signal by more than half again. The view is therefore reading out the tail of
+the sampling distribution, which is what it was built to do.
+
+- **Foliage (grass, leaves).** Bimodal by construction: a cutout surface sends
+  some rays at bright sky and some at dark ground, so the per-sample spread is
+  genuinely large. "Completely red when seen against the sky, reddish at the
+  edges against a wall, and worse when swaying" is the signature of a bimodal
+  estimator, not of a firefly. The wide blur is the *correct* answer here. The
+  samples converge, they just converge slowly: `sigma/m1 = 1.7` needs N > 1156
+  to fall under the 0.05 threshold, about 19 s of a still camera at 1 spp.
+
+- **Torch and lava outdoors.** Radially one would expect a symmetric halo from
+  `passed_emission` (rays that pass through the emitter voxel pick up its
+  emission; the solid angle shrinks as 1/r^2, which is exactly why the dots get
+  sparser and more widely spaced with distance). What is observed instead is a
+  one-sided ~45-degree wedge with nothing on the opposite side, stopping at the
+  emitter's block. The user confirmed this tracks the sun. Two readings, and
+  they are not yet separated: either it is the emitter block's sun shadow, where
+  `m1` drops because the sun bounce is missing and the *denominator* inflates
+  `relative_se`; or it is the sun-facing side. Both are the relative metric
+  responding to `m1` rather than to a change in absolute noise.
+
+- **Torch in a closed room: the whole lit space goes red, the direct shadows
+  stay blue.** This is the important one, and it is not a filter artefact.
+  Block-light bounce is not implemented (deferred), so an indoor GI sample is
+  almost always ~zero. The only non-zero samples are the rare ones that hit or
+  pass through the emitter voxel. So `m1` is a small average over mostly-zero
+  samples while `sigma` is dominated by rare large ones: `sigma >> m1`, the
+  ratio explodes, and every lit surface is flagged. The shadows stay blue for
+  the opposite reason — nothing there at all, so `sigma` is ~0 too and the ratio
+  collapses to 0/0.02.
+
+  **The missing block-light bounce is therefore presenting as variance, not as
+  darkness.** The estimator's *mean* is right; its tail is not. The filter
+  answers by blurring, which is why torch light smears across a room instead of
+  falling off — the light is real, it is just averaged over a wide footprint
+  because a single sample cannot be trusted.
+
+- **Increment 4 confirmed again, and no dots attributable to the sun** on open
+  ground: with no small emitter in range the ground converges and stays blue.
+
+**Consequence for the plan.** Every remaining red region except foliage is the
+same defect: a small bright source subtending a tiny solid angle, hit rarely and
+hard. Clamping and blurring both suppress it at the cost of energy or detail
+(measured earlier: the clamp costs 30-40 % of indirect at 5 % solid angle). Only
+sampling the emitter explicitly removes it. That is P6, and the measurement
+above is the argument for doing it — the room is not "a bit noisy near lava",
+it is 100 % flagged.
+
 Tasks:
 
 - **Do not tune `RTGI_FILTER_PHI`, Gaussian weights or σ caps again.** The re-audit proved weight tuning does not change the footprint.
