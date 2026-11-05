@@ -618,8 +618,9 @@ const float wetnessHalflife         = 70.0;
   #define GI_DEBUG_COVERAGE  11 // finest clipmap level containing each surface / outside coverage
   #define GI_DEBUG_SPP       12 // accumulated samples per pixel (P1 state contract)
   #define GI_DEBUG_RESET     13 // why the temporal pass reset each pixel (P1 state contract)
+  #define GI_DEBUG_BYPASS    14 // how much of the a-trous pyramid each pixel is paying for (P3)
 
-  #define GI_DEBUG GI_DEBUG_OFF // [GI_DEBUG_OFF GI_DEBUG_RAW GI_DEBUG_HISTORY GI_DEBUG_FILTERED GI_DEBUG_HIT GI_DEBUG_REJECT GI_DEBUG_VOXEL_ID GI_DEBUG_VOXEL_LIGHT GI_DEBUG_VOXEL_ALBEDO GI_DEBUG_VARIANCE GI_DEBUG_PROBE GI_DEBUG_COVERAGE GI_DEBUG_SPP GI_DEBUG_RESET]
+  #define GI_DEBUG GI_DEBUG_OFF // [GI_DEBUG_OFF GI_DEBUG_RAW GI_DEBUG_HISTORY GI_DEBUG_FILTERED GI_DEBUG_HIT GI_DEBUG_REJECT GI_DEBUG_VOXEL_ID GI_DEBUG_VOXEL_LIGHT GI_DEBUG_VOXEL_ALBEDO GI_DEBUG_VARIANCE GI_DEBUG_PROBE GI_DEBUG_COVERAGE GI_DEBUG_SPP GI_DEBUG_RESET GI_DEBUG_BYPASS]
 
 // On GI_DEBUG_VARIANCE: Stage 7 tracks 1st and 2nd luminance moments per-pixel.
 // Displays the relative standard deviation sqrt(var) / (mean + 0.05) using a

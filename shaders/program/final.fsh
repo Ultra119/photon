@@ -100,7 +100,9 @@ uniform sampler2D rtgi_reject_sampler;
 #endif
 // Both the variance view and the P1 sample-count view read the aux image the
 // temporal pass ping-pongs between.
-#if GI_DEBUG == GI_DEBUG_VARIANCE || GI_DEBUG == GI_DEBUG_SPP
+// VARIANCE and SPP read the packed moments; BYPASS reads the moments and
+// the radiance, to rebuild the convergence gates the filter used.
+#if GI_DEBUG == GI_DEBUG_VARIANCE || GI_DEBUG == GI_DEBUG_SPP || GI_DEBUG == GI_DEBUG_BYPASS
 uniform sampler2D rtgi_sky_accum_sampler;
 uniform sampler2D rtgi_sky_history_sampler;
 #endif

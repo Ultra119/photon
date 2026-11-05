@@ -216,6 +216,8 @@ vec3 gi_debug_view_swatch() {
     return vec3(0.30, 0.95, 0.95);
 #elif GI_DEBUG == GI_DEBUG_RESET
     return vec3(0.95, 0.95, 0.20);
+#elif GI_DEBUG == GI_DEBUG_BYPASS
+    return vec3(0.10, 0.55, 0.95);
 #else
     return vec3(0.0);
 #endif
@@ -334,6 +336,46 @@ vec3 gi_debug_view(ivec2 texel, vec2 uv, vec3 fallback) {
         return vec3(1.00, 0.65, 0.00);          // ADAPTIVE: stale history
     }
     return vec3(0.00, 0.70, 0.65);              // SPATIAL: fallback gather
+#elif GI_DEBUG == GI_DEBUG_BYPASS
+    // How much of the a-trous pyramid this pixel is paying for.
+    //
+    // The two wide passes (stride 8 and stride 4) are faded out by
+    // convergence = count_ramp * se_gate, and the two gates ask different
+    // questions: the count ramp asks "has this pixel been accumulating long
+    // enough", the SE gate asks "is the estimate actually settled". Three
+    // states, because the remedy for each is different:
+    //
+    //   blue = wide passes off; the pixel keeps its own value (sharp)
+    //   red  = wide passes on, SE gate shut: the estimate is still noisy at
+    //          this sample count, i.e. a heavy-tailed emitter term
+    //   grey = wide passes on, count ramp low: not enough history yet
+    //
+    // Read it next to GI_DEBUG_VARIANCE. A lava pool should be a red island in
+    // a blue field. A grey field that never turns blue is the temporal pass
+    // resetting every frame, which GI_DEBUG_RESET will name; a red field that
+    // stays red at a full sample count is the firefly term, which no amount of
+    // filtering can converge and only emitter importance sampling (P6) will
+    // remove.
+    //
+    // Sampled, not fetched: the temporal pass only writes texels below
+    // target_res, and a bilinear fetch past it would read memory that was
+    // never written.
+    vec4 bp_aux = ping ? texture(rtgi_sky_accum_sampler, rtgi_uv)
+                       : texture(rtgi_sky_history_sampler, rtgi_uv);
+    vec4 bp_accum = ping ? texture(rtgi_accum_sampler, rtgi_uv)
+                         : texture(rtgi_history_sampler, rtgi_uv);
+    float bp_count = unpack_sky_count(bp_aux.g).y;
+    float bp_m1 = dot(bp_accum.rgb, vec3(0.2126, 0.7152, 0.0722));
+    float bp_var = max(0.0, bp_aux.r - bp_m1 * bp_m1);
+    float bp_se = sqrt(bp_var / max(bp_count, 1.0)) / (bp_m1 + 0.02);
+    float bp_count_ramp
+        = smoothstep(float(RTGI_SPP_CAP) * 0.25, float(RTGI_SPP_CAP), bp_count);
+    float bp_se_gate = 1.0 - smoothstep(0.05, 0.15, bp_se);
+    vec3 bp_sharp = vec3(0.10, 0.55, 0.95);
+    vec3 bp_noisy = vec3(0.95, 0.10, 0.05);
+    vec3 bp_fresh = vec3(0.45, 0.45, 0.50);
+    vec3 bp_blurred = (bp_se_gate <= bp_count_ramp) ? bp_noisy : bp_fresh;
+    return mix(bp_blurred, bp_sharp, bp_count_ramp * bp_se_gate);
 #elif GI_DEBUG == GI_DEBUG_HIT
     return gi_debug_hit_mask(
         vec4(gi_debug_smooth_3x3(rtgi_hit_sampler, rtgi_uv), 1.0)

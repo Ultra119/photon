@@ -261,6 +261,28 @@ and will never converge — which is precisely the feedback-loop symptom (B1) th
 Stage 3 exists to remove. For population statistics use `DEBUG_VIEW_HISTOGRAM`,
 which samples the actual image.
 
+### Spatial filter · `GI_DEBUG_BYPASS`
+
+Shows how much of the a-trous pyramid each pixel is actually paying for. The two
+wide passes (stride 8 and stride 4, the ones with a ±16-texel footprint) are
+faded out by `convergence = count_ramp * se_gate`, and the two gates ask
+different questions:
+
+- **Blue** — wide passes off. The pixel keeps its own value, so the image here
+  is as sharp as the estimator allows.
+- **Red** — wide passes on because the *standard error* gate is shut. The pixel
+  has plenty of history but its estimate is still moving, which in practice
+  means a heavy-tailed emitter term: a small bright source the ray hits rarely
+  and hard. The wide blur is that term's only estimator.
+- **Grey** — wide passes on because the *count* ramp is low. Not enough history
+  yet; this is what a fresh or fast-moving surface looks like.
+
+Read it next to `GI_DEBUG_VARIANCE`. A lava pool should be a red island in a blue
+field. A field that stays grey is the temporal pass resetting every frame, which
+`GI_DEBUG_RESET` will name. A field that stays red at a full sample count is the
+firefly term, which no amount of filtering can converge — only sampling the
+emitter properly (P6) removes it.
+
 ## What is not implemented
 
 - **Per-pass GPU timings.** GL timer queries are not exposed to shader packs, so

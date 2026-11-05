@@ -57,6 +57,10 @@ EXPECTED = {
     # channel, the reset reason in the single-buffered state image.
     "GI_DEBUG_SPP":         (set(), {"rtgi_sky_accum", "rtgi_sky_history"}),
     "GI_DEBUG_RESET":       (set(), {"rtgi_state"}),
+    # P3: the bypass reads both the count and the moments, so it needs
+    # the aux pair and the radiance pair.
+    "GI_DEBUG_BYPASS":      (set(), {"rtgi_sky_accum", "rtgi_sky_history",
+                                     "rtgi_accum", "rtgi_history"}),
 }
 
 # (world wrapper, stage, image name, the value of GI_DEBUG that writes it)
