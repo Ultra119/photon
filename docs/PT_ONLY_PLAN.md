@@ -922,6 +922,50 @@ This is the same correction as increment 2 applied one layer down: increment 2
 fixed what the *bypass* is told, this fixes what the *edge stops* are told.
 
 
+**In-game findings with `GI_DEBUG_BYPASS` (2026-11-05).**
+
+The view was built to test one prediction: that increment 2's "the blots got
+bigger and smoother" meant the wide passes had stayed on near the emitter rather
+than switching off. Confirmed, and with a detail that pins the mechanism:
+
+- **Red dots near lava on a blue field.** The wide passes are on only where the
+  estimate is actually still moving, and off almost everywhere else. That is the
+  SE gate working: increment 2's count gate fired at 1.000 on *every* pixel at
+  the cap, this one fires on a scattered few.
+- **The emitter block directly above the lava is completely blue.** This is the
+  useful one. A source that subtends a *large* solid angle is hit often, so its
+  samples are not rare and it carries no heavy tail — low variance, stays sharp.
+  Fireflies come from sources that subtend a *small* one: rare, huge, and
+  unclamped because `RTGI_MAX_RADIANCE = 12.0` sits above `EMISSION_ANCHOR =
+  8.0` on purpose. So "emitter nearby" and "firefly" are not the same
+  condition, and the gate does not confuse them.
+- **Increment 4 (edge stops on the standard error) is confirmed good in game.**
+
+**Ruled out by test: the sun as a firefly source.** The GI sky path is a plain
+environment-map lookup (`texture(sky_map, project_sky(ray_dir))` in
+`rt_gi.glsl`), which is textbook heavy-tailed: a cosine-weighted ray almost
+never finds the sun disc and returns an enormous radiance when it does. Strong
+hypothesis, and wrong — the user reports **no dots attributable to the sun**.
+Do not build sun NEE to chase this.
+
+**Open question: the sparse red dots on outdoor buildings and grass.** Two
+candidates, and they want opposite responses:
+
+1. *Fireflies from something other than the sun* — some emissive or very bright
+   voxel reached by a rare ray.
+2. *Genuinely bimodal geometry.* A grass blade or a building edge sends some
+   rays at bright sky and some at dark ground, so the per-sample spread is
+   legitimately large at those texels and the estimate really is uncertain. The
+   wide blur is then the correct answer, not a defect.
+
+The cheap discriminator is **stability**: fireflies flicker and migrate as new
+rare hits land (the M2 EMA holds each one for ~cap frames, ~2 s at 60 fps),
+whereas bimodal geometry keeps the same dots in the same places indefinitely.
+A second cross-check is `GI_DEBUG_HIT` at the same moment — it names whether
+the rays are escaping to sky or hitting voxels, which separates the two
+candidates outright.
+
+
 Tasks:
 
 - **Do not tune `RTGI_FILTER_PHI`, Gaussian weights or σ caps again.** The re-audit proved weight tuning does not change the footprint.
