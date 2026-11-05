@@ -216,6 +216,41 @@ void main() {
     // The PT-only fork always allocates the RTGI buffers, so there is no
     // "GI disabled" case to signal with a magenta screen any more.
     fragment_color = gi_debug_view(texel, uv, fragment_color);
+
+#if GI_DEBUG == GI_DEBUG_EMITTERS && defined RT_EMITTER_LIST
+    // Numeric readout of the raw list. The dots show where the view thinks the
+    // emitters are; these show what the list actually holds, so a misplaced dot
+    // can be told apart from a misread list. cnt = entries this frame, e0 = the
+    // first entry's cell, pld = its packed payload, cam = the camera's own cell
+    // (e0 should be within half the clipmap of cam, and pld must be non-zero).
+    uint dbg_count = texelFetch(emitter_list_sampler, ivec2(0, 0), 0).x;
+    ivec3 dbg_cell = ivec3(
+        int(texelFetch(emitter_list_sampler, ivec2(1, 0), 0).x),
+        int(texelFetch(emitter_list_sampler, ivec2(2, 0), 0).x),
+        int(texelFetch(emitter_list_sampler, ivec2(3, 0), 0).x));
+    uint dbg_payload = texelFetch(emitter_list_sampler, ivec2(4, 0), 0).x;
+
+    begin_text(ivec2(gl_FragCoord.xy) / debug_text_scale, debug_text_position);
+    text.bg_col = vec4(0.0);
+    print((_c, _n, _t));
+    text.char_pos.x = 12;
+    print_unsigned_int(min(dbg_count, RT_EMITTER_LIST_CAPACITY));
+    print_line();
+    print((_e, _0));
+    text.char_pos.x = 12;
+    print_ivec3(dbg_cell);
+    print_line();
+    print((_p, _l, _d));
+    text.char_pos.x = 12;
+    print_unsigned_int(dbg_payload);
+    print_line();
+    print((_c, _a, _m));
+    text.char_pos.x = 12;
+    print_ivec3(ivec3(floor((cameraPosition - rt_clip_origin_world(0))
+                            / rt_clip_scale(0))));
+    print_line();
+    end_text(fragment_color);
+#endif
     fragment_color = gi_debug_stamp_swatch(fragment_color, texel);
 #endif
 

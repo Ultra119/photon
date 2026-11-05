@@ -6,6 +6,11 @@ FILES=[
 '/world0/gbuffers_terrain.fsh','/world0/gbuffers_terrain_solid.fsh','/world0/gbuffers_block.fsh','/world0/gbuffers_entities.fsh','/world0/gbuffers_hand.fsh','/world0/gbuffers_particles.fsh','/world0/gbuffers_spidereyes.fsh','/world0/gbuffers_beaconbeam.fsh',
 '/world0/gbuffers_water.fsh','/world0/gbuffers_block_translucent.fsh','/world0/gbuffers_entities_translucent.fsh','/world0/gbuffers_hand_water.fsh','/world0/gbuffers_lightning.fsh','/world0/gbuffers_particles_translucent.fsh','/world0/gbuffers_textured.fsh',
 '/world0/shadow.fsh','/world0/shadow_block.fsh','/world0/shadow_cutout.fsh','/world0/shadow_entities.fsh','/world0/shadow_solid.fsh','/world0/shadow_water.fsh',
+# Vertex programs were absent from this list entirely, which meant voxel_update.glsl
+# -- included only by vertex shaders -- was never compiled by the gate. It is where
+# the P6.1 emitter list is built, and two increments shipped green without a line of
+# the build site ever being checked. shadow.vsh is the one that runs in world0.
+'/world0/shadow.vsh',
 '/world-1/deferred4.fsh','/world-1/gbuffers_water.fsh','/world-1/gbuffers_terrain_solid.fsh','/world-1/shadow.fsh','/world-1/composite1.fsh','/world-1/final.fsh',
 '/world1/deferred4.fsh','/world1/gbuffers_water.fsh','/world1/gbuffers_terrain_solid.fsh','/world1/shadow.fsh','/world1/composite1.fsh','/world1/final.fsh',
 ]
