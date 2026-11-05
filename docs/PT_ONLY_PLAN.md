@@ -1098,6 +1098,107 @@ Gate:
 - No NaN/Inf, no double-counted albedo/direct/emitter light.
 - Diffuse-only results remain stable when glossy transport is added.
 
+### P6.1 — Emitter NEE for the existing raw estimator (scoped)
+
+The P6 entry above describes a full explicit path tracer with a 1024-SPP
+against-a-CPU-reference gate. That is the right end state but it is not the
+thing the measurement calls for, and it is not one reviewable change. This is
+the narrow increment that answers the measurement, sized to land inside P6.
+
+**What was measured.** With `GI_DEBUG_BYPASS`, every torch-lit interior is
+flagged red at full sample count — the standard error of the mean exceeds 15 %
+of the mean over effectively the whole lit surface area. Lava behaves the same
+way. Foliage is red for a different and legitimate reason (bimodal cutout) and
+is out of scope here.
+
+**The mechanism, precisely.** `voxel_dda.glsl` splits emitters two ways:
+
+- *Cube emitters* (lava, glowstone) terminate the ray and are shaded by
+  `shade_voxel_hit`, so their emission enters `result.radiance`.
+- *Thin emitters* (torch, lantern, end rod, glow lichen, chain) are tested with
+  a **full-cell** shape and **do not terminate the ray**
+  (`result.passed_emission += mat.emission * ray_transmittance`). The full-cell
+  test was deliberate: gating on the emitter's half-cell shape produced a fake
+  slab-shaped shadow and cell-aligned banding.
+
+So the thin-emitter term is an indicator estimator: a ray either crosses the
+emitter's cell and returns the whole emission, or it returns ~zero. The event
+probability is the cell's cosine-weighted solid angle, ~1/r^2. In a room where
+block-light bounce is not implemented, essentially every other sample is zero,
+so `m1` is a small average over mostly-zero samples while `sigma` is set by rare
+large ones and `sigma/m1` explodes. **The estimator's mean is correct; only its
+tail is wrong.** The filter answers by blurring, which is why torch light
+smears across a room instead of falling off.
+
+**Two things that are NOT the problem, both checked this session:**
+
+- *Not double counting with vanilla block light.* `diffuse_lighting.glsl` has no
+  lightmap/block-light term at all — `direct_lighting` is analytic sun/sky plus
+  `material.emission`. `passed_emission` genuinely is how torch light reaches a
+  wall here, so removing it would darken torch-lit rooms rather than fix them.
+- *Not the sun.* Ruled out in game.
+
+**Constraints found, all of which bound the design:**
+
+1. **There is no emitter list anywhere in the pack.** Nothing enumerates
+   emissive voxels; `voxel_cache_generate` does not reference emission.
+2. **The image budget is full.** 15 base images under PT: 3 voxel clipmap
+   levels, 4 voxel cache, 8 RTGI (raw, history, accum, sky_accum, sky_history,
+   filtered, filter_inter, state). `GI_DEBUG_HIT`/`GI_DEBUG_REJECT` add a 16th
+   conditionally. `shaders.properties` already records that `rtgi_state_img`
+   took the last free slot and that P5's specular history must free a channel.
+   The voxel cache aux image has no spare channel either: `.rgb` carries the
+   filtered irradiance and `.a` packs both an uninitialised flag (`a < 0.5`)
+   and the sky fraction (`fract(a)`), so all four are used.
+3. **LOD tricks do not reach the near field.** `mat.emission` is deliberately
+   zeroed at `level > 0` so one distant light does not become a giant emissive
+   cube. Dimming instead of zeroing (by the cross-section ratio `s^2`) would be
+   unbiased and cut variance by `s^2`, but the clipmap's level 0 is 1:1 around
+   the camera — so it does nothing for the torch across the room, which is
+   exactly the case that is failing.
+4. **`trace_sun_visibility` is reusable.** It is a camera-independent voxel
+   march toward a light direction, already written to replace the cascade
+   lookup. NEE needs exactly this shape of query, generalised from the sun's
+   uniform `l_dir` to an arbitrary emitter direction.
+
+**Options, with honest costs:**
+
+- **(A) Emitter list + NEE + MIS.** Build a bounded emitter list during the
+  voxel update pass (append with an atomic counter into a small 2D image),
+  then per GI sample pick one emitter, march visibility with a generalised
+  `trace_sun_visibility`, and combine with the BSDF path under MIS. This is the
+  textbook fix and the only one that is both unbiased and correctly shaped: the
+  emitter stays a point, the tail collapses, and the room goes blue. Cost: one
+  image slot (the last one, which P5 was earmarked for, and which collides with
+  the two conditional debug images), plus a build pass, plus MIS weights that
+  must be right or the fix introduces bias that is harder to see than the
+  noise it removes.
+- **(B) Enlarge-and-dim the emitter cross-section.** Treat the emitter cell and
+  its 6 face neighbours as one region, collect `emission/7` when the ray enters
+  any of them. Unbiased to first order (7x the cross-section, 1/7 the value),
+  variance /7, no new memory, no new pass. Cost: ~7x the voxel fetches per DDA
+  step unless the neighbourhood test is gated on a precomputed proximity bit,
+  and there is no spare bit in the packed voxel. The residual is spatially
+  wrong in the same way blur is — light appears to leave a region one block
+  wider than the emitter — at 1/7 the amplitude.
+- **(C) Leave the estimator, improve the guidance.** Already measured and
+  rejected in P3 increments 1 and 4: the filter cannot fix estimator variance,
+  and smoothing made the fireflies more visible, not less.
+
+**Recommendation: (A), built in three separately-gated steps** — (A1) emitter
+list image + build pass with a `GI_DEBUG` view that renders the list so it can
+be verified independently of the shading, (A2) NEE with the BSDF term left
+untouched and the emitter term added (biased high by the double-count, but
+verifiable: the room should stop flickering), (A3) MIS to remove the
+double-count and make it correct. (A2) before (A3) is deliberate: it isolates
+"does the tail collapse" from "are the weights right", and (A2)'s over-bright
+failure mode is obvious in game whereas a wrong MIS weight is silent.
+
+**Blocking decision:** (A) needs the last image slot, which P5's specular
+history was reserved for, and which `GI_DEBUG_HIT`/`GI_DEBUG_REJECT` borrow.
+Either P6.1 goes first and P5 must free a channel later, or the debug views
+become incompatible with P6.1.
+
 ### P7 — Profiles, cleanup and release validation
 
 Tasks:
