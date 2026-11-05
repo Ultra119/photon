@@ -872,18 +872,54 @@ slightly more — and the pixels whose variance was already correct pay for it.
 Third incident of the same kind: the defect is real and measurable, and it is
 not what the image is limited by. Do not ship it.
 
-**Next: the upscale footprint.** `sample_rtgi_smooth`
-(`include/lighting/diffuse_lighting.glsl:92`) is a bare
-`textureLod(rtgi_sampler, coord, 0.0)` — the name promises a smooth upsample
-and it is a plain bilinear fetch. At `RTGI_RESOLUTION` 0 or 1 the GI buffer is
-quarter or half resolution, so that fetch bleeds indirect light around every
-depth silhouette and adds bilinear blockiness on top of the filter's square
-support. It has exactly one caller — `deferred4`, behind `PROGRAM_DEFERRED4` —
-and that program already has `depthtex1`, `view_res`, `frameCounter` and
-`gbufferProjectionInverse`, while the GI-resolution surface normal is already
-packed in the aux channel's `.ba`. A joint bilateral upsample (2×2 GI texels
-weighted by depth and normal agreement against the full-res pixel) therefore
-needs no new buffers and no new passes.
+**Increment 3 — the upscale footprint** (task: "redesign the upscale/filter
+footprint"). `sample_rtgi_smooth` was a bare `textureLod` despite the name. At
+`RTGI_RESOLUTION` 0 or 1 the GI buffer is quarter or half resolution, and
+bilinear cannot tell a foreground surface from the wall behind it, so it bled
+indirect light around every depth silhouette and added its own 2×2 blockiness on
+top of the filter's square support. It is now a joint bilateral upsample over
+the 2×2 GI texels, weighted by depth and normal agreement against the full-res
+pixel:
+
+| | rmse all | silhouette band | worst bleed |
+|---|---:|---:|---:|
+| bilinear (before) | 0.0469 | 0.1143 | +0.344 |
+| joint bilateral | 0.0167 | 0.0196 | +0.070 |
+
+On a flat surface all four taps agree on depth and normal, so their weights are
+equal and it degenerates to exactly the bilinear it replaces — nothing is lost
+in the interior. It is also insensitive to its own tolerances: every relative
+`sigma_z` in 0.02–0.10 and every normal exponent in 16–64 measured the same,
+which is the signature of structure rather than a knob. No new buffers or
+passes: the GI-resolution normal is already in the aux `.ba` (P1 state
+contract) and is the same gbuffer normal `deferred4` decodes into `flat_normal`.
+**Confirmed good in game.**
+
+**Increment 4 — the edge stops are guided by the standard error** (task:
+"preserve normal/depth/luminance edge stops, but feed them from the new variance
+and aux contract"). `var_normalized` feeds **both** `sigma_n` and the anti-bleed
+boost in the tap loop, and it is precisely the quantity a heavy-tailed estimator
+destroys. Near any small bright emitter the per-sample spread saturates it at
+~0.93, which floors the normal test (128 → ~16) *and* switches the corner
+protection off (4.0 → 1.21). Measured on a bright wall with a dark alcove four
+units behind it, both surfaces seeing the emitter so that neither luminance stop
+can save it:
+
+| `var_normalized` driven by | light leaking into the alcove | wall grain |
+|---|---:|---:|
+| per-sample sd (before) | **+0.5573** | 0.0710 |
+| standard error (now) | **+0.0018** | 0.0734 |
+
+99.7 % less bleed for 3.4 % more grain. The grain barely moves because on a flat
+surface every tap's normal agrees with the centre, so `pow(1.0, sigma_n)` is 1
+whatever the exponent is: the change only ever rejects taps *across* geometry
+and never reduces averaging within a surface. At N = 1 the standard error *is*
+the per-sample spread, so a fresh pixel behaves exactly as before and a moving
+one cannot be starved — which is what killed the rejected `sigma_l = PHI · SE`
+variant above.
+
+This is the same correction as increment 2 applied one layer down: increment 2
+fixed what the *bypass* is told, this fixes what the *edge stops* are told.
 
 
 Tasks:

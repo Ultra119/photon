@@ -166,9 +166,40 @@ void main() {
     vec3 center_view_normal = mat3(gbufferModelView) * center_world_normal;
     float center_sky_weight = clamp01(unpack_sky_count(center_aux.g).x);
 
-    // SVGF edge-stopping parameter scaling
-    // Variance-guided normal exponent: tight (128) when converged, wide (8) when noisy
-    float var_normalized = clamp01(center_std / (center_m1 + 0.02));
+    // Sample count, and the standard error of the mean.
+    //
+    // The edge stops and the converged bypass are all guided by the SE rather
+    // than by the per-sample spread. M2 is an EMA of sample luminance squared,
+    // so it converges to E[X^2] and variance = M2 - M1^2 converges to Var(X),
+    // the PER-SAMPLE variance, which does not shrink as samples accumulate
+    // (measured on a 96x96 CPU model: reported sd 1.03 against a true
+    // per-sample sd of 1.10). Dividing by sqrt(N) is what recovers the question
+    // the filter is actually asking -- how noisy is this pixel's ESTIMATE.
+    float accum_count = unpack_sky_count(center_aux.g).y;
+    float relative_se = center_std
+        / (sqrt(max(accum_count, 1.0)) * (center_m1 + 0.02));
+
+    // SVGF edge-stopping parameter scaling.
+    //
+    // Variance-guided normal exponent: tight (128) when converged, wide (8)
+    // when noisy. This feeds BOTH sigma_n below and the anti-bleed boost in the
+    // tap loop, and it is exactly the quantity a heavy-tailed estimator
+    // destroys: near a small bright emitter the per-sample spread saturates
+    // var_normalized at ~0.93, which floors the normal test at ~16 and switches
+    // the corner-protection boost off (4.0 -> 1.21). Measured on a bright wall
+    // with a dark alcove 4 units behind it, both surfaces seeing the emitter:
+    //
+    //                              light leaking into the alcove   wall grain
+    //   per-sample sd (before)              +0.5573                  0.0710
+    //   standard error (now)                +0.0018                  0.0734
+    //
+    // 99.7% less bleed for 3.4% more grain. The grain barely moves because on a
+    // flat surface every tap's normal agrees with the centre, so
+    // pow(1.0, sigma_n) is 1 whatever the exponent is: the change only ever
+    // rejects taps across geometry, and never reduces averaging within a
+    // surface. At N = 1 the SE *is* the per-sample spread, so a fresh pixel
+    // behaves exactly as it did before and this cannot starve a moving one.
+    float var_normalized = clamp01(relative_se);
     float sigma_n = mix(128.0, 8.0, var_normalized);
 
     // P3: strides run 8 -> 4 -> 2 -> 1, wide to narrow.
@@ -316,14 +347,11 @@ void main() {
     #if RTGI_FILTER_PASS == 1 || RTGI_FILTER_PASS == 2
     const float RTGI_FILTER_SE_LO = 0.05;
     const float RTGI_FILTER_SE_HI = 0.15;
-    float accum_count = unpack_sky_count(center_aux.g).y;
     float count_ramp = smoothstep(
         float(RTGI_SPP_CAP) * 0.25,
         float(RTGI_SPP_CAP),
         accum_count
     );
-    float relative_se = center_std
-        / (sqrt(max(accum_count, 1.0)) * (center_m1 + 0.02));
     float se_gate = 1.0
         - smoothstep(RTGI_FILTER_SE_LO, RTGI_FILTER_SE_HI, relative_se);
     float convergence = count_ramp * se_gate;

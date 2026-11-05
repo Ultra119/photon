@@ -34,7 +34,10 @@ Exit code 0 means every assertion held.
 from __future__ import annotations
 
 import math
+
+import numpy as np
 import pathlib
+
 import re
 import sys
 
@@ -226,11 +229,134 @@ def check_bypass_gate(failures: list[str]) -> None:
         )
 
 
+def alcove_model() -> tuple[float, float, float, float]:
+    """Bright wall with an emitter in view, dark alcove 4 units behind it.
+
+    Returns (bleed with spread, bleed with SE, wall grain with spread, wall
+    grain with SE). Both surfaces see the emitter, so both have an inflated
+    sigma_l and the luminance stop cannot save the alcove -- only the normal
+    test and the anti-bleed boost can.
+    """
+    rng = np.random.default_rng(5)
+    n = 48
+    yy, xx = np.mgrid[0:n, 0:n]
+    alcove = (np.abs(yy - n // 2) < 7) & (np.abs(xx - n // 2) < 7)
+    depth = np.where(alcove, 24.0, 20.0)
+    normal = np.where(alcove[..., None], np.array([0.30, 0.0, 0.95]),
+                      np.array([0.0, 0.0, 1.0]))
+    p = np.full((n, n), 0.05)
+    base = np.where(alcove, 0.15, 1.50)
+    mu = (1 - p) * base + p * 8.0
+
+    def sample():
+        hit = rng.random((n, n)) < p
+        b = np.maximum(base * (1.0 + 0.15 * rng.standard_normal((n, n))), 0.0)
+        return np.where(hit, 8.0, b)
+
+    def atrous(inp, stride, m2, N, mode):
+        c = inp
+        var = np.maximum(m2 - c * c, 0.0)
+        se = np.sqrt(var) / np.sqrt(np.maximum(N, 1.0))
+        vn = np.clip(se if mode == "se" else np.sqrt(var), 0, 1)
+        sigma_n = np.clip(128.0 + (8.0 - 128.0) * vn, 8.0, 128.0)
+        sigma_l = 10.0 * np.sqrt(var + 1e-6)
+        sigma_z = max(24.0 * 0.05, 0.10) * stride
+        acc = np.zeros_like(inp)
+        wsum = np.zeros_like(inp)
+        for dy in range(-2, 3):
+            for dx in range(-2, 3):
+                nv = np.roll(np.roll(inp, dy * stride, 0), dx * stride, 1)
+                nd = np.roll(np.roll(depth, dy * stride, 0), dx * stride, 1)
+                nn = np.roll(np.roll(normal, dy * stride, axis=0),
+                             dx * stride, axis=1)
+                plane = nd - depth
+                wd = np.exp(-np.abs(plane) / sigma_z)
+                ndot = np.maximum(np.sum(nn * normal, axis=-1), 0.0)
+                behind = (plane < -0.05) & (nv < c) & (ndot > 0.0)
+                wn = np.where(behind, 4.0 + (1.0 - 4.0) * vn,
+                              np.power(ndot, sigma_n))
+                wl = np.exp(-np.abs(nv - c) / sigma_l)
+                w = (1 / 16 if abs(dx) == 2 else (0.25 if abs(dx) == 1 else 0.375)) \
+                    * (1 / 16 if abs(dy) == 2 else (0.25 if abs(dy) == 1 else 0.375)) \
+                    * wd * wn * wl
+                acc += nv * w
+                wsum += w
+        return acc / np.maximum(wsum, 1e-4)
+
+    inner = np.zeros((n, n), bool)
+    inner[3:-3, 3:-3] = True
+    alc_b = alcove & inner
+    wall_b = (~alcove) & inner & (np.abs(yy - n // 2) < 17) & (np.abs(xx - n // 2) < 17)
+
+    out = []
+    for mode in ("sd", "se"):
+        N = np.zeros((n, n))
+        m1 = np.zeros((n, n))
+        m2 = np.zeros((n, n))
+        for _ in range(200):
+            X = sample()
+            N = np.minimum(N + 1.0, 128.0)
+            a = np.maximum(1.0 / np.maximum(N, 1.0), 0.01)
+            m1 = (1 - a) * m1 + a * X
+            m2 = (1 - a) * m2 + a * X * X
+        img = m1.copy()
+        for st in (8, 4, 2, 1):
+            img = atrous(img, st, m2, N, mode)
+        d = img - mu
+        out.append((float(np.mean(d[alc_b])),
+                    float(np.std(d[wall_b] - d[wall_b].mean()))))
+    return out[0][0], out[1][0], out[0][1], out[1][1]
+
+
+def check_edge_stop_guidance(failures: list[str]) -> None:
+    """Claim 4: the edge stops are guided by the standard error, not the spread.
+
+    var_normalized feeds BOTH sigma_n and the anti-bleed boost in the tap loop,
+    and it is exactly the quantity a heavy-tailed estimator destroys. Near any
+    small bright emitter the per-sample spread saturates it at ~0.93, which
+    floors the normal test (128 -> ~16) and switches the corner protection off
+    (4.0 -> 1.21). Measured on a bright wall with a dark alcove four units
+    behind it, both surfaces seeing the emitter, the alcove reads +0.5573 --
+    about 4.7x its true radiance -- for a wall grain of 0.0710. Driven by the
+    standard error it reads +0.0018 for 0.0734: 99.7% less bleed, 3.4% more
+    grain.
+    """
+    src = strip_comments(read(FILTER))
+    flat = "".join(src.split())
+
+    if "var_normalized=clamp01(relative_se)" not in flat:
+        failures.append(
+            "var_normalized is not driven by the standard error; the per-sample "
+            "spread saturates it near any small bright emitter, which floors "
+            "the normal test and switches the anti-bleed boost off"
+        )
+    if "clamp01(center_std/(center_m1+0.02))" in flat:
+        failures.append(
+            "var_normalized is still center_std / (center_m1 + 0.02), the "
+            "per-sample spread, which does not shrink as samples accumulate"
+        )
+
+    err_sd, err_se, grain_sd, grain_se = alcove_model()
+    if err_se > abs(err_sd) * 0.10:
+        failures.append(
+            f"light leaking into the alcove is {err_se:+.4f} with the standard "
+            f"error against {err_sd:+.4f} with the spread; expected at least a "
+            "10x reduction"
+        )
+    if grain_se > grain_sd * 1.15:
+        failures.append(
+            f"wall grain rose {grain_sd:.4f} -> {grain_se:.4f}; the tighter "
+            "normal test must not cost more than 15% of the noise reduction "
+            "within a surface"
+        )
+
+
 def main() -> int:
     failures: list[str] = []
     check_stride_order(failures)
     check_edge_stop_inert(failures)
     check_bypass_gate(failures)
+    check_edge_stop_guidance(failures)
 
     if failures:
         print(f"FAIL: {len(failures)} assertion(s)")
@@ -242,7 +368,8 @@ def main() -> int:
     print(
         "RTGI filter contract OK (strides "
         f"{strides()}, edge-stop inert at the cap, bypass gated on the "
-        f"standard error of the mean, PHI {phi} / cap {cap} unchanged)"
+        f"standard error of the mean, edge stops on the SE, "
+        f"PHI {phi} / cap {cap} unchanged)"
     )
     return 0
 
