@@ -2,35 +2,39 @@
 """Assert the P6.1 emitter-list contract.
 
 The emitter list is what lets the GI ray evaluate a torch analytically instead
-of waiting for a ray to happen across its cell. Every failure mode here is
-invisible to a compiler, and two of them are silent bias:
+of waiting for a ray to happen across its cell. It is built in
+`voxel_cache_generate.csh`, a compute pass with exactly one invocation per
+clipmap cell -- so every emitter is visited once by construction and no dedup
+is needed.
 
-1. **Duplicate entries.** The clipmap is written per-fragment by
-   `imageAtomicMax`, so a torch covered by 24 fragments would be appended 24
-   times and its emission counted 24 times. The dedup hinges on
-   `imageAtomicMax` returning the value it replaced and the grid being cleared
-   at frame start -- so `prev == 0` means "first writer to this cell this
-   frame". If that predicate is dropped, NEE over-brightens by the fragment
-   count and the error varies with distance and view angle.
+Every failure mode here is invisible to a compiler:
 
-2. **Payload divergence.** MIS weights are only valid if the NEE term and the
-   BSDF path agree on the emission. Storing anything other than the exact
-   packed voxel the DDA reads (e.g. re-deriving emission from the block id)
-   silently breaks that.
+1. **Where it is built.** It was originally in `voxel_update.glsl`, which is
+   included by nine vertex programs (gbuffers_terrain, gbuffers_terrain_solid,
+   gbuffers_block and every shadow_* variant). That meant ~9 passes a frame
+   writing one image, with ordering and clear semantics that cannot be checked
+   from here. Compute-to-later-pass is the pattern the RTGI buffers already use.
+
+2. **Ordering against the solid-cell early exit.** An emitter block is solid,
+   and the cache pass early-exits for solid cells. Building after that exit
+   silently produces an empty list.
 
 3. **Cube emitters crowding the list.** A lava lake is thousands of emitter
-   cells and would fill a 511-slot list, pushing every torch out. The list is
-   thin emitters only, which is also exactly the measured defect: those are
-   the ones the ray passes through without terminating.
+   cells and would fill all 511 slots, pushing every torch out. Thin emitters
+   only -- which is also exactly the measured defect, since those are the ones
+   the ray passes through without terminating.
 
-4. **Off-by-one on the counter.** Texel 0 is the atomic counter and data
-   starts at texel 1, so the bounds check has to reserve the header slot.
+4. **Square image.** A 2048x1 image put every DATA texel out of bounds. The
+   counter at index 0 still read fine, so the list reported itself completely
+   full while every entry was garbage, and an out-of-range fetch returns junk
+   rather than failing.
 
 Exit code 0 means every assertion held.
 """
 from __future__ import annotations
 
 import pathlib
+import random
 import re
 import sys
 
@@ -39,6 +43,7 @@ ROOT = HERE.parents[1]
 
 PROPS = ROOT / "shaders" / "shaders.properties"
 SETTINGS = ROOT / "shaders" / "settings.glsl"
+BUILD = ROOT / "shaders" / "program" / "rtgi" / "voxel_cache_generate.csh"
 UPDATE = ROOT / "shaders" / "include" / "lighting" / "voxel" / "voxel_update.glsl"
 
 failures: list[str] = []
@@ -51,6 +56,7 @@ def check(cond: bool, msg: str) -> None:
 
 props = PROPS.read_text(encoding="utf-8")
 settings = SETTINGS.read_text(encoding="utf-8")
+build = BUILD.read_text(encoding="utf-8")
 update = UPDATE.read_text(encoding="utf-8")
 
 # ---------------------------------------------------------------- declaration
@@ -60,178 +66,127 @@ decl = re.search(r"^image\.emitter_list_img\s*=\s*(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\
 check(decl is not None, "shaders.properties: emitter_list_img is not declared")
 if decl:
     sampler, pixfmt, internal, pixtype, clear, relative, w, h = decl.groups()
-    # imageAtomicAdd is only supported on r32i/r32ui -- rgba32ui compiles but
-    # fails at runtime, and glslang rejects it outright.
-    check(internal == "r32ui", f"emitter_list_img internal format is {internal}, expected r32ui (imageAtomicAdd only supports r32i/r32ui)")
+    # imageAtomicAdd is only supported on r32i/r32ui.
+    check(internal == "r32ui", f"emitter_list_img internal format is {internal}, expected r32ui")
     check(pixfmt == "red_integer", f"emitter_list_img pixel format is {pixfmt}, expected red_integer")
     check(pixtype == "unsigned_int", f"emitter_list_img pixel type is {pixtype}, expected unsigned_int")
-    # Cleared at frame start: the counter and the dedup's prev==0 test both
-    # depend on it. A stale counter would append past the end forever.
-    check(clear == "true", f"emitter_list_img clear is {clear}, expected true (atomic counter + prev==0 dedup)")
-    
-    # The guard must match the shader macro exactly or the image disappears
-    # while the build site still references it.
+    check(clear == "true", f"emitter_list_img clear is {clear}, expected true (the counter must start at 0)")
+    # Square: cannot be transposed, cannot run out of width.
+    check(w == h,
+          f"emitter_list_img is {w}x{h}; it must be square so a width/height mix-up cannot "
+          f"transpose it and a data texel cannot fall outside the row")
+
     guard = re.search(r"#if\s+GI_DEBUG\s*!=\s*GI_DEBUG_HIT\s*&&\s*GI_DEBUG\s*!=\s*GI_DEBUG_REJECT",
                       props)
     check(guard is not None,
-          "shaders.properties: emitter_list_img is not guarded on GI_DEBUG != HIT && != REJECT "
+          "shaders.properties: emitter_list_img must be guarded on GI_DEBUG != HIT && != REJECT "
           "(it shares the 16-image slot with those two views)")
 
     cap = re.search(r"#define\s+RT_EMITTER_LIST_CAPACITY\s+(\d+)u", settings)
     check(cap is not None, "settings.glsl: RT_EMITTER_LIST_CAPACITY is not defined")
     if cap:
-        # 4 texels per emitter (x, y, z, payload) plus the counter texel.
         need = 1 + 4 * int(cap.group(1))
         check(int(w) * int(h) >= need,
               f"emitter_list_img is {w}x{h} = {int(w)*int(h)} texels but capacity "
               f"{cap.group(1)} needs {need}")
-    
-check("#define RT_EMITTER_LIST 1" in settings,
-      "settings.glsl: RT_EMITTER_LIST is not defined (build site would be compiled out)")
 
-# RT_EMITTER_LIST must appear inside the same guard as the image declaration,
-# otherwise the shader references an image Iris never allocated.
-m = re.search(r"#if\s+GI_DEBUG\s*!=\s*GI_DEBUG_HIT\s*&&\s*GI_DEBUG\s*!=\s*GI_DEBUG_REJECT\s*\n"
-              r"\s*#define\s+RT_EMITTER_LIST\s+1\s*\n\s*#endif", settings)
-check(m is not None,
+# RT_EMITTER_LIST must sit inside the same guard as the image declaration.
+check(re.search(r"#if\s+GI_DEBUG\s*!=\s*GI_DEBUG_HIT\s*&&\s*GI_DEBUG\s*!=\s*GI_DEBUG_REJECT\s*\n"
+                r"\s*#define\s+RT_EMITTER_LIST\s+1\s*\n\s*#endif", settings) is not None,
       "settings.glsl: RT_EMITTER_LIST must be defined inside the same "
       "GI_DEBUG != HIT && != REJECT guard as the image declaration")
 
 # ---------------------------------------------------------------- build site
 
-mm = re.search(r"#if\s+defined\s+RT_EMITTER_LIST\s*\n\s*layout\(r32ui\) uniform uimage2D emitter_list_img;\s*\n\s*#endif",
-               update)
-check(mm is not None,
-      "voxel_update.glsl: emitter_list_img must be declared as uimage2D, inside an RT_EMITTER_LIST guard, with layout(r32ui)")
+check("emitter_list_img" not in update,
+      "voxel_update.glsl must not build the emitter list: it is included by nine vertex "
+      "programs, so the image would be written from ~9 passes a frame")
 
-# 1. Dedup: imageAtomicMax's return value must be captured and tested.
-check(re.search(r"uint\s+prev\s*=\s*imageAtomicMax\(\s*voxel_img\s*,\s*coord\s*,\s*payload\s*\)", update) is not None,
-      "voxel_update.glsl: level-0 write must capture imageAtomicMax's return value into `prev`")
-check("prev == 0u" in update,
-      "voxel_update.glsl: the append must be gated on prev == 0u, otherwise every "
-      "fragment covering an emitter appends a duplicate")
+check(re.search(r"#if\s+defined\s+RT_EMITTER_LIST\s*\n\s*layout\(r32ui\) uniform uimage2D emitter_list_img;\s*\n\s*#endif",
+                build) is not None,
+      "voxel_cache_generate.csh: emitter_list_img must be declared as uimage2D with "
+      "layout(r32ui), inside an RT_EMITTER_LIST guard")
 
-# 2. Thin emitters only.
-check("shape_class != VOXEL_SHAPE_CUBE" in update,
-      "voxel_update.glsl: the append must exclude cube emitters (shape_class != VOXEL_SHAPE_CUBE); "
-      "a lava lake would otherwise fill the list and crowd out every torch")
+# The solid-cell early exit returns before anything else; an emitter is solid,
+# so the build has to precede it or the list is always empty.
+early = build.find("imageStore(voxel_cache_sh_img, cell, vec4(0.0));")
+first_build = build.find("emitter_list_img")
+check(early != -1, "voxel_cache_generate.csh: could not find the solid-cell early exit")
+check(first_build != -1, "voxel_cache_generate.csh: emitter list is never written")
+if early != -1 and first_build != -1:
+    check(first_build < early,
+          "voxel_cache_generate.csh: the emitter list must be built BEFORE the solid-cell "
+          "early exit -- emitter blocks are solid, so anything after it never runs")
 
-# 3. Payload fidelity: store the same `payload` the DDA reads.
-for ch, expr in (("x", "uint(coord.x)"), ("y", "uint(coord.y)"), ("z", "uint(coord.z)"),
-                 ("payload", "payload")):
-    pass
-# Atomic, not imageStore: the clipmap sharing this pass is written with
-# imageAtomicMax, and atomic image ops carry cross-pass ordering guarantees a
-# plain store does not. The list is read two passes later in another program,
-# and a plain store from a vertex shader is not guaranteed to be visible there.
+check("list_vs.is_emitter && list_vs.shape_class != VOXEL_SHAPE_CUBE" in build,
+      "voxel_cache_generate.csh: must filter to thin emitters "
+      "(is_emitter && shape_class != VOXEL_SHAPE_CUBE)")
+
+check(re.search(r"uint\s+slot\s*=\s*imageAtomicAdd\(\s*emitter_list_img\s*,\s*rt_emitter_texel\(\s*0\s*\)\s*,\s*1u\s*\)",
+                build) is not None,
+      "voxel_cache_generate.csh: the slot must come from imageAtomicAdd on rt_emitter_texel(0)")
+check("slot < RT_EMITTER_LIST_CAPACITY" in build,
+      "voxel_cache_generate.csh: the bounds check must be `slot < RT_EMITTER_LIST_CAPACITY`")
+check("int base = 1 + int(slot) * 4;" in build,
+      "voxel_cache_generate.csh: base must be `1 + int(slot) * 4` (index 0 is the counter)")
+
+# Atomic, not imageStore: atomic image ops carry cross-pass ordering guarantees
+# a plain store does not, and this is read two passes later in another program.
 stores = re.findall(r"imageAtomicExchange\(\s*emitter_list_img\s*,\s*rt_emitter_texel\(\s*base([^)]*)\s*\)\s*,\s*(.*)\s*\)",
-                    update)
-check(len(stores) == 4, f"voxel_update.glsl: expected 4 imageStore calls per emitter (x, y, z, payload), found {len(stores)}")
+                    build)
+check(len(stores) == 4, f"voxel_cache_generate.csh: expected 4 imageAtomicExchange writes per "
+                        f"emitter (x, y, z, payload), found {len(stores)}")
 if len(stores) == 4:
-    check([e for _, e in stores] == ["uint(coord.x)", "uint(coord.y)", "uint(coord.z)", "payload"],
-          f"voxel_update.glsl: emitter texels are {[e for _, e in stores]}, expected "
-          "['uint(coord.x)', 'uint(coord.y)', 'uint(coord.z)', 'payload'] -- the exact packed "
+    check([e for _, e in stores] == ["uint(cell.x)", "uint(cell.y)", "uint(cell.z)", "list_packed"],
+          f"voxel_cache_generate.csh: emitter texels are {[e for _, e in stores]}, expected "
+          "['uint(cell.x)', 'uint(cell.y)', 'uint(cell.z)', 'list_packed'] -- the exact packed "
           "voxel, so NEE and the BSDF path agree on the emission")
     check([o.strip() for o, _ in stores] == ["", "+ 1", "+ 2", "+ 3"],
-          f"voxel_update.glsl: texel offsets are {[o.strip() for o, _ in stores]}, expected base, base+1, base+2, base+3")
-check("imageStore(emitter_list_img" not in update,
-      "voxel_update.glsl: entry texels must use imageAtomicExchange, not imageStore "
-      "-- a plain store from a vertex shader is not guaranteed visible to the pass that reads the list")
-check("int base = 1 + int(slot) * 4;" in update,
-      "voxel_update.glsl: base must be `1 + int(slot) * 4` (texel 0 is the counter, 4 texels per emitter)")
+          f"voxel_cache_generate.csh: texel offsets are {[o.strip() for o, _ in stores]}, "
+          "expected base, base+1, base+2, base+3")
+check("imageStore(emitter_list_img" not in build,
+      "voxel_cache_generate.csh: entry texels must use imageAtomicExchange, not imageStore")
 
-# 4. Counter / off-by-one.
-check(re.search(r"uint\s+slot\s*=\s*imageAtomicAdd\(\s*emitter_list_img\s*,\s*rt_emitter_texel\(\s*0\s*\)\s*,\s*1u\s*\)",
-                update) is not None,
-      "voxel_update.glsl: the slot must come from imageAtomicAdd on rt_emitter_texel(0)")
-check("slot < RT_EMITTER_LIST_CAPACITY" in update,
-      "voxel_update.glsl: the bounds check must be `slot < RT_EMITTER_LIST_CAPACITY`")
+# ------------------------------------------------------- CPU model of the build
 
-# The append must be inside the level-0 branch: coarse cells are conservative
-# occupancy cubes representing up to 16 blocks, so a level-1 coord is not a
-# block-accurate emitter position.
-lvl0 = re.search(r"if\s*\(\s*level\s*==\s*0\s*\)\s*\{(.*?)\n\s*\}\s*else\s+if\s*\(\s*level\s*==\s*1\s*\)",
-                 update, re.S)
-check(lvl0 is not None, "voxel_update.glsl: could not locate the level-0 branch")
-if lvl0:
-    check("emitter_list_img" in lvl0.group(1),
-          "voxel_update.glsl: the append must be inside the level-0 branch only "
-          "(level 0 is 1 block per cell; coarser levels are not block-accurate)")
-
-# ------------------------------------------------------- CPU model of the dedup
-
-def model(fragments, capacity=512):
-    """Replay the GPU logic over (cell, is_emitter) fragment writes.
-
-    `fragments` is a list of (cell, is_emitter) in arbitrary order. Returns
-    (entries, count) as the shader would leave them.
-    """
-    grid: dict[tuple[int, int, int], int] = {}   # cleared at frame start
+def model(cells_with_emitters, dim=128, capacity=511):
+    """Replay the compute pass: one invocation per cell, one append per emitter."""
     count = 0
-    entries: list[tuple] = []
-    for cell, is_emitter in fragments:
-        prev = grid.get(cell, 0)
-        grid[cell] = 1
-        if prev == 0 and is_emitter:
+    entries = []
+    for c in range(dim ** 3):
+        if c in cells_with_emitters:
             slot = count
             count += 1
-            if slot + 1 < capacity:
-                entries.append(cell)
-    return entries, min(count, capacity - 1)
+            if slot < capacity:
+                entries.append(c)
+    return entries, min(count, capacity)
 
 
-# One torch covered by many fragments (6 faces x 4 fragments) must append once.
-torch = (7, 9, 11)
-frags = [(torch, True)] * 24
-entries, count = model(frags)
-check(len(entries) == 1, f"dedup: a torch covered by 24 fragments produced {len(entries)} entries, expected 1")
-check(count == 1, f"dedup: counter reached {count}, expected 1")
+# One invocation per cell, so a torch is appended exactly once no matter how
+# many fragments covered it during voxelization. The old vertex-shader build
+# had to recover this with a first-writer test; here it is structural.
+entries, count = model({7})
+check(len(entries) == 1 and count == 1,
+      f"dedup: a single emitter produced {len(entries)} entries / count {count}, expected 1")
 
-# Several distinct thin emitters, each covered many times.
-emitters = [(i, i * 2, i * 3) for i in range(1, 6)]
-frags = []
-for c in emitters:
-    frags += [(c, True)] * 13
-frags += [((99, 99, 99), False)] * 40          # non-emitter geometry
-entries, count = model(frags)
-check(len(entries) == 5, f"dedup: 5 emitters produced {len(entries)} entries, expected 5")
-check(count == 5, f"dedup: counter reached {count}, expected 5")
+emitters = {i * 37 for i in range(1, 6)}
+entries, count = model(emitters)
+check(len(entries) == 5 and count == 5,
+      f"dedup: 5 emitters produced {len(entries)} entries / count {count}, expected 5")
 
-# Order independence: the atomic makes the final state independent of the order
-# fragments are written in, which is what makes this stable across frames.
-import random
-rng = random.Random(1234)
-shuffled = frags[:]
-rng.shuffle(shuffled)
-e2, c2 = model(shuffled)
-check(sorted(e2) == sorted(entries) and c2 == count,
-      "dedup: result depends on fragment write order")
+# Order independence is structural too -- the invocation index is the only input.
+rng = random.Random(99)
+for _ in range(20):
+    subset = {rng.randrange(128 ** 3) for _ in range(rng.randrange(1, 40))}
+    e, c = model(subset)
+    if sorted(e) != sorted(subset) or c != len(subset):
+        failures.append("dedup: result depends on iteration order")
+        break
 
-# Overflow: capacity is 512, texel 0 is the counter, so 511 emitters fit and
-# the 512th is dropped -- and the counter is clamped on read, not wrapped.
-many = [((i, 0, 0), True) for i in range(700)]
-entries, count = model(many)
+# Overflow: index 0 is the counter, so 511 emitters fit and the rest are dropped.
+entries, count = model(set(range(700)))
 check(len(entries) == 511, f"capacity: {len(entries)} entries stored, expected 511")
 check(count == 511, f"capacity: counter clamps to {count}, expected 511")
-
-# The image is sized from the capacity; an off-by-one here corrupts the last
-# emitter silently rather than failing.
-cap = re.search(r"#define\s+RT_EMITTER_LIST_CAPACITY\s+(\d+)u", settings)
-wid = re.search(r"^image\.emitter_list_img\s*=\s*\S+\s+\S+\s+\S+\s+\S+\s+\S+\s+\S+\s+(\d+)\s+(\d+)\s*$", props, re.M)
-if cap and wid:
-    w, h = int(wid.group(1)), int(wid.group(2))
-    last_texel = 1 + 4 * int(cap.group(1)) - 1
-    check(last_texel <= w * h - 1,
-          f"capacity {cap.group(1)} writes up to texel {last_texel} but the image only has "
-          f"{w}x{h} = {w*h} texels")
-    # Square on purpose. A 2048x1 image put every DATA texel out of bounds: the
-    # fetch returned ~1e9 garbage rather than failing, and only the counter at
-    # index 0 was ever valid, so the list looked full and was entirely junk. A
-    # square cannot be transposed by a width/height mix-up and cannot run out
-    # of width.
-    check(w == h,
-          f"emitter_list_img is {w}x{h}; it must be square so a width/height mix-up "
-          f"cannot transpose it and a data texel cannot fall outside the row")
 
 # ---------------------------------------------------------------------- report
 
@@ -241,5 +196,5 @@ if failures:
     print(f"\n{len(failures)} assertion(s) failed")
     sys.exit(1)
 
-print("emitter list contract OK (declaration, first-writer dedup, thin emitters only, "
-      "payload fidelity, capacity 511)")
+print("emitter list contract OK (square r32ui image, built in the compute pass, "
+      "thin emitters only, payload fidelity, capacity 511)")

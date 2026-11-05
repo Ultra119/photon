@@ -28,6 +28,15 @@ const ivec3 workGroups = ivec3(32, 32, 32);
 layout(rgba16f) writeonly uniform image3D voxel_cache_sh_img;
 layout(rgba16f) writeonly uniform image3D voxel_cache_aux_img;
 
+// P6.1 emitter list. Built here, not during voxelization: voxel_update.glsl
+// is included by nine different vertex programs, so the image was previously
+// written from ~9 passes a frame with unverifiable ordering and clear
+// semantics. This pass has exactly one invocation per clipmap cell, so every
+// emitter is seen once by construction and no dedup is needed.
+#if defined RT_EMITTER_LIST
+layout(r32ui) uniform uimage2D emitter_list_img;
+#endif
+
 uniform sampler3D voxel_cache_flip_sh_sampler;
 uniform sampler3D voxel_cache_flip_aux_sampler;
 
@@ -60,6 +69,28 @@ void main() {
     if (any(greaterThanEqual(cell, rt_clipmap_size))) return;
 
     vec3 cell_scene_pos = rt_clip_origin_scene(0) + vec3(cell) + 0.5;
+
+#if defined RT_EMITTER_LIST
+    // Must run before the solid-cell early exit below: an emitter is solid, so
+    // placing this after it would skip every emitter in the scene.
+    {
+        ivec3 list_vx = ivec3(floor(scene_to_voxel_space(cell_scene_pos)));
+        if (is_inside_voxel_grid(list_vx)) {
+            uint list_packed = texelFetch(voxel_sampler, list_vx, 0).r;
+            VoxelSample list_vs = unpack_voxel_data(list_packed);
+            if (list_vs.is_emitter && list_vs.shape_class != VOXEL_SHAPE_CUBE) {
+                uint slot = imageAtomicAdd(emitter_list_img, rt_emitter_texel(0), 1u);
+                if (slot < RT_EMITTER_LIST_CAPACITY) {
+                    int base = 1 + int(slot) * 4;
+                    imageAtomicExchange(emitter_list_img, rt_emitter_texel(base), uint(cell.x));
+                    imageAtomicExchange(emitter_list_img, rt_emitter_texel(base + 1), uint(cell.y));
+                    imageAtomicExchange(emitter_list_img, rt_emitter_texel(base + 2), uint(cell.z));
+                    imageAtomicExchange(emitter_list_img, rt_emitter_texel(base + 3), list_packed);
+                }
+            }
+        }
+    }
+#endif
 
     // Check occupancy: solid cells do not store air irradiance and early-exit immediately
     ivec3 vx_coord = ivec3(floor(scene_to_voxel_space(cell_scene_pos)));

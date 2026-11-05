@@ -11,12 +11,6 @@ layout(r32ui) uniform uimage3D voxel_img;
 layout(r32ui) uniform uimage3D voxel_mid_img;
 layout(r32ui) uniform uimage3D voxel_coarse_img;
 
-// P6.1 emitter list. Cleared at frame start like the clipmap, so texel 0
-// starts at zero and the terrain pass rebuilds it from scratch every frame.
-#if defined RT_EMITTER_LIST
-layout(r32ui) uniform uimage2D emitter_list_img;
-#endif
-
 #if defined PROGRAM_SHADOW || defined PROGRAM_GBUFFERS_TERRAIN || defined PROGRAM_GBUFFERS_WATER
 
 bool is_voxel_corner(vec3 pos, float tolerance) {
@@ -255,45 +249,7 @@ void update_rt_voxel_grid(
                 : (packed_data & ~(0xFu << 19u)); // force VOXEL_SHAPE_CUBE (4-bit shape field)
 
             if (level == 0) {
-                uint prev = imageAtomicMax(voxel_img, coord, payload);
-#if defined RT_EMITTER_LIST
-                // imageAtomicMax returns the value it replaced. The clipmap is
-                // cleared at frame start, so prev == 0 means this invocation is
-                // the first to claim the cell this frame: exactly one append
-                // per emitter no matter how many fragments cover it.
-                //
-                // Thin emitters only (shape != CUBE). Those are the ones the GI
-                // ray passes through WITHOUT terminating, which makes their
-                // contribution a rare-event indicator estimator -- the measured
-                // defect. Cube emitters (lava, glowstone) terminate the ray and
-                // are already sampled with a sane solid angle, and a lava lake
-                // would otherwise fill the list and crowd every torch out of it.
-                //
-                // The stored payload is the exact packed voxel the DDA will
-                // read, so NEE and the BSDF path agree on the emission
-                // bit-for-bit. That is what MIS correctness depends on.
-                if (prev == 0u && is_emitter && shape_class != VOXEL_SHAPE_CUBE) {
-                    uint slot = imageAtomicAdd(emitter_list_img, rt_emitter_texel(0), 1u);
-                    if (slot < RT_EMITTER_LIST_CAPACITY) {
-                        // Four texels per emitter: r32ui is a single-channel
-                        // format, and it is the only one imageAtomicAdd accepts.
-                        //
-                        // imageAtomicExchange rather than imageStore, even
-                        // though each slot has exactly one writer and the old
-                        // value is discarded. The clipmap that shares this pass
-                        // is written with imageAtomicMax, and atomic image
-                        // operations carry cross-pass ordering guarantees that
-                        // a plain store does not: the list is read two passes
-                        // later, in a different program, and a plain store from
-                        // a vertex shader is not guaranteed to be visible there.
-                        int base = 1 + int(slot) * 4;
-                        imageAtomicExchange(emitter_list_img, rt_emitter_texel(base), uint(coord.x));
-                        imageAtomicExchange(emitter_list_img, rt_emitter_texel(base + 1), uint(coord.y));
-                        imageAtomicExchange(emitter_list_img, rt_emitter_texel(base + 2), uint(coord.z));
-                        imageAtomicExchange(emitter_list_img, rt_emitter_texel(base + 3), payload);
-                    }
-                }
-#endif
+                imageAtomicMax(voxel_img, coord, payload);
             } else if (level == 1) {
                 imageAtomicMax(voxel_mid_img, coord, payload);
             } else {

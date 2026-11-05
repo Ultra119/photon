@@ -397,8 +397,6 @@ vec3 gi_debug_view(ivec2 texel, vec2 uv, vec3 fallback) {
 
     vec3 ed_origin = rt_clip_origin_world(0);
     float ed_scale = rt_clip_scale(0);
-    ivec3 ed_cam_cell = ivec3(floor((cameraPosition - ed_origin) / ed_scale));
-    vec3 ed_half = rt_clipmap_size_f * 0.5;
 
     for (uint i = 0u; i < ed_count; ++i) {
         int ed_texel0 = 1 + int(i) * 4;
@@ -409,11 +407,11 @@ vec3 gi_debug_view(ivec2 texel, vec2 uv, vec3 fallback) {
         );
         uint ed_payload = texelFetch(emitter_list_sampler, rt_emitter_texel(ed_texel0 + 3), 0).x;
 
-        // Undo the toroidal texel wrap relative to the camera's own cell, so
-        // this resolves to the true world cell rather than the wrapped address.
-        vec3 ed_rel = vec3(ed_texel - ed_cam_cell);
-        ed_rel -= rt_clipmap_size_f * floor((ed_rel + ed_half) / rt_clipmap_size_f);
-        vec3 ed_world = ed_origin + (vec3(ed_cam_cell) + ed_rel + 0.5) * ed_scale;
+        // The list stores clipmap-local cells, not toroidal texels, so there is
+        // nothing to unwrap: the compute pass that builds it iterates cells
+        // directly. (Unwrapping a toroidal address here was correct but added a
+        // failure mode the build no longer needs.)
+        vec3 ed_world = ed_origin + (vec3(ed_texel) + 0.5) * ed_scale;
 
         vec4 ed_clip = gbufferProjection * gbufferModelView
             * vec4(ed_world - cameraPosition, 1.0);
