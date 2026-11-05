@@ -44,3 +44,5 @@ echo "== PT reconstruction state contract (P1) =="
 python3 tools/shadercheck/pt_state_test.py
 echo "== RTGI spatial filter contract (P3) =="
 python3 tools/shadercheck/rtgi_filter_test.py
+echo "== RTGI joint bilateral upsample (P3) =="
+python3 tools/shadercheck/rtgi_upsample_test.py
