@@ -218,6 +218,8 @@ vec3 gi_debug_view_swatch() {
     return vec3(0.95, 0.95, 0.20);
 #elif GI_DEBUG == GI_DEBUG_BYPASS
     return vec3(0.10, 0.55, 0.95);
+#elif GI_DEBUG == GI_DEBUG_EMITTERS
+    return vec3(1.0, 0.85, 0.10);
 #else
     return vec3(0.0);
 #endif
@@ -376,6 +378,66 @@ vec3 gi_debug_view(ivec2 texel, vec2 uv, vec3 fallback) {
     vec3 bp_fresh = vec3(0.45, 0.45, 0.50);
     vec3 bp_blurred = (bp_se_gate <= bp_count_ramp) ? bp_noisy : bp_fresh;
     return mix(bp_blurred, bp_sharp, bp_count_ramp * bp_se_gate);
+#elif GI_DEBUG == GI_DEBUG_EMITTERS
+    // P6.1 A2: the emitter list drawn over a dimmed scene. This is the
+    // verification step for the NEE consumer -- a torch that is lit in the
+    // world but has no dot is one NEE would silently under-light, and a dot
+    // where no emitter exists is one it would invent light at. Confirm this
+    // before trusting anything the NEE term does.
+    //
+    // Deliberately not depth tested: the list is built during voxelization and
+    // carries no visibility, so showing occluded emitters is the point.
+#if defined RT_EMITTER_LIST
+    vec3 ed_base = fallback * 0.35;
+    vec3 ed_dots = vec3(0.0);
+
+    uint ed_count = texelFetch(emitter_list_sampler, ivec2(0, 0), 0).x;
+    ed_count = min(min(ed_count, RT_EMITTER_LIST_CAPACITY), GI_DEBUG_EMITTERS_MAX_DRAW);
+
+    vec3 ed_origin = rt_clip_origin_world(0);
+    float ed_scale = rt_clip_scale(0);
+    ivec3 ed_cam_cell = ivec3(floor((cameraPosition - ed_origin) / ed_scale));
+    vec3 ed_half = rt_clipmap_size_f * 0.5;
+
+    for (uint i = 0u; i < ed_count; ++i) {
+        int ed_texel0 = 1 + int(i) * 4;
+        ivec3 ed_texel = ivec3(
+            int(texelFetch(emitter_list_sampler, ivec2(ed_texel0, 0), 0).x),
+            int(texelFetch(emitter_list_sampler, ivec2(ed_texel0 + 1, 0), 0).x),
+            int(texelFetch(emitter_list_sampler, ivec2(ed_texel0 + 2, 0), 0).x)
+        );
+        uint ed_payload = texelFetch(emitter_list_sampler, ivec2(ed_texel0 + 3, 0), 0).x;
+
+        // Undo the toroidal texel wrap relative to the camera's own cell, so
+        // this resolves to the true world cell rather than the wrapped address.
+        vec3 ed_rel = vec3(ed_texel - ed_cam_cell);
+        ed_rel -= rt_clipmap_size_f * floor((ed_rel + ed_half) / rt_clipmap_size_f);
+        vec3 ed_world = ed_origin + (vec3(ed_cam_cell) + ed_rel + 0.5) * ed_scale;
+
+        vec4 ed_clip = gbufferProjection * gbufferModelView
+            * vec4(ed_world - cameraPosition, 1.0);
+        if (ed_clip.w <= 0.0) continue;
+        vec2 ed_uv = (ed_clip.xy / ed_clip.w) * 0.5 + 0.5;
+        if (any(lessThan(ed_uv, vec2(0.0))) || any(greaterThan(ed_uv, vec2(1.0)))) continue;
+
+        // Radius in pixels, not UV, so dots stay round at any aspect ratio.
+        float ed_hit = 1.0 - smoothstep(1.8, 3.0, length((ed_uv - uv) * view_res));
+
+        VoxelSample ed_sample = unpack_voxel_data(ed_payload);
+        VoxelMaterial ed_mat = get_voxel_material(ed_sample.block_id, ed_sample.color);
+        float ed_lum = dot(ed_mat.emission, luminance_weights);
+
+        // White core so every dot is locatable, tinted by its emission so a
+        // torch and a glowstone block are distinguishable at a glance.
+        vec3 ed_tint = ed_mat.emission / max(ed_lum, eps);
+        ed_dots += ed_hit * (vec3(0.35) + ed_tint * 0.65);
+    }
+    return ed_base + ed_dots;
+#else
+    // EMITTERS is neither HIT nor REJECT, so the list should always be
+    // allocated for this view. Solid red means the allocation guard drifted.
+    return vec3(1.0, 0.0, 0.0);
+#endif
 #elif GI_DEBUG == GI_DEBUG_HIT
     return gi_debug_hit_mask(
         vec4(gi_debug_smooth_3x3(rtgi_hit_sampler, rtgi_uv), 1.0)

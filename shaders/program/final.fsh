@@ -110,6 +110,14 @@ uniform sampler2D rtgi_sky_history_sampler;
 // Single-buffered P1 state, written by rtgi_temporal earlier in the same frame.
 uniform sampler2D rtgi_state_sampler;
 #endif
+#if GI_DEBUG == GI_DEBUG_EMITTERS && defined RT_EMITTER_LIST
+// P6.1 emitter list. r32ui, so it is read as an unsigned integer sampler:
+// texel 0 is the counter, then four texels per emitter.
+uniform usampler2D emitter_list_sampler;
+// Per-pixel cost is one pass over the list, so the draw is capped. 128 is
+// enough to verify a torch-lit room, which is the case that matters.
+#define GI_DEBUG_EMITTERS_MAX_DRAW 128u
+#endif
 
 #include "/include/debug/gi_debug.glsl"
 #endif

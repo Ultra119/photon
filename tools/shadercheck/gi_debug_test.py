@@ -61,6 +61,9 @@ EXPECTED = {
     # the aux pair and the radiance pair.
     "GI_DEBUG_BYPASS":      (set(), {"rtgi_sky_accum", "rtgi_sky_history",
                                      "rtgi_accum", "rtgi_history"}),
+    # P6.1: reads the emitter list directly, no RTGI buffer at all. It is the
+    # only view whose source is the voxelization side rather than the filter.
+    "GI_DEBUG_EMITTERS":    (set(), {"emitter_list"}),
 }
 
 # (world wrapper, stage, image name, the value of GI_DEBUG that writes it)
@@ -123,9 +126,9 @@ def main() -> int:
         # declaration is not a read, so drop those lines first.
         reads = set()
         for line in text.splitlines():
-            if re.match(r"\s*uniform\s+\w+\s+rtgi_\w+_sampler\s*;", line):
+            if re.match(r"\s*uniform\s+\w+\s+(?:rtgi_\w+|emitter_list)_sampler\s*;", line):
                 continue
-            reads.update(re.findall(r"\b(rtgi_[a-z_]+)_sampler\b", line))
+            reads.update(re.findall(r"\b((?:rtgi_[a-z_]+|emitter_list))_sampler\b", line))
 
         if encoders != want_encoders:
             failures.append(
