@@ -1,14 +1,8 @@
-/*
---------------------------------------------------------------------------------
-
-  Photon Shader: Native Voxel RTGI + SSGI Hybrid
-  program/rtgi/rtgi_trace.csh:
-  Trace diffuse indirect GI rays (Screen-Space + Voxel DDA)
-
---------------------------------------------------------------------------------
-*/
+// Trace diffuse indirect GI rays (world-space voxel RT)
 
 #include "/include/global.glsl"
+
+
 
 #if RTGI_RESOLUTION == 0
 const vec2 workGroupsRender = vec2(0.25, 0.25);
@@ -20,15 +14,19 @@ const vec2 workGroupsRender = vec2(0.5, 0.5);
 layout(local_size_x = 16, local_size_y = 16) in;
 
 layout(rgba16f) writeonly uniform image2D rtgi_raw_img;
+layout(rgba16f) writeonly uniform image2D rtgi_state_img;
 
-uniform usampler3D voxel_sampler;
+#if GI_DEBUG == GI_DEBUG_HIT
+layout(rgba8) writeonly uniform image2D rtgi_hit_img;
+#endif
+
+#include "/include/lighting/rt/voxel_samplers.glsl"
 uniform sampler2D shadowtex0;
 uniform sampler2D depthtex0;
 uniform sampler2D depthtex1;
 uniform sampler2D colortex1; // gbuffer0
 uniform sampler2D colortex2; // gbuffer1
 uniform sampler2D colortex4; // sky map & light colors
-uniform sampler2D colortex5; // previous frame scene color
 uniform sampler2D noisetex;
 
 uniform mat4 gbufferModelView;
@@ -60,7 +58,9 @@ uniform vec2 taa_offset;
 #include "/include/utility/encoding.glsl"
 #include "/include/utility/space_conversion.glsl"
 #include "/include/utility/random.glsl"
-#include "/include/lighting/rt/hybrid_rtgi.glsl"
+#include "/include/lighting/rt/path_trace.glsl"
+#include "/include/lighting/rt/pt_state.glsl"
+#include "/include/lighting/rt/contact_bleed.glsl"
 
 void main() {
 #if RTGI_RESOLUTION == 0
@@ -84,6 +84,10 @@ void main() {
 
     if (taau_uv_outside_viewport(uv)) {
         imageStore(rtgi_raw_img, texel, vec4(0.0));
+        imageStore(rtgi_state_img, texel, pt_state_pack(PT_RESET_NO_SURFACE, 1.0, 0.0, 0.0));
+#if GI_DEBUG == GI_DEBUG_HIT
+        imageStore(rtgi_hit_img, texel, vec4(0.0));
+#endif
         return;
     }
 
@@ -92,14 +96,17 @@ void main() {
     float depth = texelFetch(depthtex1, full_texel, 0).x;
     if (depth >= 1.0) {
         imageStore(rtgi_raw_img, texel, vec4(0.0));
+        imageStore(rtgi_state_img, texel, pt_state_pack(PT_RESET_NO_SURFACE, 1.0, 0.0, 0.0));
+#if GI_DEBUG == GI_DEBUG_HIT
+        imageStore(rtgi_hit_img, texel, vec4(0.0));
+#endif
         return;
     }
 
     // Unpack surface data
     vec4 gbuf0 = texelFetch(colortex1, full_texel, 0);
     vec3 world_normal = decode_unit_vector(unpack_unorm_2x8(gbuf0.z));
-    vec2 light_levels = unpack_unorm_2x8(gbuf0.w);
-    float surface_skylight = light_levels.y;
+    float receiver_skylight = unpack_unorm_2x8(gbuf0.w).y;
 
 #if defined NORMAL_MAPPING
     vec4 gbuf1 = texelFetch(colortex2, full_texel, 0);
@@ -116,64 +123,108 @@ void main() {
 
     // Spatio-temporal dither using channel .b (blue noise, NOT .rg which is 2D Worley cellular noise)
     vec2 dither = vec2(
-        texelFetch(noisetex, full_texel & 511, 0).b,
-        texelFetch(noisetex, (full_texel + 249) & 511, 0).b
+        texelFetch(noisetex, texel & 511, 0).b,
+        texelFetch(noisetex, (texel + 249) & 511, 0).b
     );
     dither = r2(frameCounter, dither);
 
     // Direct lighting & ambient colors encoded in colortex4 column 191
     vec3 direct_light_col = texelFetch(colortex4, ivec2(191, 0), 0).rgb;
-    vec3 sky_amb_col = texelFetch(colortex4, ivec2(191, 1), 0).rgb;
+    // Sky irradiance feeds the skylight-bounce term of voxel hit shading.
+    vec3 sky_irradiance_col = texelFetch(colortex4, ivec2(191, 1), 0).rgb;
 
-    // Ray budget (default 2 rays/pixel)
 #ifndef RTGI_RAY_COUNT
 #define RTGI_RAY_COUNT 2
 #endif
 
     vec4 accum_radiance = vec4(0.0);
+    float valid_paths = 0.0;
+
+#if GI_DEBUG == GI_DEBUG_HIT
+    vec3 hit_counts = vec3(0.0);
+#endif
 
     for (int r = 0; r < RTGI_RAY_COUNT; ++r) {
-        vec2 u = r2(r, dither);
-        vec3 ray_dir = sample_cosine_hemisphere(mapped_normal, u);
-
-        // Prevent ray from shooting into geometric surface
-        if (dot(ray_dir, world_normal) <= 0.0) {
-            ray_dir = reflect(ray_dir, world_normal);
-        }
-
-        vec4 radiance = evaluate_hybrid_rtgi_ray(
-            screen_pos,
-            view_pos,
-            mat3(gbufferModelView) * world_normal,
+        int hit_source = RTGI_HIT_NONE;
+        vec4 radiance = evaluate_path_trace(
             scene_pos,
             world_normal,
-            ray_dir,
-            dither.x,
+            mapped_normal,
+            dither,
+            receiver_skylight,
             voxel_sampler,
-            shadowtex0,
-            shadowModelView,
-            shadowProjection,
-            colortex5,
-            colortex1,
+            voxel_mid_sampler,
+            voxel_coarse_sampler,
+            colortex4,
             direct_light_col,
-            sky_amb_col,
+            sky_irradiance_col,
             light_dir,
-            surface_skylight,
-            depthtex0
+            r,
+            hit_source
         );
 
-        // Firefly suppression: limit extreme single-ray radiance spikes
+#if GI_DEBUG == GI_DEBUG_HIT
+        if (hit_source == RTGI_HIT_VOXEL) {
+            hit_counts.g += 1.0;
+        } else if (hit_source == RTGI_HIT_SKY) {
+            hit_counts.b += 1.0;
+        }
+#endif
+
+        // Firefly suppression
         float lum = dot(radiance.rgb, luminance_weights);
-        const float max_radiance_lum = 12.0;
-        if (lum > max_radiance_lum) {
-            radiance.rgb *= max_radiance_lum / lum;
+#ifndef RTGI_MAX_RADIANCE
+#define RTGI_MAX_RADIANCE 24.0
+#endif
+        if (lum > RTGI_MAX_RADIANCE) {
+            radiance.rgb *= RTGI_MAX_RADIANCE / lum;
         }
 
-        accum_radiance += radiance;
+        // Exclude non-finite radiance
+        bool path_valid = all(equal(radiance, radiance))
+            && all(greaterThanEqual(radiance.rgb, vec3(0.0)));
+
+        if (path_valid) {
+            valid_paths += 1.0;
+            accum_radiance += radiance;
+        }
     }
 
-    vec4 final_radiance = accum_radiance * (1.0 / float(RTGI_RAY_COUNT));
+    // Divide by valid contributing paths
+    float path_divisor = max(valid_paths, 1.0);
+    vec4 final_radiance = accum_radiance * (1.0 / path_divisor);
     final_radiance.a = clamp01(final_radiance.a);
+    float valid_path_fraction = valid_paths / float(RTGI_RAY_COUNT);
+
+#if defined WORLD_OVERWORLD && defined COPLANAR_CONTACT_BLEED
+    vec4 contact_bleed = gather_contact_diffuse_bleed(
+        uv,
+        depth,
+        scene_pos,
+        world_normal,
+        receiver_skylight,
+        direct_light_col,
+        light_dir,
+        dither,
+        voxel_sampler
+    );
+    final_radiance.rgb += contact_bleed.rgb;
+    if (contact_bleed.a > 0.0) {
+        float bleed_lum = dot(contact_bleed.rgb, luminance_weights);
+        float final_lum = dot(final_radiance.rgb, luminance_weights);
+        final_radiance.a = mix(final_radiance.a, 1.0, clamp01(bleed_lum / max(final_lum, eps)));
+        valid_path_fraction = max(valid_path_fraction, 1.0);
+    }
+#endif
 
     imageStore(rtgi_raw_img, texel, final_radiance);
+    imageStore(
+        rtgi_state_img,
+        texel,
+        pt_state_pack(PT_RESET_NONE, 0.0, valid_path_fraction, 0.0)
+    );
+
+#if GI_DEBUG == GI_DEBUG_HIT
+    imageStore(rtgi_hit_img, texel, vec4(hit_counts / float(RTGI_RAY_COUNT), 1.0));
+#endif
 }
