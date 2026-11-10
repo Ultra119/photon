@@ -28,7 +28,7 @@ uniform sampler2D DEBUG_SAMPLER;
 uniform float viewHeight;
 uniform float frameTimeCounter;
 
-#if defined RAYTRACED_GI && (defined WORLD_NETHER || !defined SHADOW)
+#if defined WORLD_NETHER || !defined SHADOW
 uniform sampler2D shadowtex0;
 #endif
 
@@ -53,6 +53,50 @@ uniform float far;
 
 #include "/include/misc/lod_mod_support.glsl"
 #include "/include/utility/space_conversion.glsl"
+#endif
+
+#if DEBUG_VIEW == DEBUG_VIEW_GI
+#ifndef DISTANCE_VIEW
+uniform mat4 gbufferModelView;
+uniform mat4 gbufferModelViewInverse;
+uniform mat4 gbufferProjection;
+uniform mat4 gbufferProjectionInverse;
+
+uniform vec2 view_res;
+uniform vec2 taa_offset;
+
+uniform float near;
+uniform float far;
+#endif
+
+uniform vec3 cameraPosition;
+uniform int frameCounter;
+uniform sampler2D depthtex0;
+uniform sampler2D depthtex1;
+
+#include "/include/utility/space_conversion.glsl"
+
+#include "/include/lighting/rt/voxel_samplers.glsl"
+
+uniform sampler2D rtgi_raw_sampler;
+uniform sampler2D rtgi_history_sampler;
+uniform sampler2D rtgi_accum_sampler;
+uniform sampler2D rtgi_filtered_sampler;
+#if GI_DEBUG == GI_DEBUG_HIT
+uniform sampler2D rtgi_hit_sampler;
+#endif
+#if GI_DEBUG == GI_DEBUG_REJECT
+uniform sampler2D rtgi_reject_sampler;
+#endif
+#if GI_DEBUG == GI_DEBUG_VARIANCE || GI_DEBUG == GI_DEBUG_SPP || GI_DEBUG == GI_DEBUG_BYPASS
+uniform sampler2D rtgi_sky_accum_sampler;
+uniform sampler2D rtgi_sky_history_sampler;
+#endif
+#if GI_DEBUG == GI_DEBUG_RESET
+uniform sampler2D rtgi_state_sampler;
+#endif
+
+#include "/include/debug/gi_debug.glsl"
 #endif
 
 const int debug_text_scale = 2;
@@ -144,6 +188,9 @@ void main() {
     }
 #elif DEBUG_VIEW == DEBUG_VIEW_WEATHER
     debug_weather(fragment_color);
+#elif DEBUG_VIEW == DEBUG_VIEW_GI
+    fragment_color = gi_debug_view(texel, uv, fragment_color);
+    fragment_color = gi_debug_stamp_swatch(fragment_color, texel);
 #endif
 
 #ifdef DISTANCE_VIEW
@@ -182,7 +229,7 @@ void main() {
         : vec3(clamp01(dist * rcp(DISTANCE_VIEW_MAX_DISTANCE)));
 #endif
 
-#if defined RAYTRACED_GI && (defined WORLD_NETHER || !defined SHADOW)
+#if defined WORLD_NETHER || !defined SHADOW
     // Must sample shadowtex0 so that the shadow map is rendered
     if (uv.x < 0.0) {
         fragment_color = texture(shadowtex0, uv).rgb;
