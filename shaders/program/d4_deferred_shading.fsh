@@ -28,12 +28,6 @@ flat in vec3 moon_color;
 #include "/include/fog/overworld/parameters.glsl"
 flat in OverworldFogParameters fog_params;
 
-#if defined SH_SKYLIGHT
-flat in mat3 sky_sh_0;
-flat in mat3 sky_sh_1;
-flat in mat3 sky_sh_2;
-flat in vec3 skylight_up;
-#endif
 
 flat in float rainbow_amount;
 #endif
@@ -431,23 +425,10 @@ void main() {
         }
 
         float ao = ambient_upscaled.x;
-        float ambient_sss = ambient_upscaled.y;
 
-        vec3 bent_normal;
-        bent_normal.xy = ambient_upscaled.zw * 2.0 - 1.0;
-        bent_normal.z
-            = sqrt(clamp01(1.0 - dot(bent_normal.xy, bent_normal.xy)));
-        bent_normal = mat3(gbufferModelViewInverse) * bent_normal;
-
-        // Sense check bent normal
-        if (dot(bent_normal, normal) < eps) {
-            bent_normal = normal;
-        }
-
-        // No AO/bent normal on hand
+        // The hand is outside the world-space voxel volume.
         if (is_hand) {
             ao = 1.0;
-            bent_normal = normal;
         }
 
         // Calculate lighting dot products
@@ -538,16 +519,16 @@ void main() {
 
         // Diffuse lighting
 
+        vec3 direct_diffuse;
         fragment_color = get_diffuse_lighting(
             material,
             position_scene,
             normal,
             flat_normal,
-            bent_normal,
+            normal, // Deferred RTGI does not use a bent-normal probe offset.
             shadows,
             light_levels,
             ao,
-            ambient_sss,
             sss_depth,
 #ifdef CLOUD_SHADOWS
             cloud_shadows,
@@ -560,15 +541,19 @@ void main() {
             NoL,
             NoV,
             NoH,
-            LoV
+            LoV,
+            direct_diffuse
         );
 
         // Specular highlight
 
 #if defined WORLD_OVERWORLD || defined WORLD_END
-        fragment_color
-            += get_specular_highlight(material, NoL, NoV, NoH, LoV, LoH)
-            * light_color * shadows * cloud_shadows * ao;
+        vec3 direct_specular = get_specular_highlight(material, NoL, NoV, NoH, LoV, LoH)
+            * light_color * shadows * cloud_shadows;
+#ifdef RT_AO_IN_DIRECT
+        direct_specular *= ao;
+#endif
+        fragment_color += direct_specular;
 #endif
 
         // Specular reflections

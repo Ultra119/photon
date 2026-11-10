@@ -54,13 +54,9 @@ uniform sampler2D colortex12; // clouds data
 uniform sampler2D colortex13; // rendered translucent layer
 uniform sampler2D colortex17; // stained glass optical filter data
 
-#if defined SHADOW || defined RT_REFLECTIONS
-#if defined AIR_FOG_COLORED_LIGHT_SHAFTS || defined RT_REFLECTIONS
 uniform sampler2D shadowcolor0;
 uniform sampler2D shadowtex0;
-#endif
 uniform sampler2D shadowtex1;
-#endif
 
 #ifdef DISTANT_HORIZONS
 uniform sampler2D colortex1; // distant water gbuffer

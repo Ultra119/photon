@@ -7,26 +7,21 @@
 #include "/include/surface/material.glsl"
 #include "/include/utility/fast_math.glsl"
 #include "/include/utility/phase_functions.glsl"
-#include "/include/utility/spherical_harmonics.glsl"
 
-
-#ifdef HANDHELD_LIGHTING
-#include "/include/lighting/handheld_lighting.glsl"
-#endif
 
 #if !defined WORLD_OVERWORLD
 #undef CLOUD_SHADOWS
 #endif
 
-// RTGI is evaluated from the opaque G-buffer/depth, so only deferred4 may
-// consume it. Forward-lit translucent surfaces below use analytic sky/block
-// lighting instead of sampling GI computed for the opaque pixel behind them.
-#if defined RAYTRACED_GI && defined PROGRAM_DEFERRED4
+#if defined PROGRAM_DEFERRED4
 #define DIFFUSE_USE_RTGI
 uniform sampler2D rtgi_filtered_sampler;
+uniform sampler2D rtgi_sky_accum_sampler;
+uniform sampler2D rtgi_sky_history_sampler;
+#include "/include/utility/encoding.glsl"
+#include "/include/utility/space_conversion.glsl"
 #include "/include/lighting/voxel/voxel_constants.glsl"
 #endif
-
 
 const float sss_density = 14.0;
 const float sss_scale = 5.0 * SSS_INTENSITY;
@@ -34,42 +29,6 @@ const float night_vision_scale = 1.5;
 const float metal_diffuse_amount
     = 0.5; // Scales diffuse lighting on metals, ideally this would be zero but
            // purely specular metals don't play well with SSR
-
-float get_blocklight_falloff(float blocklight, float skylight, float ao) {
-    float falloff = pow8(blocklight) + 0.18 * sqr(blocklight)
-        + 0.16 * dampen(blocklight); // Base falloff
-    falloff *= mix(
-        cube(ao),
-        1.0,
-        clamp01(falloff)
-    ); // Stronger AO further from the light source
-    falloff *= mix(
-        1.0,
-        ao * dampen(abs(cos(2.0 * frameTimeCounter))) * 0.67 + 0.2,
-        darknessFactor
-    ); // Pulsing blocklight with darkness effect
-    falloff *= 1.0 - 0.2 * time_noon * skylight
-        - 0.2 * skylight; // Reduce blocklight intensity in daylight
-    falloff += min(
-        2.7 * pow12(blocklight),
-        0.9
-    ); // Strong highlight around the light source, visible even in the daylight
-    falloff *= smoothstep(
-        0.0,
-        0.125,
-        blocklight
-    ); // Ease transition at edge of lightmap
-
-    return falloff;
-}
-
-float get_skylight_falloff(float skylight) {
-#if defined WORLD_OVERWORLD
-    return sqr(skylight);
-#else
-    return 1.0;
-#endif
-}
 
 #ifdef SHADOW_VPS
 vec3 sss_approx(
@@ -122,68 +81,93 @@ vec3 sss_approx(
 }
 #endif
 
-vec3 get_block_lighting(
-    vec3 scene_pos,
-    vec3 flat_normal,
-    vec2 light_levels,
-    float ao,
-    float directional_lighting
-) {
-    vec3 lighting = vec3(0.0f);
-
-    float blocklight_falloff
-        = get_blocklight_falloff(light_levels.x, light_levels.y, ao);
-    vec3 mc_blocklight = (blocklight_falloff * directional_lighting)
-        * (blocklight_scale * blocklight_color);
-
-    lighting += mc_blocklight;
-
-#ifdef HANDHELD_LIGHTING
-    lighting += get_handheld_lighting(scene_pos, ao);
-#endif
-
-    return lighting;
-}
-
-vec3 get_sky_lighting(
-    Material material,
-    vec3 bent_normal,
-    vec2 light_levels,
-    float ao,
-    float ambient_sss,
-    float directional_lighting
-) {
-    vec3 lighting = vec3(0.0f);
-
-#if defined WORLD_OVERWORLD && defined PROGRAM_DEFERRED4 && defined SH_SKYLIGHT
-    sh3 sky_sh_compat = sh3(sky_sh_0, sky_sh_1, sky_sh_2);
-
-    vec3 skylight = sh_evaluate_irradiance(sky_sh_compat, bent_normal, ao);
-    skylight = mix(skylight_up, skylight, sqr(light_levels.y));
-#else
-    vec3 skylight = ambient_color * ao;
-    vec3 skylight_up = skylight;
-#endif
-
-    // Skylight SSS
-    skylight = mix(skylight, 0.5 * skylight_up * ao, material.sss_amount);
-    skylight += ambient_sss * skylight_up * material.sss_amount * 2.0;
-
-#if defined WORLD_NETHER
-    // Brighten + desaturate nether ambient
-    skylight = 16.0 * directional_lighting
-        * mix(skylight, vec3(dot(skylight, luminance_weights_rec2020)), 0.5);
-#endif
-
-    lighting += skylight * get_skylight_falloff(light_levels.y);
-
-    return lighting;
-}
-
 #ifdef DIFFUSE_USE_RTGI
-// RGB = radiance, A = sky-origin weight
-vec4 sample_rtgi_smooth(sampler2D rtgi_sampler, vec2 coord) {
+// Joint bilateral upsample of the RTGI buffer.
+vec4 sample_rtgi_smooth(
+    sampler2D rtgi_sampler,
+    vec2 coord,
+    float center_linear_depth,
+    vec3 center_world_normal
+) {
+    ivec2 gi_res = textureSize(rtgi_sampler, 0);
+    ivec2 depth_res = textureSize(depthtex1, 0);
+
+#if RTGI_RESOLUTION == 2
+    // 1:1 -- there is nothing to upsample.
+    return texelFetch(
+        rtgi_sampler,
+        clamp(ivec2(coord * vec2(gi_res)), ivec2(0), gi_res - 1),
+        0
+    );
+#else
+    // The GI buffers are ping-ponged by the temporal pass; read the half that
+    // was written this frame.
+    bool ping = (frameCounter & 1) == 0;
+
+    vec2 texel_size = 1.0 / vec2(gi_res);
+    vec2 pos = coord * vec2(gi_res) - 0.5;
+    ivec2 base = ivec2(floor(pos));
+    vec2 f = pos - floor(pos);
+
+    float sigma_z = max(0.05 * center_linear_depth, 1e-3);
+
+    vec4 sum = vec4(0.0);
+    float sum_weight = 0.0;
+
+    for (int j = 0; j <= 1; ++j) {
+        for (int i = 0; i <= 1; ++i) {
+            ivec2 t = clamp(base + ivec2(i, j), ivec2(0), gi_res - 1);
+
+            float bilinear = (i == 0 ? 1.0 - f.x : f.x)
+                           * (j == 0 ? 1.0 - f.y : f.y);
+
+            vec2 t_uv = (vec2(t) + 0.5) * texel_size;
+            ivec2 t_px = ivec2(clamp(t_uv * view_res, vec2(0.0),
+                                     vec2(depth_res) - 1.0));
+            float t_depth = linearize_depth(texelFetch(depthtex1, t_px, 0).x);
+            float weight_depth
+                = exp(-abs(t_depth - center_linear_depth) / sigma_z);
+
+            vec4 t_aux = ping ? texelFetch(rtgi_sky_accum_sampler, t, 0)
+                              : texelFetch(rtgi_sky_history_sampler, t, 0);
+            float weight_normal = pow(
+                max(0.0, dot(decode_unit_vector(t_aux.ba),
+                             center_world_normal)),
+                32.0
+            );
+
+            float weight = bilinear * weight_depth * weight_normal;
+            sum += texelFetch(rtgi_sampler, t, 0) * weight;
+            sum_weight += weight;
+        }
+    }
+
+    if (sum_weight > 1e-4) {
+        return sum / sum_weight;
+    }
+
+    const ivec2 fallback_offsets[8] = ivec2[8](
+        ivec2(-1, 0), ivec2(2, 0), ivec2(0, -1), ivec2(0, 2),
+        ivec2(-1, -1), ivec2(2, -1), ivec2(-1, 2), ivec2(2, 2)
+    );
+    for (int k = 0; k < 8; ++k) {
+        ivec2 t = clamp(base + fallback_offsets[k], ivec2(0), gi_res - 1);
+        vec2 t_uv = (vec2(t) + 0.5) * texel_size;
+        ivec2 t_px = ivec2(clamp(t_uv * view_res, vec2(0.0), vec2(depth_res) - 1.0));
+        float t_depth = linearize_depth(texelFetch(depthtex1, t_px, 0).x);
+        vec4 t_aux = ping ? texelFetch(rtgi_sky_accum_sampler, t, 0)
+                          : texelFetch(rtgi_sky_history_sampler, t, 0);
+        float weight_normal = pow(
+            max(0.0, dot(decode_unit_vector(t_aux.ba), center_world_normal)),
+            32.0
+        );
+        if (abs(t_depth - center_linear_depth) < 2.0 * sigma_z && weight_normal > 0.1) {
+            return texelFetch(rtgi_sampler, t, 0);
+        }
+    }
+
     return textureLod(rtgi_sampler, coord, 0.0);
+#endif
 }
 #endif
 
@@ -197,7 +181,6 @@ vec3 get_diffuse_lighting(
     vec3 shadows,
     vec2 light_levels,
     float ao,
-    float ambient_sss,
     float sss_depth,
 #ifdef CLOUD_SHADOWS
     float cloud_shadows,
@@ -206,22 +189,24 @@ vec3 get_diffuse_lighting(
     float NoL,
     float NoV,
     float NoH,
-    float LoV
+    float LoV,
+    out vec3 direct_diffuse
 ) {
 #if defined PROGRAM_GBUFFERS_WATER
     // Small optimization, don't calculate diffuse lighting when albedo is 0 (eg
     // water)
     if (max_of(material.albedo) < eps) {
+        direct_diffuse = vec3(0.0);
         return vec3(0.0);
     }
 #endif
 
-    vec3 lighting = vec3(0.0);
+    vec3 direct_lighting = vec3(0.0);
+    vec3 indirect_lighting = vec3(0.0);
 
     // Arbitrary directional shading to make faces easier to distinguish
     float directional_lighting
-        = (0.9 + 0.1 * normal.x) * (0.8 + 0.2 * abs(flat_normal.y))
-        + 2.0 * ambient_sss * material.sss_amount;
+        = (0.9 + 0.1 * normal.x) * (0.8 + 0.2 * abs(flat_normal.y));
 
     // Negative SSS depth => SSS blocked by occluder (SSRT SSS)
     bool sss_blocked = sss_depth < 0.0 || light_levels.y < 0.1;
@@ -237,14 +222,6 @@ vec3 get_diffuse_lighting(
         * (1.0 - 0.5 * material.sss_amount)
     );
 
-#define DO_BOUNCED_LIGHTING true
-
-    vec3 bounced = vec3(0.0);
-    if (DO_BOUNCED_LIGHTING) {
-        bounced = 0.033 * (1.0 - shadows) * (1.0 - 0.1 * max0(normal.y))
-            * pow1d5(ao + eps) * pow4(light_levels.y) * BOUNCED_LIGHT_I;
-    }
-
     vec3 sss = sss_approx(
                    material.albedo,
                    material.sss_amount,
@@ -256,22 +233,20 @@ vec3 get_diffuse_lighting(
         * float(!sss_blocked);
 
     // Adjust SSS outside of shadow distance
-    sss *= mix(
-        1.0,
-        (ao + pi * ambient_sss) * (clamp01(NoL) * 0.8 + 0.2),
-        clamp01(shadow_distance_fade)
-    );
+    // RT contact AO may soften distant direct SSS, but never supplies an
+    // ambient irradiance term.
+    sss *= mix(1.0, ao * (clamp01(NoL) * 0.8 + 0.2), clamp01(shadow_distance_fade));
 
-#ifdef AO_IN_SUNLIGHT
+#ifdef RT_AO_IN_DIRECT
     diffuse *= sqr(ao);
 #endif
 
 #ifdef SHADOW_VPS
     // Add SSS and diffuse
-    lighting += diffuse * shadows + bounced + sss;
+    direct_lighting += diffuse * shadows + sss;
 #else
     // Blend SSS and diffuse
-    lighting += mix(diffuse, sss, material.sss_amount) * shadows + bounced;
+    direct_lighting += mix(diffuse, sss, material.sss_amount) * shadows;
 #endif
 #else
     // Simple shading for when shadows are disabled
@@ -287,99 +262,94 @@ vec3 get_diffuse_lighting(
     diffuse *= 1.0 * (0.9 + 0.1 * normal.x) * (0.8 + 0.2 * abs(flat_normal.y));
     diffuse *= ao * pow4(light_levels.y) * (dampen(light_dir.y) * 0.5 + 0.5);
 
-    lighting += diffuse;
+    direct_lighting += diffuse;
 #endif
 
-    lighting *= light_color;
+    direct_lighting *= light_color;
 
 #ifdef CLOUD_SHADOWS
-    lighting *= cloud_shadows;
+    direct_lighting *= cloud_shadows;
 #endif
 #endif
 
-    // Skylight & Indirect RTGI
-
-#ifdef DIFFUSE_USE_RTGI
-    // deferred4's uv is projection-space (0..1 across the TAAU viewport).
+    // Indirect lighting: RTGI
+#if defined DIFFUSE_USE_RTGI
     vec2 rtgi_coord = taau_framebuffer_uv(uv);
-    vec4 rtgi_sample = sample_rtgi_smooth(rtgi_filtered_sampler, rtgi_coord);
-    vec3 rtgi_indirect = rtgi_sample.rgb;
-    float rtgi_sky_weight = clamp01(rtgi_sample.a);
-
-    vec3 rtgi_lighting = rtgi_indirect * (1.6 * RTGI_BRIGHTNESS);
-
-    // Split sky/sun-origin GI from emissive/block-light GI. Only the sky part
-    // is suppressed on low-skylight receivers, so lava/lantern/emissive cave
-    // bounces are never lost.
-    float sky_visibility = clamp01(get_skylight_falloff(light_levels.y)) * ao;
-    float sky_retention = mix(RTGI_INTERIOR_RETENTION, 1.0, sky_visibility);
-    vec3 rtgi_sky = rtgi_lighting * rtgi_sky_weight;
-    vec3 rtgi_local = rtgi_lighting - rtgi_sky;
-    vec3 analytic_sky = get_sky_lighting(
-        material,
-        bent_normal,
-        light_levels,
-        ao,
-        ambient_sss,
-        directional_lighting
+    ivec2 depth_px = ivec2(clamp(rtgi_coord * view_res, vec2(0.0),
+                                 vec2(textureSize(depthtex1, 0)) - 1.0));
+    vec4 rtgi_sample = sample_rtgi_smooth(
+        rtgi_filtered_sampler,
+        rtgi_coord,
+        linearize_depth(texelFetch(depthtex1, depth_px, 0).x),
+        flat_normal
     );
-
-    lighting += rtgi_local
-        + rtgi_sky * sky_retention
-        + analytic_sky * (1.0 - sky_retention) * rtgi_sky_weight;
-
-    // Soft fallback for handheld lighting or areas outside voxel distance
-    vec3 mc_block = get_block_lighting(
-        scene_pos,
-        flat_normal,
-        light_levels,
-        ao,
-        directional_lighting
-    );
-    float voxel_edge_dist = get_voxel_edge_distance(scene_pos);
-    float voxel_edge_fade = smoothstep(
-        voxel_edge_fade_start,
-        voxel_edge_fade_end,
-        voxel_edge_dist
-    );
-    lighting += mc_block * voxel_edge_fade;
+    // RTGI stores mean incoming radiance; convert to irradiance for the
+    // shared (albedo / pi) diffuse composition below.
+    indirect_lighting = rtgi_sample.rgb * (pi * (RTGI_INTENSITY * RTGI_BRIGHTNESS));
 #else
-    // Analytic fallback for forward-lit translucent surfaces and for builds
-    // with RAYTRACED_GI disabled. The RTGI buffer describes the opaque layer,
-    // not the translucent fragment currently being shaded.
-    lighting += get_sky_lighting(
-        material,
-        bent_normal,
-        light_levels,
-        ao,
-        ambient_sss,
-        directional_lighting
-    );
-
-    lighting += get_block_lighting(
-        scene_pos,
-        flat_normal,
-        light_levels,
-        ao,
-        directional_lighting
-    );
+    indirect_lighting = vec3(0.0);
 #endif
 
-    lighting += material.emission * emission_scale;
+    direct_lighting += material.emission * emission_scale;
 
 #if defined WORLD_OVERWORLD
-    // Cave lighting
-
-    lighting += 0.15 * CAVE_LIGHTING_I * directional_lighting * ao
+    // Cave/indoor ambient
+    direct_lighting += 0.25 * CAVE_LIGHTING_I * directional_lighting * ao
         * (1.0 - light_levels.y * light_levels.y)
-        * (1.0 - 0.7 * darknessFactor)
-        * RTGI_CAVE_AMBIENT_SCALE;
-    lighting += nightVision * night_vision_scale * directional_lighting * ao;
+        * (1.0 - 0.7 * darknessFactor);
+    direct_lighting += nightVision * night_vision_scale * directional_lighting * ao;
 #endif
 
-    vec3 final_diffuse = max0(lighting) * material.albedo * rcp_pi
+    direct_diffuse = max0(direct_lighting) * material.albedo * rcp_pi
+        * mix(1.0, metal_diffuse_amount, float(material.is_metal));
+    direct_diffuse = conserve_diffuse_energy(direct_diffuse, material.f0, NoV);
+
+    vec3 final_diffuse = max0(direct_lighting + indirect_lighting) * material.albedo * rcp_pi
         * mix(1.0, metal_diffuse_amount, float(material.is_metal));
     return conserve_diffuse_energy(final_diffuse, material.f0, NoV);
+}
+
+// 14-parameter overload for callers that do not require direct_diffuse
+vec3 get_diffuse_lighting(
+    Material material,
+    vec3 scene_pos,
+    vec3 normal,
+    vec3 flat_normal,
+    vec3 bent_normal,
+    vec3 shadows,
+    vec2 light_levels,
+    float ao,
+    float sss_depth,
+#ifdef CLOUD_SHADOWS
+    float cloud_shadows,
+#endif
+    float shadow_distance_fade,
+    float NoL,
+    float NoV,
+    float NoH,
+    float LoV
+) {
+    vec3 direct_diffuse;
+    return get_diffuse_lighting(
+        material,
+        scene_pos,
+        normal,
+        flat_normal,
+        bent_normal,
+        shadows,
+        light_levels,
+        ao,
+        sss_depth,
+#ifdef CLOUD_SHADOWS
+        cloud_shadows,
+#endif
+        shadow_distance_fade,
+        NoL,
+        NoV,
+        NoH,
+        LoV,
+        direct_diffuse
+    );
 }
 
 #ifdef DIFFUSE_USE_RTGI

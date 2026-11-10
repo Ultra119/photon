@@ -140,10 +140,6 @@ uniform vec4 entityColor;
 #define NO_NORMAL
 #endif
 
-#ifdef DIRECTIONAL_LIGHTMAPS
-#include "/include/lighting/directional_lightmaps.glsl"
-#endif
-
 #include "/include/fog/simple_fog.glsl"
 #include "/include/lighting/diffuse_lighting.glsl"
 #include "/include/lighting/shadows/pcss.glsl"
@@ -277,7 +273,6 @@ void main() {
         shadows,
         light_levels,
         1.0,
-        0.0,
         sss_depth,
 #ifdef CLOUD_SHADOWS
         cloud_shadows,

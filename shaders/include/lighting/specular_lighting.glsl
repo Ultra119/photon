@@ -16,18 +16,6 @@
 #include "/include/fog/overworld/analytic.glsl"
 #endif
 
-// The voxel reflection fallback needs shadowtex0/shadowModelView/shadowProjection.
-// Nether programs and programs compiled with SHADOW disabled do not declare
-// shadowtex0, so disable the fallback there instead of failing to compile.
-#if defined RT_REFLECTIONS && (defined WORLD_NETHER || !defined SHADOW)
-#undef RT_REFLECTIONS
-#endif
-
-#ifdef RT_REFLECTIONS
-#include "/include/lighting/rt/rt_reflections.glsl"
-uniform usampler3D voxel_sampler;
-#endif
-
 // ----------------------
 //   Specular Highlight
 // ----------------------
@@ -152,48 +140,54 @@ vec3 sample_ggx_vndf(vec3 viewer_dir, vec2 alpha, vec2 hash) {
     viewer_dir.z));
 
         // Section 4.1: orthonormal basis (with special case if cross product is
-    zero) float len_sq = length_squared(viewer_dir.xy); vec3 T1 = (len_sq > 0) ?
-    vec3(-viewer_dir.y, viewer_dir.x, 0) * inversesqrt(len_sq) : vec3(1.0, 0.0,
-    0.0); vec3 T2 = cross(viewer_dir, T1);
+    in the z direction) float lensq = dot(viewer_dir.xy, viewer_dir.xy); vec3 T1
+    = lensq > 0.0 ? vec3(-viewer_dir.y, viewer_dir.x, 0.0) * inversesqrt(lensq)
+    : vec3(1.0, 0.0, 0.0); vec3 T2 = cross(viewer_dir, T1);
 
         // Section 4.2: parameterization of the projected area
         float r = sqrt(hash.x);
         float phi = 2.0 * pi * hash.y;
         float t1 = r * cos(phi);
         float t2 = r * sin(phi);
-        float s = 0.5 + 0.5 * viewer_dir.z;
-
+        float s = 0.5 * (1.0 + viewer_dir.z);
         t2 = (1.0 - s) * sqrt(1.0 - t1 * t1) + s * t2;
 
         // Section 4.3: reprojection onto hemisphere
-        vec3 normal = t1 * T1 + t2 * T2 + sqrt(max0(1.0 - t1 * t1 - t2 * t2)) *
+        vec3 Nh = t1 * T1 + t2 * T2 + sqrt(max0(1.0 - t1 * t1 - t2 * t2)) *
     viewer_dir;
 
         // Section 3.4: transforming the normal back to the ellipsoid
-    configuration normal = normalize(vec3(alpha * normal.xy, max0(normal.z)));
+    configuration return normalize(vec3(alpha * Nh.xy, max0(Nh.z)));
+    */
 
-        return normal;
-    /*/
-    // Improved GGX importance sampling function by zombye
-    // https://ggx-research.github.io/publication/2023/06/09/publication-ggx.html
+    ///*
+    // -- A Simpler and Exact Sampling Routine for the GGX Distribution of
+    // Visible Normals --
+    // Eric Heitz, Unity Technologies
+    // https://hal.science/hal-01509746/document
 
-    // Transform viewer direction to the hemisphere configuration
-    viewer_dir = normalize(vec3(alpha * viewer_dir.xy, viewer_dir.z));
+    // Section 2: transforming the view direction to the hemisphere
+    // configuration
+    vec3 v = normalize(vec3(alpha * viewer_dir.xy, viewer_dir.z));
 
-    // Sample a reflection direction off the hemisphere
-    const float tau = 6.2831853; // 2 * pi
-    float phi = tau * hash.x;
-    float cos_theta = fma(1.0 - hash.y, 1.0 + viewer_dir.z, -viewer_dir.z);
-    float sin_theta = sqrt(clamp(1.0 - cos_theta * cos_theta, 0.0, 1.0));
-    vec3 reflected = vec3(vec2(cos(phi), sin(phi)) * sin_theta, cos_theta);
+    // Section 3.2: computing the orthonormal basis
+    vec3 t1 = (v.z < 0.9999)
+        ? normalize(cross(v, vec3(0.0, 0.0, 1.0)))
+        : vec3(1.0, 0.0, 0.0);
+    vec3 t2 = cross(t1, v);
 
-    // Evaluate halfway direction
-    // This gives the normal on the hemisphere
-    vec3 halfway = reflected + viewer_dir;
+    // Section 3.3: parameterizing the projected area
+    float a = 1.0 / (1.0 + v.z);
+    float rd = sqrt(hash.x);
+    float phi = (hash.y < a) ? hash.y / a * pi : pi + (hash.y - a) / (1.0 - a) * pi;
+    float p1 = rd * cos(phi);
+    float p2 = rd * sin(phi) * ((hash.y < a) ? 1.0 : v.z);
 
-    // Transform the halfway direction back to hemiellispoid configuation
-    // This gives the final sampled normal
-    return normalize(vec3(alpha * halfway.xy, halfway.z));
+    // Section 3.4: reconstructing the normal
+    vec3 h = p1 * t1 + p2 * t2 + sqrt(max0(1.0 - p1 * p1 - p2 * p2)) * v;
+
+    // Section 3.5: transforming the normal back to the ellipsoid configuration
+    return normalize(vec3(alpha * h.xy, max0(h.z)));
     //*/
 }
 
@@ -214,7 +208,6 @@ vec3 trace_specular_ray(
     vec3 screen_pos,
     vec3 view_pos,
     vec3 world_pos,
-    vec3 surface_normal,
     vec3 ray_dir,
     float dither,
     float skylight,
@@ -296,42 +289,9 @@ vec3 trace_specular_ray(
         reflection = reflection * analytic_fog[1] + analytic_fog[0];
 #endif
 
-#ifdef RT_REFLECTIONS
-        vec3 voxel_fallback = trace_voxel_specular_fallback(
-            world_pos - cameraPosition,
-            surface_normal,
-            ray_dir,
-            voxel_sampler,
-            shadowtex0,
-            shadowModelView,
-            shadowProjection,
-            light_color,
-            ambient_color,
-            light_dir,
-            sky_reflection
-        );
-#else
-        vec3 voxel_fallback = sky_reflection;
-#endif
-        return mix(voxel_fallback, reflection, border_attenuation);
+        return mix(sky_reflection, reflection, border_attenuation);
     } else {
-#ifdef RT_REFLECTIONS
-        return trace_voxel_specular_fallback(
-            world_pos - cameraPosition,
-            surface_normal,
-            ray_dir,
-            voxel_sampler,
-            shadowtex0,
-            shadowModelView,
-            shadowProjection,
-            light_color,
-            ambient_color,
-            light_dir,
-            sky_reflection
-        );
-#else
         return sky_reflection;
-#endif
     }
 }
 
@@ -393,7 +353,6 @@ vec3 get_specular_reflections(
                 screen_pos,
                 view_pos,
                 world_pos,
-                microfacet_normal,
                 ray_dir,
                 dither,
                 skylight,
@@ -461,7 +420,6 @@ vec3 get_specular_reflections(
         screen_pos,
         view_pos,
         world_pos,
-        normal,
         ray_dir,
         dither,
         skylight,

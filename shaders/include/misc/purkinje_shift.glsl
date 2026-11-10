@@ -28,7 +28,7 @@ vec3 purkinje_shift(vec3 rgb, vec2 light_levels) {
     vec3 xyz = rgb * rec2020_to_xyz;
 
     vec3 scotopic_luminance
-        = xyz * (1.33 * (1.0 + (xyz.y + xyz.z) / xyz.x) - 1.68);
+        = xyz * (1.33 * (1.0 + (xyz.y + xyz.z) / max(xyz.x, eps)) - 1.68);
 
     float purkinje = dot(rod_response, scotopic_luminance * xyz_to_rec2020);
 
