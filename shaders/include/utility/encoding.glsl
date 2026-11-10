@@ -114,4 +114,7 @@ float unsplit_2x8(vec2 v) {
     return float(i) * rcp(65535.0);
 }
 
+// The sky-fraction / sample-count packer used by the reconstruction chain lives
+// in /include/lighting/rt/pt_state.glsl, next to the rest of the P1 state
+// contract, so the packing and its consumers cannot drift apart.
 #endif // INCLUDE_UTILITY_ENCODING

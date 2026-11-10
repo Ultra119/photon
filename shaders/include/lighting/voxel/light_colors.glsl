@@ -8,7 +8,7 @@ const vec3[48] voxel_light_color_table = vec3[48](
     vec3(1.00, 0.55, 0.27) * 14.0, // Strong golden light
     vec3(1.00, 0.57, 0.30) * 8.0, // Medium golden light
     vec3(1.00, 0.57, 0.30) * 6.0, // Weak golden light
-    vec3(1.00, 0.18, 0.10) * 5.0, // Redstone components
+    vec3(1.00, 0.20, 0.08) * 1.5, // Redstone torch and lit redstone ore
     vec3(1.00, 0.38, 0.10) * 7.0, // Lava
     vec3(1.00, 0.45, 0.10) * 9.0, // Medium orange light
     vec3(1.00, 0.63, 0.15) * 4.0, // Brewing stand
@@ -28,7 +28,7 @@ const vec3[48] voxel_light_color_table = vec3[48](
     vec3(0.75, 0.44, 1.00) * 4.0, // Amethyst cluster
     vec3(0.75, 0.44, 1.00) * 4.0, // Calibrated sculk sensor
     vec3(0.75, 1.00, 0.83) * 6.0, // Active sculk sensor
-    vec3(1.00, 0.18, 0.10) * 3.3, // Redstone block
+    vec3(0.0), // Redstone components and logic (non-emitting)
     vec3(1.00, 0.50, 0.25) * 3.0, // Open eyeblossom
     vec3(0.85, 1.3, 1.0) * 3.9, // Copper torch and lanterns
     vec3(1.00, 0.57, 0.30) * 8.0, // Copper Bulbs
@@ -71,5 +71,55 @@ const vec3[16] voxel_tint_color_table = vec3[16](
     vec3(0.3, 0.3, 0.3), // Gray
     vec3(0.7, 0.7, 0.7) // Light gray
 );
+
+const float[48] voxel_light_level_table = float[48](
+     15.0, //  0 sea_lantern
+     14.0, //  1 end_rod
+      1.0, //  2 glow_lichen (*)
+     15.0, //  3 glowstone, lantern, redstone_lamp:lit, creaking_heart:active
+     14.0, //  4 torch, campfire:lit, furnace:lit, torchflower (torch-dominant)
+     14.0, //  5 cave_vines:berries
+      1.0, //  6 redstone_torch:lit, lit redstone ore
+     15.0, //  7 lava
+     15.0, //  8 fire, shroomlight (magma_block shares the entry; vanilla L3)
+      1.0, //  9 brewing_stand
+     15.0, // 10 jack_o_lantern
+     10.0, // 11 soul_fire, soul_torch, soul_lantern, soul_campfire:lit
+     15.0, // 12 beacon
+      1.0, // 13 end_portal_frame:eye=true (*)
+      1.0, // 14 sculk family, ominous trial spawner
+     10.0, // 15 crying_obsidian (spawner/dragon head in the entry do not emit)
+      6.0, // 16 sea_pickle:waterlogged (single pickle; 4 pickles reach 15)
+      4.0, // 17 crimson/warped fungus (*)
+     14.0, // 18 candle:lit (single candle)
+     15.0, // 19 ochre_froglight
+     15.0, // 20 verdant_froglight
+     15.0, // 21 pearlescent_froglight
+      1.0, // 22 enchanting_table
+      5.0, // 23 amethyst cluster (buds share the entry; cluster is L5)
+      1.0, // 24 calibrated_sculk_sensor inactive/cooldown
+      1.0, // 25 sculk_sensor / calibrated_sculk_sensor active
+      0.0, // 26 redstone components and logic (non-emitting)
+      3.0, // 27 open_eyeblossom (*)
+     14.0, // 28 copper_torch, copper_lantern
+     15.0, // 29 copper_bulb:lit
+     11.0, // 30 nether_portal
+      0.0, // 31 end_portal / end_gateway (portal rendering handles the light)
+     // Modded "illuminant" blocks (64-79): treated as full-bright lights.
+     15.0, 15.0, 15.0, 15.0, 15.0, 15.0, 15.0, 15.0,
+     15.0, 15.0, 15.0, 15.0, 15.0, 15.0, 15.0, 15.0
+);
+
+#ifndef EMISSION_ANCHOR
+#define EMISSION_ANCHOR 16.0
+#endif
+
+// Vanilla lightmap response g(f) = f / (4 - 3f) (LightTexture curve):
+// L15 -> 1.000, L14 -> 0.767, L11 -> 0.407, L10 -> 0.333, L6 -> 0.143,
+// L5 -> 0.111, L3 -> 0.059, L1 -> 0.0175.
+float voxel_light_response(float level) {
+    float f = clamp(level, 0.0, 15.0) * (1.0 / 15.0);
+    return f / max(4.0 - 3.0 * f, 1e-4);
+}
 
 #endif // INCLUDE_LIGHTING_VOXEL_LIGHT_COLORS

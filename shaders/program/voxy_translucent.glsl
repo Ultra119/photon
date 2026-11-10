@@ -13,10 +13,6 @@
 #undef SHADOW_SSRT
 #endif
 
-#ifdef ENVIRONMENT_REFLECTIONS
-#undef ENVIRONMENT_REFLECTIONS
-#endif
-
 
 vec3 ambient_color;
 vec3 light_color;
@@ -147,11 +143,9 @@ void voxy_emitFragment(VoxyFragmentParameters parameters) {
     // Get light colors
 
     light_color = texelFetch(colortex4, ivec2(191, 0), 0).rgb;
-#if defined WORLD_OVERWORLD && defined SH_SKYLIGHT
-    ambient_color = texelFetch(colortex4, ivec2(191, 11), 0).rgb;
-#else
+    // Environment appearance for fog/media only; RT surface irradiance comes
+    // from traced GI/probes, never from this sky color or an SH ambient term.
     ambient_color = texelFetch(colortex4, ivec2(191, 1), 0).rgb;
-#endif
 
     // Get base properties
 
@@ -253,7 +247,6 @@ void voxy_emitFragment(VoxyFragmentParameters parameters) {
         shadows,
         parameters.lightMap,
         1.0, // AO
-        0.0, // Ambient SSS
         sss_depth,
 #ifdef CLOUD_SHADOWS
         cloud_shadows,

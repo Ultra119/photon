@@ -163,10 +163,6 @@ vec3 light_color, ambient_color;
 #define NO_NORMAL
 #endif
 
-#ifdef DIRECTIONAL_LIGHTMAPS
-#include "/include/lighting/directional_lightmaps.glsl"
-#endif
-
 #include "/include/fog/simple_fog.glsl"
 #include "/include/lighting/diffuse_lighting.glsl"
 #include "/include/lighting/voxel/light_colors.glsl"
@@ -366,7 +362,7 @@ void main() {
     // packed normal; stained glass uses glass_filter_data for its tint. Keeping
     // them separate avoids the alpha-channel collision in colortex3.
     refraction_data = vec4(0.0);
-    glass_filter_data = vec4(0.0);
+    glass_filter_data = vec4(1.0, 1.0, 1.0, 0.0);
 #endif
 
     vec2 coord = gl_FragCoord.xy * view_pixel_size * rcp(taau_render_scale);
@@ -382,11 +378,7 @@ void main() {
     // Get light colors
 
     light_color = texelFetch(colortex4, ivec2(191, 0), 0).rgb;
-#if defined WORLD_OVERWORLD && defined SH_SKYLIGHT
-    ambient_color = texelFetch(colortex4, ivec2(191, 11), 0).rgb;
-#else
     ambient_color = texelFetch(colortex4, ivec2(191, 1), 0).rgb;
-#endif
 
     // Space conversions
 
@@ -581,13 +573,6 @@ void main() {
         decode_normal_map(normal_map, normal_tangent, material_ao);
 
         normal = tbn * normal_tangent;
-
-        adjusted_light_levels *= mix(0.7, 1.0, material_ao);
-
-#ifdef DIRECTIONAL_LIGHTMAPS
-        adjusted_light_levels
-            *= get_directional_lightmaps(position_scene, normal);
-#endif
 #endif
 
 #ifdef SPECULAR_MAPPING
@@ -644,7 +629,6 @@ void main() {
               shadows,
               adjusted_light_levels,
               1.0,
-              0.0,
               sss_depth,
 #ifdef CLOUD_SHADOWS
               cloud_shadows,

@@ -13,31 +13,6 @@ struct VoxelMaterial {
     bool is_translucent;
 };
 
-// Full-block emitters are handled as solid emissive hits. Smaller emitters
-// (torches, lanterns, candles, end rods, etc.) get a radial light field and
-// should not stop a DDA ray by themselves.
-bool is_point_light_emitter(uint block_id) {
-    if (block_id < 32u || block_id >= 80u) {
-        return false;
-    }
-
-    switch (block_id) {
-        case 32u: // sea lantern
-        case 39u: // lava
-        case 42u: // jack o'lantern
-        case 44u: // beacon
-        case 47u: // spawner / heads / crying obsidian
-        case 51u: // ochre froglight
-        case 52u: // verdant froglight
-        case 53u: // pearlescent froglight
-        case 58u: // redstone block
-        case 61u: // copper bulb
-            return false;
-        default:
-            return true;
-    }
-}
-
 // Normalized emitter color for light-only voxels.
 vec3 get_voxel_light_color(uint block_id) {
     uint idx = clamp(block_id, 32u, 79u) - 32u;
@@ -64,10 +39,18 @@ VoxelMaterial get_voxel_material(uint block_id, vec3 fallback_color) {
 
     // Check emissive blocks
     if (block_id >= 32u && block_id < 80u) {
-        uint light_idx = clamp(block_id - 32u, 0u, 47u);
-        mat.emission = voxel_light_color_table[light_idx] * 2.5;
-        mat.roughness = 0.5;
-        mat.is_solid = true;
+        if (block_id == 58u || block_id == 63u) {
+            mat.emission = vec3(0.0);
+            mat.roughness = 0.85;
+            mat.is_solid = (block_id != 58u);
+        } else {
+            uint light_idx = clamp(block_id - 32u, 0u, 47u);
+            mat.emission = get_voxel_light_color(block_id)
+                * (EMISSION_ANCHOR * EMISSION_STRENGTH
+                   * voxel_light_response(voxel_light_level_table[light_idx]));
+            mat.roughness = 0.5;
+            mat.is_solid = true;
+        }
     }
 
     // Base block types according to block.properties
@@ -96,7 +79,7 @@ VoxelMaterial get_voxel_material(uint block_id, vec3 fallback_color) {
 
         // Default Stone / unassigned terrain
         case 4u:
-            mat.albedo = vec3(0.35, 0.35, 0.35);
+            mat.albedo = (max_of(fallback_color) > 0.01) ? fallback_color : vec3(0.35, 0.35, 0.35);
             mat.roughness = 0.80;
             mat.is_solid = true;
             break;
@@ -112,14 +95,16 @@ VoxelMaterial get_voxel_material(uint block_id, vec3 fallback_color) {
 
         // Dirt, grass block, coarse dirt, stone, cobblestone, deepslate
         case 6u:
-            mat.albedo = (fallback_color.g > fallback_color.r * 1.05 && fallback_color.g > 0.08) ? fallback_color * 0.40 : vec3(0.35, 0.30, 0.25);
+            mat.albedo = (fallback_color.g > fallback_color.r * 1.05 && fallback_color.g > 0.08)
+                ? fallback_color * 0.40
+                : ((max_of(fallback_color) > 0.01) ? fallback_color : vec3(0.35, 0.30, 0.25));
             mat.roughness = 0.88;
             mat.is_solid = true;
             break;
 
         // Sand, sandstone
         case 7u:
-            mat.albedo = vec3(0.72, 0.65, 0.46);
+            mat.albedo = (max_of(fallback_color) > 0.01) ? fallback_color : vec3(0.72, 0.65, 0.46);
             mat.roughness = 0.88;
             mat.is_solid = true;
             break;
@@ -135,35 +120,35 @@ VoxelMaterial get_voxel_material(uint block_id, vec3 fallback_color) {
 
         // Red sand, red sandstone
         case 9u:
-            mat.albedo = vec3(0.68, 0.36, 0.18);
+            mat.albedo = (max_of(fallback_color) > 0.01) ? fallback_color : vec3(0.68, 0.36, 0.18);
             mat.roughness = 0.88;
             mat.is_solid = true;
             break;
 
         // Wood planks / logs
         case 10u:
-            mat.albedo = vec3(0.48, 0.32, 0.18);
+            mat.albedo = (max_of(fallback_color) > 0.01) ? fallback_color : vec3(0.48, 0.32, 0.18);
             mat.roughness = 0.75;
             mat.is_solid = true;
             break;
 
         // Terracotta
         case 11u:
-            mat.albedo = vec3(0.55, 0.35, 0.25);
+            mat.albedo = (max_of(fallback_color) > 0.01) ? fallback_color : vec3(0.55, 0.35, 0.25);
             mat.roughness = 0.85;
             mat.is_solid = true;
             break;
 
         // Metals (Iron, gold, copper)
         case 12u:
-            mat.albedo = vec3(0.70, 0.70, 0.70);
+            mat.albedo = (max_of(fallback_color) > 0.01) ? fallback_color : vec3(0.70, 0.70, 0.70);
             mat.roughness = 0.40;
             mat.is_solid = true;
             break;
 
         // Netherrack, nether bricks
         case 13u:
-            mat.albedo = vec3(0.38, 0.12, 0.12);
+            mat.albedo = (max_of(fallback_color) > 0.01) ? fallback_color : vec3(0.38, 0.12, 0.12);
             mat.roughness = 0.90;
             mat.is_solid = true;
             break;
@@ -176,19 +161,35 @@ VoxelMaterial get_voxel_material(uint block_id, vec3 fallback_color) {
             mat.is_translucent = true;
             break;
 
-        // Weak SSS materials (leaf litter, pink petals, cobwebs, wool)
+        // Weak SSS / flat decals
         case 15u:
             mat.albedo = clamp(fallback_color, vec3(0.10), vec3(0.50));
             mat.roughness = 0.70;
             mat.is_solid = false; // Never block rays! Leaf litter & petals are flat decals!
             break;
 
-        // Clear glass, glass panes, snow layer, rails, carpets
+        // Redstone logic components and wire
+        case 58u:
+            mat.albedo = clamp(fallback_color, vec3(0.08), vec3(0.45));
+            mat.emission = vec3(0.0);
+            mat.roughness = 0.85;
+            mat.is_solid = false;
+            break;
+
+        // Clear glass, glass panes, rails, thin decor pass-through.
         case 80u:
             mat.albedo = vec3(0.95);
             mat.roughness = 0.04;
             mat.is_solid = false;
             mat.is_translucent = true;
+            break;
+
+        // Full-cube tinted/diffuse surfaces (block.10097)
+        case 97u:
+            mat.albedo = (max_of(fallback_color) > 0.01) ? fallback_color : vec3(0.75);
+            mat.roughness = 0.85;
+            mat.is_solid = true;
+            mat.is_translucent = false;
             break;
 
         // Stained glass / tinted translucent (10081 - 10096)
@@ -218,7 +219,7 @@ VoxelMaterial get_voxel_material(uint block_id, vec3 fallback_color) {
 
         default:
             // Fallback to reasonable albedo
-            mat.albedo = clamp(fallback_color, vec3(0.08), vec3(0.45));
+            mat.albedo = (max_of(fallback_color) > 0.01) ? fallback_color : clamp(fallback_color, vec3(0.08), vec3(0.45));
             mat.is_solid = true;
             break;
     }
