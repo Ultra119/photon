@@ -1,17 +1,8 @@
-/*
---------------------------------------------------------------------------------
-
-  Photon Shader by SixthSurge
-
-  program/d3_ao:
-  Calculate screen-space contact AO for RTGI
-
---------------------------------------------------------------------------------
-*/
-
 #include "/include/global.glsl"
 
-layout(location = 0) out vec4 ambient; // ao, ambient SSS, octahedrally encoded bent normal
+layout(
+    location = 0
+) out vec4 ambient; // R: contact visibility, G: reserved zero, BA: reserved neutral
 layout(location = 1) out vec2 ambient_history_data; // depth, pixel age
 
 /* RENDERTARGETS: 6,14 */
@@ -22,99 +13,62 @@ in vec2 uv;
 //   Uniforms
 // ------------
 
+uniform sampler2D noisetex;
+
 uniform sampler2D colortex1; // gbuffer 0
-uniform sampler2D colortex2; // gbuffer 1
+uniform sampler2D colortex6; // ambient lighting data
+uniform sampler2D colortex14; // ambient lighting history data
 
 uniform sampler2D depthtex1;
+uniform usampler3D voxel_sampler;
 
 uniform mat4 gbufferModelView;
+uniform mat4 gbufferModelViewInverse;
+uniform mat4 gbufferProjection;
 uniform mat4 gbufferProjectionInverse;
 
+uniform mat4 gbufferPreviousModelView;
+uniform mat4 gbufferPreviousProjection;
+
+uniform vec3 cameraPosition;
+uniform vec3 previousCameraPosition;
+
+uniform float near;
+uniform float far;
+uniform float eyeAltitude;
+
+uniform int frameCounter;
+
+uniform vec3 light_dir;
+
 uniform vec2 view_res;
+uniform vec2 view_pixel_size;
 uniform vec2 taa_offset;
+uniform vec2 clouds_offset;
+
+uniform bool world_age_changed;
 
 // ------------
 //   Includes
 // ------------
 
+#define TEMPORAL_REPROJECTION
 #include "/include/misc/lod_mod_support.glsl"
+#include "/include/utility/bicubic.glsl"
+#include "/include/utility/dithering.glsl"
 #include "/include/utility/encoding.glsl"
 #include "/include/utility/fast_math.glsl"
+#include "/include/utility/random.glsl"
+#include "/include/utility/space_conversion.glsl"
+
+#include "/include/lighting/rt/rt_ao.glsl"
 
 const float ao_render_scale = 0.5;
 
-// Reconstruct a view-space position from a full-resolution depth texel. This
-// is a compact version of screen_to_view_space() without the extra include
-// dependencies; it still removes TAA jitter and respects the TAAU viewport.
-vec3 reconstruct_view_pos(ivec2 texel, float depth) {
-    vec2 framebuffer_uv = (vec2(texel) + 0.5) / view_res;
-    vec2 projection_uv = taau_projection_uv(framebuffer_uv);
-    vec2 ndc = projection_uv * 2.0 - 1.0;
-
-#ifdef TAA
-#ifdef TAAU
-    ndc -= taa_offset * rcp(taau_render_scale);
-#else
-    ndc -= taa_offset * 0.66;
-#endif
-#endif
-
-    return project_and_divide(
-        gbufferProjectionInverse,
-        vec3(ndc, depth * 2.0 - 1.0)
-    );
-}
-
-// Mild 8-tap horizon/contact AO. It only sees near geometry; RTGI remains
-// responsible for large-scale occlusion and indirect lighting.
-float compute_contact_ao(ivec2 texel, float depth, vec3 view_normal) {
-#if defined RAYTRACED_GI
-    if (RTGI_CONTACT_AO_STRENGTH <= 0.0) {
-        return 1.0;
-    }
-
-    vec3 center_pos = reconstruct_view_pos(texel, depth);
-    ivec2 active_res = max(ivec2(1), ivec2(view_res * taau_render_scale));
-
-    const ivec2 offsets[8] = ivec2[8](
-        ivec2( 1,  0), ivec2(-1,  0),
-        ivec2( 0,  1), ivec2( 0, -1),
-        ivec2( 2,  0), ivec2(-2,  0),
-        ivec2( 0,  2), ivec2( 0, -2)
-    );
-
-    float occlusion = 0.0;
-
-    for (int i = 0; i < 8; ++i) {
-        ivec2 sample_texel = clamp(
-            texel + offsets[i] * 2,
-            ivec2(0),
-            active_res - 1
-        );
-
-        float sample_depth = texelFetch(combined_depth_tex, sample_texel, 0).x;
-        if (sample_depth >= 1.0) {
-            continue;
-        }
-
-        vec3 sample_pos = reconstruct_view_pos(sample_texel, sample_depth);
-        vec3 delta = sample_pos - center_pos;
-        float dist = length(delta);
-        float NoD = dot(view_normal, delta / max(dist, eps));
-
-        // Ignore nearly coplanar samples and distant geometry.
-        occlusion += max(0.0, NoD - 0.10) * exp(-dist * 0.35);
-    }
-
-    return clamp01(1.0 - RTGI_CONTACT_AO_STRENGTH * occlusion * 0.125);
-#else
-    return 1.0;
-#endif
-}
-
 void main() {
     ivec2 texel = ivec2(gl_FragCoord.xy);
-    ivec2 view_texel = ivec2(gl_FragCoord.xy * (taau_render_scale / ao_render_scale));
+    ivec2 view_texel
+        = ivec2(gl_FragCoord.xy * (taau_render_scale / ao_render_scale));
 
     if (clamp(view_texel, ivec2(0), ivec2(view_res)) != view_texel) {
         return;
@@ -122,43 +76,114 @@ void main() {
 
     float depth = texelFetch(combined_depth_tex, view_texel, 0).x;
 
+    vec4 gbuffer_data = texelFetch(colortex1, view_texel, 0);
+    vec2 dither = vec2(
+        texelFetch(noisetex, texel & 511, 0).b,
+        texelFetch(noisetex, (texel + 249) & 511, 0).b
+    );
+
+    // Distant Horizons support
+
+#ifdef LOD_MOD_ACTIVE
+    float depth_mc = texelFetch(depthtex1, view_texel, 0).x;
+#else
+#define depth_mc depth
+#endif
+
+    bool is_hand;
+    fix_hand_depth(depth_mc, is_hand);
+
+    vec3 screen_pos = vec3(uv, depth);
+    vec3 view_pos = screen_to_view_space(
+        combined_projection_matrix_inverse,
+        screen_pos,
+        true
+    );
+    vec3 scene_pos = view_to_scene_space(view_pos);
+
+    vec3 previous_screen_pos = reproject_scene_space(scene_pos, false, false);
+
     if (depth == 1.0) {
-        ambient = vec4(1.0, 0.0, 0.5, 0.5);
+        ambient = vec4(1.0, 0.0, 0.0, 0.0);
         ambient_history_data = vec2(0.0);
         return;
     }
 
-#ifndef NORMAL_MAPPING
-    vec4 gbuffer_data = texelFetch(colortex1, view_texel, 0);
-#else
-    vec4 gbuffer_data = texelFetch(colortex2, view_texel, 0);
-#endif
-
-    // Distant Horizons support
-#ifdef LOD_MOD_ACTIVE
-    float depth_mc = texelFetch(depthtex1, view_texel, 0).x;
-    float depth_lod = texelFetch(lod_depth_tex_shading, view_texel, 0).x;
-    bool is_lod = is_lod_terrain(depth_mc, depth_lod);
-#else
-    const bool is_lod = false;
-#endif
-
-#ifdef NORMAL_MAPPING
-    vec3 world_normal = decode_unit_vector(gbuffer_data.xy);
-
-#ifdef LOD_MOD_ACTIVE
-    if (is_lod) {
-        vec4 gbuffer_data_0 = texelFetch(colortex1, view_texel, 0);
-        world_normal = decode_unit_vector(unpack_unorm_2x8(gbuffer_data_0.z));
-    }
-#endif
-#else
+    // Contact rays use geometric visibility. Normal-map detail must not
+    // redirect rays below the raster surface or into its own voxel cell.
     vec3 world_normal = decode_unit_vector(unpack_unorm_2x8(gbuffer_data.z));
-#endif
-
     vec3 view_normal = mat3(gbufferModelView) * world_normal;
-    float ao = compute_contact_ao(view_texel, depth, view_normal);
 
-    ambient = vec4(ao, 0.0, view_normal.xy * 0.5 + 0.5);
-    ambient_history_data = vec2(1.0 - depth, 1.0);
+    dither = r2(frameCounter, dither);
+
+    // The hand is not in world-space voxel coordinates. Uncovered/LOD
+    // surfaces likewise remain neutral when their rays leave the volume.
+    if (is_hand || RT_AO_STRENGTH <= 0.0) {
+        ambient = vec4(1.0, 0.0, 0.5, 0.5);
+        ambient_history_data = vec2(1.0 - depth, 0.0);
+        return;
+    }
+
+    float ao = compute_rt_ao(scene_pos, world_normal, dither, voxel_sampler);
+    // G is reserved for ambient SSS compatibility; RT AO does not invent an
+    // analytic ambient-SSS term or a bent-normal lighting substitute.
+    vec2 ao_sample = vec2(ao, 0.0);
+
+    // Temporal accumulation
+
+    const float max_accumulated_frames = 10.0;
+    const float depth_rejection_strength = 16.0;
+    const float offcenter_rejection_strength = 0.25;
+
+    vec4 history = max0(
+        catmull_rom_filter_fast(colortex6, previous_screen_pos.xy, 0.65)
+    );
+    vec2 history_data = max0(texture(colortex14, previous_screen_pos.xy).xy);
+
+    if (clamp01(previous_screen_pos.xy) == previous_screen_pos.xy) {
+        // Unpack history data
+        float history_depth = 1.0 - history_data.x;
+        float pixel_age = min(history_data.y, max_accumulated_frames);
+
+        // Depth rejection
+        float view_norm = rcp_length(view_pos);
+        float NoV = abs(dot(view_normal, view_pos))
+            * view_norm; // NoV / sqrt(length(view_pos))
+        float z0 = screen_to_view_space_depth(
+            combined_projection_matrix_inverse,
+            depth
+        );
+        float z1 = screen_to_view_space_depth(
+            combined_projection_matrix_inverse,
+            history_depth
+        );
+        float depth_weight
+            = exp2(-abs(z0 - z1) * depth_rejection_strength * NoV * view_norm);
+
+        // Offcenter rejection from Jessie, which is originally by Zombye
+        // Reduces blur in motion
+        vec2 pixel_offset = 1.0
+            - abs(2.0
+                      * fract(
+                          view_res * ao_render_scale * previous_screen_pos.xy
+                      )
+                  - 1.0);
+        float offcenter_rejection = sqrt(pixel_offset.x * pixel_offset.y)
+                * offcenter_rejection_strength
+            + (1.0 - offcenter_rejection_strength);
+
+        pixel_age
+            *= depth_weight * offcenter_rejection * float(history_depth != 1.0);
+
+        // Blend with history
+        float history_weight = pixel_age / (pixel_age + 1.0);
+
+        ao_sample = mix(ao_sample, history.xy, history_weight);
+        ambient = vec4(ao_sample, 0.5, 0.5);
+        ambient_history_data = vec2(1.0 - depth, pixel_age + 1.0);
+    } else {
+        ambient = vec4(ao_sample, 0.5, 0.5);
+        ambient_history_data = vec2(0.0);
+    }
+
 }
